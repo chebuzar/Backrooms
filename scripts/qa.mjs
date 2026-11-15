@@ -20,13 +20,13 @@ await p.goto(server.resolvedUrls.local[0] + '?debug=1');
 await p.waitForFunction(() => window.__zkReady && window.__zk, null, { timeout: 90000 });
 
 const res = await p.evaluate(async (seeds) => {
-  const L = await import('/src/world/level.js'); const D = await import('/src/data/game-data.js');
+  const L = await import('/src/world/level.js'); const D = await import('/src/data/game-data.js'); const X = await import('/src/world/extras.js');
   const walk = (t) => t === 0 || t === 6;
   const out = [];
   for (let lv = 0; lv < 10; lv++) for (let s = 1; s <= seeds; s++) {
-    const seed = lv * 1000 + s * 17, th = D.theme(lv), issues = [];
+    const seed = lv * 1000 + s * 17, th = D.theme(lv), issues = [], task = Object.assign({ near: true }, X.taskFor(lv, seed));
     let t0 = performance.now();
-    const G = L.genGrid(Object.assign({}, th, { needKey: false }), lv, seed, { world: true, allowSecret: true, noteIds: D.notesFor(lv), water: 10, batt: 6 });
+    const G = L.genGrid(Object.assign({}, th, { needKey: task.kind === 'key' }), lv, seed, { world: true, allowSecret: true, noteIds: D.notesFor(lv), water: 10, batt: 6 });
     const tg = performance.now() - t0;
     const { g, mw, mh } = G, d = new Int32Array(mw * mh).fill(-1), q = [G.spawn.ty * mw + G.spawn.tx];
     d[q[0]] = 0;
@@ -37,10 +37,18 @@ const res = await p.evaluate(async (seeds) => {
     if ((G.exits || []).length < 2) issues.push('виходів менше 2: ' + (G.exits || []).length);
     for (const f of G.finds) { const i = f.ty * mw + f.tx; if (g[i] !== 0) issues.push('знахідка в стіні: ' + f.kind); else if (d[i] < 0) issues.push('знахідка недосяжна: ' + f.kind); }
     for (const n of G.notes) if (d[n.ty * mw + n.tx] < 0) issues.push('записка недосяжна');
+    if (task.kind === 'key') { if (!G.key) issues.push('немає ключ-карти'); else if (d[G.key.ty * mw + G.key.tx] < 0) issues.push('ключ-карта недосяжна'); }
     t0 = performance.now();
     const lvl = L.buildLevel(Object.assign({}, th, { needKey: false }), G, { seed });
     const tb = performance.now() - t0;
     if (lvl.lockers.length < 10) issues.push('мало шафок: ' + lvl.lockers.length);
+    // предметы задания уровня: хватает ли их и лежат ли недалеко
+    if (task.n) {
+      const ex = X.buildExtras(lvl, task, seed, lv), want = task.kind === 'code' ? 'clue' : task.kind;
+      const its = ex.items.filter((it) => it.type === want);
+      if (its.length < task.n) issues.push(`предметів завдання ${its.length}/${task.n}`);
+      for (const it of its) { const i = Math.floor(it.z / L.S) * mw + Math.floor(it.x / L.S); if (d[i] < 0 || d[i] > 40) issues.push('предмет завдання далеко/недосяжний: ' + d[i]); }
+    }
     let tris = 0; lvl.root.traverse((o) => { if (o.geometry && o.geometry.index) tris += o.geometry.index.count / 3 * (o.count || 1); });
     lvl.dispose();
     out.push({ lv, seed, gen: Math.round(tg), build: Math.round(tb), dist: d[fi], exits: (G.exits || []).length, finds: G.finds.length, lockers: lvl.lockers.length, ktris: Math.round(tris / 1000), issues });

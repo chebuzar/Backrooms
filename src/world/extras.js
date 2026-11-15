@@ -9,17 +9,18 @@ import { canvas } from '../render/textures.js';
 const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 
 // ---------- задания ----------
+// У каждого уровня своё задание, связанное с сюжетом (goal — текст цели на карточке уровня)
 const TASK_BY_LEVEL = [
   { kind: 'exit' },
-  { kind: 'fuse', n: 3 },
-  { kind: 'code', n: 4 },
-  { kind: 'key', chase: true },
-  { kind: 'valve', n: 3 },
-  { kind: 'code', n: 4 },
-  { kind: 'ticket', n: 4 },
-  { kind: 'fuse', n: 3 },
-  { kind: 'key', chase: true },
-  { kind: 'lever', n: 4 }
+  { kind: 'fuse', n: 3, goal: 'Найди 3 предохранителя для щитка базы «Глубина-1»' },
+  { kind: 'code', n: 4, goal: 'Найди на стенах 4 цифры кода от ворот парковки' },
+  { kind: 'key', chase: true, goal: 'Возьми ключ-карту — и беги к выходу. Он погонится за тобой' },
+  { kind: 'valve', n: 3, goal: 'Перекрой 3 вентиля, пока вода не поднялась' },
+  { kind: 'code', n: 4, goal: 'Собери код от шкафчика спасателя бассейна «Лазурный»' },
+  { kind: 'ticket', n: 4, goal: 'Собери 4 билета на колесо обозрения' },
+  { kind: 'key', goal: 'Найди пропуск сотрудника Объекта 4-Б' },
+  { kind: 'key', chase: true, goal: 'Найди в архиве своё личное дело — и беги' },
+  { kind: 'lever', n: 4, goal: 'Включи 4 рубильника, чтобы дать ток на последнюю дверь' }
 ];
 function taskFor(lv, seed) {
   if (lv < TASK_BY_LEVEL.length) return TASK_BY_LEVEL[lv];
@@ -166,7 +167,8 @@ function buildExtras(lvl, task, seed, lv) {
   const r = rng((seed ^ 0x51ed27) >>> 0);
   const root = lvl.root, used = [];
   const add = (o) => { root.add(o); return o; };
-  const cands = spots(lvl, r);
+  // в открытом мире предметы задания — в 8–34 клетках пути от старта (16–70 м), иначе их не найти
+  const all = spots(lvl, r), cands = task.near ? all.filter((c) => c.d <= 34) : all;
   const ex = { task, items: [], anoms: [], code: null, marks: [], markGroup: new THREE.Group(), staticT: 0 };
   add(ex.markGroup);
   const n = task.n || 0;
@@ -233,7 +235,7 @@ function buildExtras(lvl, task, seed, lv) {
   const kinds = ANOM_KEYS.slice();
   for (let i = kinds.length - 1; i > 0; i--) { const j = (r() * (i + 1)) | 0; const t = kinds[i]; kinds[i] = kinds[j]; kinds[j] = t; }
   const wantA = 2 + (lv % 3 === 2 ? 1 : 0);
-  const aspots = pickSpread(cands.filter((c) => c.d > 5), wantA, used, (c) => c.walls.length > 0, 10);
+  const aspots = pickSpread(all.filter((c) => c.d > 5), wantA, used, (c) => c.walls.length > 0, 10);
   aspots.forEach((c, k) => {
     used.push(c);
     const kind = kinds[k];

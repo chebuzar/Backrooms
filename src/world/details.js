@@ -86,6 +86,7 @@ function instMat(map, uBake, uAmbK, transparent) {
 // faces: [{ o, u, n, bake(x, y, z, n, out) }], hh — высота потолка
 export function buildDetails(faces, set, r, hh, uBake, uAmbK, avoid = () => false) {
   const group = new THREE.Group(), out = [0, 0, 0], items = {};
+  group.userData.textures = [];
   if (!set) return group;
   for (const f of faces) {
     let used = 0;
@@ -132,7 +133,7 @@ export function buildDetails(faces, set, r, hh, uBake, uAmbK, avoid = () => fals
     im.computeBoundingSphere();
     group.add(im);
   }
-  group.userData.textures = textures;
+  group.userData.textures.push(...textures);
   return group;
 }
 

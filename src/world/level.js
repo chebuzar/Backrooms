@@ -356,7 +356,7 @@ function genGrid(th, level, seed, o = {}) {
   if (th.needKey && !o.demo) {
     let bs = -1;
     for (const i of cands) {
-      if (d[i] < maxD * 0.3 || d[i] > maxD * 0.85) continue;
+      if (o.world ? (d[i] < 12 || d[i] > 34) : (d[i] < maxD * 0.3 || d[i] > maxD * 0.85)) continue;
       const tx = i % mw, ty = (i / mw) | 0, e = Math.hypot(tx - D.tx, ty - D.ty);
       if (e > bs) { bs = e; key = { tx, ty }; }
     }

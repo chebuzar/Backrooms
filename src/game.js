@@ -321,7 +321,8 @@ function moveCollide(dx, dz) {
 }
 // Открытый мир вместо «собери 3 предмета»: цель уровня — найти выход в дальнем конце мира.
 const WORLD = true;
-const levelTask = (lv, seed) => (WORLD ? { kind: 'exit' } : taskFor(lv, seed));
+// задания уровней снова включены; в открытом мире (near) их предметы лежат недалеко от старта
+const levelTask = (lv, seed) => (WORLD ? Object.assign({ near: true }, taskFor(lv, seed)) : taskFor(lv, seed));
 const inPuddle = () => lvl.puddles.some(([x, z, r]) => (pl.x - x) ** 2 + (pl.z - z) ** 2 < r * r);
 // Реверб по типу пространства: [длина хвоста, с; громкость]
 const REVERB = { pool: [4.6, 0.6], halls: [3.6, 0.5], shelves: [4.0, 0.5], parking: [3.4, 0.45], circus: [2.4, 0.32], rooms: [1.1, 0.16], maze: [2.0, 0.3], smiles: [2.2, 0.34] };
@@ -1187,7 +1188,7 @@ async function startLevel(lv, fresh = false, opt = {}) {
   const th = theme(lv);
   $('cNum').textContent = lv <= LAST ? `УРОВЕНЬ ${lv} / ${LAST}` : `УРОВЕНЬ ${lv} · БЕСКОНЕЧНОСТЬ`;
   $('cName').textContent = th.name;
-  { const tk = levelTask(lv, seed); $('cObj').textContent = 'ЦЕЛЬ: ' + TASK_GOAL[tk.chase ? 'chase' : tk.kind].toUpperCase(); }
+  { const tk = levelTask(lv, seed); $('cObj').textContent = 'ЦЕЛЬ: ' + (tk.goal || TASK_GOAL[tk.chase ? 'chase' : tk.kind]).toUpperCase(); }
   $('cTip').textContent = th.tip;
   const mdef = monsterFor(lv);
   $('cMon').textContent = `${mdef.name.toUpperCase()}: ${mdef.trait}`;
