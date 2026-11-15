@@ -14,3 +14,10 @@
 - `Tiles132A` — https://ambientcg.com/view?id=Tiles132A
 - `Wallpaper001A` — https://ambientcg.com/view?id=Wallpaper001A
 - `Wallpaper001C` — https://ambientcg.com/view?id=Wallpaper001C
+
+## 3D-модели
+
+**CC0 1.0**, Quaternius (quaternius.com). Сконвертированы из FBX в GLB скриптом `scripts/convert-models.mjs`.
+
+- `models/human.glb` — «Animated Man» (Animated Human.fbx): Idle, Walk, Run, Punch, Death
+- `models/zombie.glb` — «Animated Zombie» (ZombieSmooth.fbx): Idle, Walk, Run, Crawl, Bite

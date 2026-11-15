@@ -18,6 +18,9 @@ import { FIND_KINDS, FIND_IDS, buildFinds, updateFinds, findPoint } from './worl
 import { makeWrist, poseWrist, drawRadar } from './world/wrist.js';
 import { createMinimap, drawMinimap, trackTrail, resetMinimap } from './ui/minimap.js';
 import { makeDust, updateDust } from './render/dust.js';
+import { preloadMonsters, makeMonsterMesh } from './world/monster-models.js';
+// готовая модель, если загрузилась; иначе — процедурный монстр
+const monsterMesh = (look) => makeMonsterMesh(look) || makeEntityMesh(look);
 import { themeTex, setAniso, setTexHi } from './render/assets.js';
 
 const $ = (id) => document.getElementById(id);
@@ -1121,6 +1124,7 @@ async function startLevel(lv, fresh = false, opt = {}) {
   const G = genGrid(thG, lv, seed, { world: WORLD, allowSecret: lv <= LAST, noteIds: lv <= LAST ? notesFor(lv) : [], water: Math.max(2, Math.round(th.water * D.items * (WORLD ? 2.5 : 1))), batt: Math.max(1, Math.round(th.batt * D.items * (WORLD ? 2.5 : 1))) });
   setAniso(Math.min(8, maxAniso));
   const pbr = await themeTex(th);
+  await Promise.race([preloadMonsters(), sleep(12000)]);
   lvl = buildLevel(thB, G, { seed, aniso: maxAniso, pbr });
   scene.add(lvl.root);
   game.finds = buildFinds(lvl, G.finds, seed, lvl.glowT);
@@ -1128,7 +1132,7 @@ async function startLevel(lv, fresh = false, opt = {}) {
   for (const it of game.ex.items) lvl.items.push(it);
   Object.assign(game, { parts: 0, codeOK: false, chase: false, chaseT: 0, scanT: 0, seen: new Uint8Array(lvl.mw * lvl.mh), seenT: 0, actIt: null, anomT: 0 });
   scene.fog.color.set(th.fog); scene.fog.density = th.fogD;
-  ent = new Entity(lvl, makeEntityMesh(mdef.look), {
+  ent = new Entity(lvl, monsterMesh(mdef.look), {
     step: (x, z, sp) => sound.entStep(x, z, sp),
     spot: () => { sound.spotted(); },
     wake: () => { sound.wake(); whisper(mdef.name.toLowerCase() + (/[ая]$|ь$/.test(mdef.name) ? ' проснулась' : ' проснулся'), 3000); toast(`${mdef.name}: ${mdef.trait}`); },
@@ -1137,7 +1141,7 @@ async function startLevel(lv, fresh = false, opt = {}) {
   ent.kind = Object.keys(MON).find((k) => MON[k] === mdef) || 'watcher';
   scene.add(ent.m.group);
   ent.timer = th.spawn * D.spawn;
-  ghost = makeEntityMesh(mdef.look); ghost.group.visible = false; scene.add(ghost.group);
+  ghost = monsterMesh(mdef.look); ghost.group.visible = false; scene.add(ghost.group);
   Object.assign(pl, { x: lvl.spawn.x, z: lvl.spawn.z, yaw: lvl.spawn.yaw, pitch: 0, vx: 0, vz: 0, sta: 100, staDelay: 0, tired: false, san: 100, hasKey: false, wake: 0, bob: 0, light: false, running: false, gy: 0, hidden: null, crouch: false, ch: 0, nv: false, emp: 1, empT: 0, scanCD: 0, actT: 0, burst: 0 });
   hide('mapBox'); closeKeypad(true); game.mapOpen = false; game.scanT = 0; game.exitKnown = false; $('scanLayer').querySelectorAll('.sm').forEach((e) => e.remove()); syncTools();
   hide('slats');

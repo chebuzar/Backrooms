@@ -55,6 +55,21 @@ function grinFaceTex() {
   x.strokeStyle = 'rgba(120,20,20,0.6)'; x.lineWidth = 3; for (let k = 0; k < 6; k++) { const px = 70 + k * 24; x.beginPath(); x.moveTo(px, 170); x.lineTo(px + (Math.random() - 0.5) * 6, 200 + Math.random() * 30); x.stroke(); }
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
 }
+function tvGrinTex() {
+  const c = canvas(256, 192), x = c.getContext('2d');
+  const g = x.createRadialGradient(128, 96, 10, 128, 96, 150); g.addColorStop(0, '#1f3cff'); g.addColorStop(1, '#06103a');
+  x.fillStyle = g; x.fillRect(0, 0, 256, 192);
+  for (let i = 0; i < 2600; i++) { x.fillStyle = `rgba(160,190,255,${Math.random() * 0.18})`; x.fillRect(Math.random() * 256, Math.random() * 192, 2, 1); }
+  x.shadowColor = '#bfe0ff'; x.shadowBlur = 18; x.fillStyle = '#e8f4ff';
+  for (const ex of [88, 168]) { x.beginPath(); x.arc(ex, 66, 15, 0, 7); x.fill(); }
+  x.fillStyle = '#0a1450'; for (const ex of [88, 168]) { x.beginPath(); x.arc(ex, 66, 6, 0, 7); x.fill(); }
+  x.fillStyle = '#e8f4ff'; x.beginPath(); x.moveTo(36, 104); x.quadraticCurveTo(128, 196, 220, 104); x.quadraticCurveTo(128, 140, 36, 104); x.fill();
+  x.shadowBlur = 0; x.fillStyle = '#0a1450';
+  for (let k = 1; k < 14; k++) { const tt = k / 14, px = 36 + tt * 184, py = 104 + Math.sin(tt * Math.PI) * 26; x.fillRect(px - 1, py - 4, 2.5, 30); }
+  x.beginPath(); x.moveTo(52, 118); x.quadraticCurveTo(128, 150, 204, 118); x.lineTo(204, 121); x.quadraticCurveTo(128, 154, 52, 121); x.fill();
+  for (let y = 0; y < 192; y += 3) { x.fillStyle = 'rgba(0,0,30,0.22)'; x.fillRect(0, y, 256, 1); }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
 function staticFaceTex() {
   const c = canvas(128, 96), x = c.getContext('2d'), d = x.createImageData(128, 96);
   for (let i = 0; i < 128 * 96; i++) { const v = 40 + Math.random() * 120; d.data[i * 4] = v * 0.8; d.data[i * 4 + 1] = v; d.data[i * 4 + 2] = v * 0.9; d.data[i * 4 + 3] = 255; }
@@ -118,13 +133,16 @@ function decorate(L, P) {
     const hat = M(new THREE.ConeGeometry(0.09, 0.32, 16), std({ map: ht, roughness: 0.7 })); hat.position.set(0.03, 0.47, 0); hat.rotation.z = -0.2; head.add(hat);
     const nose = M(new THREE.SphereGeometry(0.032, 12, 10), std({ color: 0xd01818, roughness: 0.3 })); nose.position.set(0, 0.17, 0.135); head.add(nose);
   } else if (k === 'mimic') {
-    // офисный двойник: вместо головы старый монитор с лицом из помех
+    // голова-телевизор: старый кинескоп с антеннами, на синем экране светятся глаза и широкая ухмылка
     clearFace();
-    const body = std({ color: 0x9e9a8c, roughness: 0.7 });
-    const box = M(new THREE.BoxGeometry(0.36, 0.3, 0.32), body); box.position.set(0, 0.18, -0.02); head.add(box);
-    const scr = M(new THREE.PlaneGeometry(0.28, 0.21), new THREE.MeshBasicMaterial({ map: staticFaceTex(), color: 0xb8c8b8 })); mats.push(scr.material);
-    scr.position.set(0, 0.19, 0.141); head.add(scr);
-    const tie = M(new THREE.BoxGeometry(0.05, 0.3, 0.01), std({ color: 0x6a1010 })); tie.position.set(0, -0.2, 0.12); chest.add(tie);
+    const wood = std({ color: 0x4a3524, roughness: 0.6 }), plast = std({ color: 0x2a2826, roughness: 0.5 });
+    const box = M(new THREE.BoxGeometry(0.5, 0.38, 0.4), wood); box.position.set(0, 0.2, -0.02); head.add(box);
+    const bezel = M(new THREE.BoxGeometry(0.4, 0.31, 0.02), plast); bezel.position.set(-0.03, 0.2, 0.185); head.add(bezel);
+    const scr = M(new THREE.PlaneGeometry(0.33, 0.25), new THREE.MeshBasicMaterial({ map: tvGrinTex(), color: new THREE.Color(1.6, 1.6, 1.8) })); mats.push(scr.material);
+    scr.position.set(-0.03, 0.2, 0.197); head.add(scr);
+    for (const y of [0.27, 0.19]) { const kn = M(new THREE.CylinderGeometry(0.022, 0.022, 0.03, 12), plast); kn.rotation.x = Math.PI / 2; kn.position.set(0.21, y, 0.19); head.add(kn); }
+    for (const s of [-1, 1]) { const a = M(new THREE.CylinderGeometry(0.006, 0.006, 0.42, 5), plast); a.position.set(s * 0.1, 0.55, -0.02); a.rotation.z = -s * 0.5; head.add(a); }
+    const cable = M(new THREE.CylinderGeometry(0.012, 0.012, 0.5, 5), plast); cable.position.set(0.06, -0.12, -0.12); cable.rotation.x = 0.4; head.add(cable);
   } else if (k === 'stalker') {
     // рога и шипы на спине, красные глаза, когти
     glow.color.setRGB(7, 0.6, 0.3);
@@ -524,6 +542,14 @@ class Entity {
     if (!this.frozen) this.ph += dt * this.speed * (L.posture === 'crawl' ? 3.2 : 2.3);
     const s = Math.sin(this.ph);
     if (moving && (prev < 0) !== (s < 0) && !(this.ai.mimic && o.moving)) this.hooks.step && this.hooks.step(this.x, this.z, this.speed);
+    if (m.glb) {
+      // готовая модель: скелетная анимация + нервное подёргивание головы
+      m.update(dt, this.speed, this.frozen);
+      this.twT -= dt;
+      if (this.twT <= 0) { this.twT = 0.4 + Math.random() * 2.2; this.tw = (Math.random() - 0.5) * 0.9; }
+      if (m.headBone) { m.headBone.rotation.z += (this.frozen ? 0.4 : this.tw) * 0.6; }
+      return;
+    }
     const a = moving ? Math.min(1, this.speed / 2) : 0;
     if (L.posture === 'crawl') {
       m.hips.position.y = 0.62 + Math.abs(s) * 0.03 * a;
@@ -556,6 +582,7 @@ class Entity {
   }
   scarePose(t) {
     const m = this.m;
+    if (m.glb) { m.scare(1 / 60); if (m.headBone) m.headBone.rotation.z += Math.sin(t * 47) * 0.2; return; }
     m.spine.rotation.x = 0.45; m.hips.position.y = 1.12;
     for (const A of m.arms) { A.sh.rotation.x = -1.35 + Math.sin(t * 30) * 0.05; A.sh.rotation.z = A.s * 0.35; A.el.rotation.x = -0.35; }
     for (const G of m.legs) { G.hp.rotation.x = 0; G.kn.rotation.x = 0.1; }
@@ -571,4 +598,4 @@ function disposeMesh(group) {
   mats.forEach((m) => { if (m.map && texCache.size > 30) m.map.dispose(); m.dispose(); });
 }
 
-export { makeEntityMesh, Entity, disposeMesh };
+export { makeEntityMesh, Entity, disposeMesh, decorate, skinTexture };

@@ -211,7 +211,7 @@ const MONSTERS = {
   puppet: { name: 'Марионетка', ic: '🎭', trait: 'Пока играет шарманка, она стоит. Музыка стихла — беги.',
     look: { kind: 'puppet', skin: [232, 222, 206], puppet: true, eyes: 'painted', mouth: 'painted', posture: 'stand' }, ai: { music: true, stare: 1 } },
   mimic: { name: 'Двойник', ic: '👣', trait: 'Повторяет твои шаги. Ты стоишь, а шаги всё ещё слышны? Он рядом.',
-    look: { kind: 'mimic', skin: [70, 72, 80], eyes: 'blank', mouth: 'none', posture: 'stand', suit: true }, ai: { mimic: true, stare: 0.5 } },
+    look: { kind: 'mimic', skin: [64, 48, 36], eyes: 'blank', mouth: 'none', posture: 'stand' }, ai: { mimic: true, stare: 0.5 } },
   stalker: { name: 'Охотник', ic: '🔦', trait: 'Очень быстрый и видит издалека, но боится света: луч фонарика заставляет его отступить.',
     look: { kind: 'stalker', skin: [92, 78, 72], height: 1.22, eyes: 'many', mouth: 'jaw', posture: 'hunch' }, ai: { fast: 1.25, fear: true, stare: 1 } },
   shadow: { name: 'Тень', ic: '🌑', trait: 'Живёт в темноте. На свету медленная и почти невидимая, в темноте молниеносная.',
