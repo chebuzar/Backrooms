@@ -154,7 +154,8 @@ function applyQuality() {
   setTexHi(q !== 'low');
   if (LOOK.vhsPixel) basePR = Math.min(dpr, Math.max(0.25, LOOK.h[q] / Math.max(240, innerHeight)));
   setTexScale(q === 'low' ? 1 : 2);
-  const samples = q === 'low' ? 0 : q === 'med' ? 2 : 4;
+  // на Retina (iPad/iPhone/Mac, DPR ≥ 2) пиксели мелкие — хватает MSAA 2×, видеокарте вдвое легче
+  const samples = q === 'low' ? 0 : q === 'med' || basePR >= 1.9 ? 2 : 4;
   for (const rt of [composer.renderTarget1, composer.renderTarget2]) if (rt.samples !== samples) { rt.samples = samples; rt.dispose(); }
   curPR = basePR; setPR(curPR);
   bloom.enabled = q !== 'low';
@@ -750,7 +751,7 @@ function scanBlips() {
 }
 function updateWristMap(dt) {
   const up = game.scanT > 0 && !pl.hidden && game.mode === 'play';
-  poseWrist(wrist, dt, up, tAll, pl.bob || 0);
+  poseWrist(wrist, dt, up, tAll, pl.bob || 0, camera.aspect);
   const sc = wrist.raise > 0.3; if (sc !== game.scanUI) { game.scanUI = sc; document.body.classList.toggle('scanning', sc); }
   if (wrist.root.visible) drawRadar(wrist, dt, tAll, pl.x, pl.z, pl.yaw, scanBlips());
   if (!minimap) minimap = createMinimap($('minimap'));
@@ -951,7 +952,7 @@ function drawMap() {
   const c = $('mapC'), L = lvl, W = L.mw, H = L.mh;
   const k = Math.max(3, Math.floor(Math.min((innerWidth * 0.82) / W, (innerHeight * 0.7) / H)));
   const dpr = Math.min(2, devicePixelRatio || 1);
-  if (c.width !== W * k * dpr) { c.width = W * k * dpr; c.height = H * k * dpr; c.style.width = W * k + 'px'; c.style.height = H * k + 'px'; }
+  if (c.width !== W * k * dpr || c.height !== H * k * dpr) { c.width = W * k * dpr; c.height = H * k * dpr; c.style.width = W * k + 'px'; c.style.height = H * k + 'px'; }
   const x = c.getContext('2d'); x.setTransform(dpr, 0, 0, dpr, 0, 0);
   x.fillStyle = '#0c0b08'; x.fillRect(0, 0, W * k, H * k);
   for (let tz = 0; tz < H; tz++) for (let tx = 0; tx < W; tx++) {

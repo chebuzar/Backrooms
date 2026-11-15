@@ -53,11 +53,14 @@ export function makeWrist() {
 }
 
 // k — 0..1 насколько рука поднята; t — время
-export function poseWrist(w, dt, want, t, bob = 0) {
+export function poseWrist(w, dt, want, t, bob = 0, aspect = 16 / 9) {
   w.raise += ((want ? 1 : 0) - w.raise) * Math.min(1, dt * (want ? 7 : 5));
   const k = w.raise, e = k * k * (3 - 2 * k);
   w.root.visible = k > 0.01;
-  w.root.position.set((1 - e) * 0.06, -(1 - e) * 0.3 + Math.sin(t * 1.3) * 0.003 + bob * 0.008, 0);
+  // на экранах ближе к квадрату (iPad 4:3) рука меньше и ближе к центру, чтобы не закрывать джойстик
+  const a = Math.max(0, Math.min(1, (1.78 - aspect) / 0.45)), sc = 1 - 0.22 * a;
+  w.root.scale.setScalar(sc);
+  w.root.position.set((1 - e) * 0.06 + 0.035 * a, -(1 - e) * 0.3 + Math.sin(t * 1.3) * 0.003 + bob * 0.008 + 0.025 * a, 0);
   w.root.rotation.set((1 - e) * -0.35, 0, Math.sin(t * 0.9) * 0.008);
 }
 

@@ -20,7 +20,7 @@ export function resetMinimap(m) { m.trail.length = 0; m.lastX = m.lastZ = null; 
 export function drawMinimap(m, o) {
   const dpr = Math.min(2, window.devicePixelRatio || 1), css = m.el.clientWidth || 150;
   const W = Math.round(css * dpr);
-  if (m.c.width !== W) { m.c.width = W; m.c.height = W; }
+  if (m.c.width !== W || m.c.height !== W) { m.c.width = W; m.c.height = W; }
   const x = m.x, R = W / 2, cells = 11, k = R / cells; // пикселей на клетку
   const { lvl: L, seen, px, pz, yaw } = o;
   x.setTransform(1, 0, 0, 1, 0, 0);
