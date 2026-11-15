@@ -503,6 +503,23 @@ function grimeTex() {
   return GRIME;
 }
 
+// Узор обоев «как в Закулисье»: тонкие двойные вертикальные полосы и колонка ромбиков между ними (1 плитка ≈ 36 см)
+let WPAT = null;
+function wallpaperPattern() {
+  if (WPAT) return WPAT;
+  const N = 128, c = document.createElement('canvas'); c.width = c.height = N; const x = c.getContext('2d');
+  x.fillStyle = '#fff'; x.fillRect(0, 0, N, N); x.fillStyle = '#000'; x.strokeStyle = '#000';
+  for (const px of [6, 12]) x.fillRect(px, 0, 2, N);
+  for (let k = 0; k < 4; k++) {
+    const cy = k * 32 + 16, cx = 72;
+    x.beginPath(); x.moveTo(cx, cy - 11); x.lineTo(cx + 8, cy); x.lineTo(cx, cy + 11); x.lineTo(cx - 8, cy); x.closePath(); x.lineWidth = 2.2; x.stroke();
+    x.beginPath(); x.arc(cx, cy, 2.2, 0, 7); x.fill();
+    x.fillRect(cx - 1, cy + 13, 2, 6); x.fillRect(cx - 1, cy - 19, 2, 6);
+  }
+  WPAT = new THREE.CanvasTexture(c); WPAT.wrapS = WPAT.wrapT = THREE.RepeatWrapping; WPAT.anisotropy = 8;
+  return WPAT;
+}
+
 // Фото-материал (CC0): цвет + нормали + шероховатость, свет — тот же запечённый в вершины.
 // Рельеф проявляется за счёт сравнения нормали из карты с геометрической: впадины темнее, «верх» светлее.
 // gr — «жизнь» поверхности: [разброс тона, пятна, грязь у пола, подтёки, мокрые блики], 0..1
@@ -515,6 +532,7 @@ function pbrMat(s, uni = BAKE, hh = H) {
     sh.uniforms.uBake = uni; sh.uniforms.uAmbK = AMBK; sh.uniforms.uTexK = { value: s.soft ?? 1 };
     sh.uniforms.uGrime = { value: grimeTex() }; sh.uniforms.uGr = { value: new THREE.Vector4(gr[0], gr[1], gr[2], gr[3]) };
     sh.uniforms.uWet = { value: gr[4] }; sh.uniforms.uHH = { value: hh };
+    sh.uniforms.uPat = { value: s.pat || 0 }; sh.uniforms.uPatT = { value: s.pat ? wallpaperPattern() : grimeTex() };
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nattribute vec3 bake;\nvarying vec3 vBake;\nvarying vec3 vWP;\nvarying vec3 vWN;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\n\tvBake = bake; vWP = (modelMatrix * vec4(position, 1.0)).xyz; vWN = normal;');
@@ -522,7 +540,7 @@ function pbrMat(s, uni = BAKE, hh = H) {
       .replace('#include <common>', `#include <common>
 varying vec3 vBake;\nvarying vec3 vWP;\nvarying vec3 vWN;
 uniform float uBake;\nuniform float uAmbK;\nuniform float uTexK;
-uniform sampler2D uGrime;\nuniform vec4 uGr;\nuniform float uWet;\nuniform float uHH;
+uniform sampler2D uGrime;\nuniform vec4 uGr;\nuniform float uWet;\nuniform float uHH;\nuniform float uPat;\nuniform sampler2D uPatT;
 float gStain = 0.0;`)
       // soft < 1: пятна и узор текстуры спокойнее (смешиваем с ровным цветом)
       .replace('#include <map_fragment>', `#include <map_fragment>
@@ -534,6 +552,7 @@ float gStain = 0.0;`)
 \t  // пятна-разводы: темнее и в коричневый
 \t  float st = texture2D(uGrime, gp * 0.09 + 0.13).b * smoothstep(0.35, 0.75, big2 + 0.2);
 \t  gStain = st; diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.62, 0.55, 0.42), st * uGr.y);
+\t  if (!flat_ && uPat > 0.0) { float pt = texture2D(uPatT, vec2(gp.x, vWP.y) * 2.78).r; diffuseColor.rgb *= 1.0 - uPat * (1.0 - pt); }
 \t  if (!flat_) {
 \t    float y = vWP.y; float n = texture2D(uGrime, vec2(gp.x * 0.6, y * 0.05)).g;
 \t    // грязь у пола и копоть под потолком
