@@ -98,8 +98,14 @@ export function buildLockers(root, spots, opts) {
       for (const tx of [s.c, s.n, s.r]) if (tx) tx.repeat.set(1, 1);
       m = new THREE.MeshStandardMaterial({ map: s.c, normalMap: s.n || null, roughnessMap: s.r || null, roughness: 1, metalness: wood ? 0 : 0.35, color: new THREE.Color(hex) });
       // меньше износа — текстура смешивается с ровной краской
-      m.onBeforeCompile = (sh) => { sh.fragmentShader = sh.fragmentShader.replace('#include <map_fragment>', `#include <map_fragment>\n\tdiffuseColor.rgb = mix(diffuse * 0.82, diffuseColor.rgb, ${wear.toFixed(2)});`); };
-      m.customProgramCacheKey = () => 'zk-lock' + wear.toFixed(2);
+      // износ — параметр (uniform), а не число в шейдере: одна программа на все шкафчики
+      m.userData.uWear = { value: wear };
+      m.onBeforeCompile = (sh) => {
+        sh.uniforms.uWear = m.userData.uWear;
+        sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform float uWear;')
+          .replace('#include <map_fragment>', '#include <map_fragment>\n\tdiffuseColor.rgb = mix(diffuse * 0.82, diffuseColor.rgb, uWear);');
+      };
+      m.customProgramCacheKey = () => 'zk-lock';
     } else m = new THREE.MeshStandardMaterial({ color: hex, roughness: wood ? 0.7 : 0.55, metalness: wood ? 0 : 0.35 });
     if (!(s && s.c)) shaded(m);
     matCache.set(k, m); return m;
@@ -108,9 +114,10 @@ export function buildLockers(root, spots, opts) {
   // изнутри свет виден только сквозь щели (uFwd — направление «наружу» в мире)
   const doorMat = (base, fx, fz) => {
     const m = base.clone();
-    const prev = base.onBeforeCompile;
+    const prev = base.onBeforeCompile, wearU = base.userData.uWear;
     m.onBeforeCompile = (sh, rr) => {
       if (prev) prev(sh, rr);
+      if (wearU) sh.uniforms.uWear = wearU;
       sh.uniforms.uFwd = { value: new THREE.Vector3(fx, 0, fz) };
       sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vWNd;')
         .replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>\n\tvWNd = normalize(mat3(modelMatrix) * objectNormal);');

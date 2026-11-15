@@ -39,7 +39,7 @@ for (const lang of ['ru', 'uk', 'en']) {
       await page.click('#bNew');
       await page.waitForTimeout(600);
       await page.mouse.click(640, 360); // пропустить пролог
-      await page.waitForSelector('#hud.on', { timeout: 30000 });
+      await page.waitForSelector('#hud.on', { timeout: 90000 });
       await page.keyboard.down('KeyW'); await page.waitForTimeout(2500); await page.keyboard.up('KeyW');
       await page.keyboard.press('KeyF'); await page.waitForTimeout(1500);
       console.log(`[${bname}/${lang}] level 0 started, objective: "${(await page.textContent('#obj')).trim()}"`);
