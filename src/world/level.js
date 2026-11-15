@@ -246,6 +246,26 @@ function genGrid(th, level, seed, o = {}) {
   else if (L === 'pool') layPool(g, mw, mh, r, th.pillars || 0.14);
   else if (L === 'smiles') { layHalls(g, mw, mh, r, th.pillars || 0.1, 30); layPits(g, mw, mh, r, 2); }
   else if (L === 'circus') layCircus(g, mw, mh, r);
+  // дивные находки: место расчищается до постройки геометрии; процессия всегда в атриуме
+  const finds = [];
+  if (world && !o.demo) {
+    const CLR = { lunar: 2, astronaut: 1, procession: 1, carousel: 2, seats: 2, soda: 1 };
+    const pool = ['lunar', 'astronaut', 'carousel', 'seats', 'soda'];
+    for (let i = pool.length - 1; i > 0; i--) { const j = (r() * (i + 1)) | 0; [pool[i], pool[j]] = [pool[j], pool[i]]; }
+    const zs = world.zones.filter((z) => z !== world.startZone);
+    const atr = zs.find((z) => z.type === 'atrium');
+    const rest = zs.filter((z) => z !== atr && z.type !== 'circus');
+    for (let i = rest.length - 1; i > 0; i--) { const j = (r() * (i + 1)) | 0; [rest[i], rest[j]] = [rest[j], rest[i]]; }
+    const plan = [];
+    if (atr) plan.push(['procession', atr]);
+    pool.slice(0, Math.min(4, rest.length)).forEach((k, i) => plan.push([k, rest[i]]));
+    for (const [kind, z] of plan) {
+      const rc = CLR[kind], m = rc + 2;
+      const tx = z.x0 + m + ((r() * Math.max(1, z.x1 - z.x0 - 2 * m)) | 0), ty = z.y0 + m + ((r() * Math.max(1, z.y1 - z.y0 - 2 * m)) | 0);
+      for (let y = ty - rc; y <= ty + rc; y++) for (let x = tx - rc; x <= tx + rc; x++) if (x > z.x0 && y > z.y0 && x < z.x1 && y < z.y1) g[y * mw + x] = 0;
+      finds.push({ kind, tx, ty, yaw: kind === 'procession' ? 0 : ((r() * 4) | 0) * Math.PI / 2, zone: z });
+    }
+  }
   // старт: самое открытое место
   let sx = 1, sy = 1, best = -1;
   const sz = world && world.startZone;
@@ -291,6 +311,7 @@ function genGrid(th, level, seed, o = {}) {
   for (let i = 0; i < d.length; i++) if (g[i] === 0 && d[i] >= 0) cands.push(i);
   for (let i = cands.length - 1; i > 0; i--) { const j = (r() * (i + 1)) | 0; const t = cands[i]; cands[i] = cands[j]; cands[j] = t; }
   const used = [[sx, sy], [D.fx, D.fy]];
+  for (const f of finds) for (let y = -2; y <= 2; y += 2) for (let x = -2; x <= 2; x += 2) used.push([f.tx + x, f.ty + y]);
   let key = null;
   if (th.needKey && !o.demo) {
     let bs = -1;
@@ -340,7 +361,7 @@ function genGrid(th, level, seed, o = {}) {
       secret = { fx: mw - 1, fy, cx: mw + 1, cy: fy, kind: th.secret };
     }
   }
-  return { g, mw: W2, mh, spawn: { tx: sx, ty: sy, yaw }, door: D, key, notes, water, batt, secret, rooms, used, zones: world ? world.zones : null };
+  return { g, mw: W2, mh, spawn: { tx: sx, ty: sy, yaw }, door: D, key, notes, water, batt, secret, rooms, used, zones: world ? world.zones : null, finds };
 }
 
 // ---------------------------------------------------------------------------
@@ -1115,7 +1136,7 @@ function buildLevel(th, G, opts = {}) {
 
   return {
     root, g, mw, mh, tile, lamps, items, colliders, secret, floorList, lockers, HH, circus, puddles,
-    zones: G.zones, zoneAt: (x, z) => (G.zones ? zoneAt(G.zones, Math.floor(x / S), Math.floor(z / S)) : null),
+    glowT, zones: G.zones, zoneAt: (x, z) => (G.zones ? zoneAt(G.zones, Math.floor(x / S), Math.floor(z / S)) : null),
     spawn: { x: (G.spawn.tx + 0.5) * S, z: (G.spawn.ty + 0.5) * S, yaw: G.spawn.yaw },
     door: { x: dfx, z: dfz, nx: dnx, nz: dnz },
     idx: (x, z) => Math.floor(z / S) * mw + Math.floor(x / S),

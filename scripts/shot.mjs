@@ -5,6 +5,7 @@
 //   node scripts/shot.mjs --level all --browser all        все уровни в Chromium и WebKit (Safari)
 //   node scripts/shot.mjs --level 0 --scene exit           перед дверью выхода
 //   node scripts/shot.mjs --level 5 --scene monster        монстр перед камерой
+//   node scripts/shot.mjs --level 0 --scene find:lunar     перед дивной находкой (lunar, astronaut, procession, carousel, seats, soda или номер)
 //   node scripts/shot.mjs --device "iPhone 15 Pro landscape" --browser webkit
 //   node scripts/shot.mjs --level 2 --fps                  замер FPS (3 с)
 //   node scripts/shot.mjs --panel help --lang uk           экран меню: settings, levels, help, about, journal, ach, online
@@ -105,6 +106,7 @@ async function run(bname, lv) {
       const z = window.__zk;
       if (sc !== 'monster') z.calm();
       if (sc === 'exit') z.toExit();
+      if (sc.startsWith('find')) z.toFind(sc.includes(':') ? (isNaN(+sc.split(':')[1]) ? sc.split(':')[1] : +sc.split(':')[1]) : 0);
       if (yaw !== undefined) z.look(Number(yaw));
       if (sc === 'monster') z.meet(4.5);
     }, [scene, A.yaw]);

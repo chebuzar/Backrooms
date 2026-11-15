@@ -14,6 +14,7 @@ import { Entity, makeEntityMesh, disposeMesh } from './world/entity.js';
 import { Sound } from './audio/sound.js';
 import { setTexScale } from './render/textures.js';
 import { t as tr } from './i18n/index.js';
+import { FIND_KINDS, FIND_IDS, buildFinds, updateFinds, findPoint } from './world/finds.js';
 
 const $ = (id) => document.getElementById(id);
 const isTouch = (window.matchMedia && matchMedia('(pointer: coarse)').matches) || ('ontouchstart' in window);
@@ -138,6 +139,7 @@ const input = { keys: {}, jx: 0, jy: 0, jmag: 0, joyId: null, jox: 0, joy0: 0, l
 const vib = (p) => { if (SAVE.set.vib) { try { navigator.vibrate && navigator.vibrate(p); } catch (e) { /* ignore */ } } };
 
 function disposeWorld() {
+  if (game.finds) { for (const tx of game.finds.textures) tx.dispose(); game.finds = null; }
   if (lvl) { scene.remove(lvl.root); lvl.dispose(); lvl = null; }
   if (ent) { scene.remove(ent.m.group); disposeMesh(ent.m.group); ent = null; }
   if (ghost) { scene.remove(ghost.group); disposeMesh(ghost.group); ghost = null; }
@@ -613,6 +615,7 @@ function updatePlay(dt) {
   flash.intensity = fI;
   if (eD < 10 || game.black) { game.hbT -= dt; if (game.hbT <= 0) { sound.heart(); game.hbT = game.black ? 0.55 : 0.36 + eD * 0.09; } }
   updateZone(dt);
+  updateFindsPlay(dt);
   ambientEvents(dt);
   scares(dt, stared, safe);
   if (pl.san < 45) { game.halT -= dt; if (game.halT <= 0) { game.halT = 10 + Math.random() * 16; hallucinate(); } }
@@ -665,6 +668,34 @@ function hud() {
   const s = Math.floor(game.runTime), c = `${String(Math.floor(s / 3600)).padStart(2, '0')}:${String(Math.floor(s / 60) % 60).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
   if (c !== lastClock) { $('hClock').textContent = c; lastClock = c; }
 }
+// ---------- дивные находки ----------
+function updateFindsPlay(dt) {
+  if (!game.finds || !game.finds.length) return;
+  updateFinds(game.finds, dt, tAll, pl);
+  for (const f of game.finds) {
+    const [px, pz] = findPoint(f), d = Math.hypot(px - pl.x, pz - pl.z);
+    if (!f.found && f.group.visible && d < 9 && seesPoint(px, 1.2, pz, 0.8) && lvl.los(pl.x, pl.z, px, pz)) discoverFind(f);
+    // процессия: рядом с ними тает рассудок и слышен шёпот
+    if (f.kind === 'procession' && f.found && d < 3.5) {
+      pl.san = Math.max(0, pl.san - dt * 2.2);
+      f.whT = (f.whT || 0) - dt; if (f.whT <= 0) { f.whT = 6; sound.whisperEar(); }
+    }
+  }
+}
+function discoverFind(f) {
+  f.found = true;
+  SAVE.finds = SAVE.finds || [];
+  const first = !SAVE.finds.includes(f.kind);
+  if (first) { SAVE.finds.push(f.kind); persist(); }
+  const bonus = FIND_KINDS[f.kind].san;
+  pl.san = Math.min(100, pl.san + bonus);
+  const zc = $('zoneCap');
+  zc.querySelector('b').textContent = tr('find.' + f.kind);
+  zc.querySelector('span').textContent = `${tr(first ? 'find.new' : 'find.found')} · +${bonus}% ${tr('hud.san')}`;
+  zc.classList.remove('on'); void zc.offsetWidth; zc.classList.add('on');
+  sound.find(); vib([30, 40, 30]);
+}
+
 // ---------- зоны открытого мира ----------
 const zoneName = (z) => tr('zone.' + z.type);
 function updateZone(dt) {
@@ -999,6 +1030,7 @@ async function startLevel(lv, fresh = false, opt = {}) {
   const G = genGrid(thG, lv, seed, { world: WORLD, allowSecret: lv <= LAST, noteIds: lv <= LAST ? notesFor(lv) : [], water: Math.max(2, Math.round(th.water * D.items * (WORLD ? 2.5 : 1))), batt: Math.max(1, Math.round(th.batt * D.items * (WORLD ? 2.5 : 1))) });
   lvl = buildLevel(thB, G, { seed, aniso: maxAniso });
   scene.add(lvl.root);
+  game.finds = buildFinds(lvl, G.finds, seed, lvl.glowT);
   game.task = task; game.ex = buildExtras(lvl, task, seed, lv);
   for (const it of game.ex.items) lvl.items.push(it);
   Object.assign(game, { parts: 0, codeOK: false, chase: false, chaseT: 0, scanT: 0, seen: new Uint8Array(lvl.mw * lvl.mh), seenT: 0, actIt: null, anomT: 0 });
@@ -1178,6 +1210,17 @@ function render(id) {
       li.querySelector('h3').textContent = got ? A.name : 'Не найдена';
       li.querySelector('p').textContent = got ? A.d : 'Где-то в Закулисье';
       after.after(li); after = li;
+    }
+    const fs = SAVE.finds || [];
+    const hf = document.createElement('li'); hf.className = 'jsec'; hf.textContent = `${tr('find.title')} · ${fs.length}/${FIND_IDS.length}`; h.before(hf);
+    for (const k of FIND_IDS) {
+      const got = fs.includes(k), li = document.createElement('li');
+      li.className = 'item' + (got ? '' : ' lock');
+      li.innerHTML = '<span class="ic"></span><div><h3></h3><p></p></div>';
+      li.querySelector('.ic').textContent = got ? '✦' : '?';
+      li.querySelector('h3').textContent = got ? tr('find.' + k) : tr('find.unknown');
+      li.querySelector('p').textContent = got ? tr('find.' + k + '.d') : tr('find.where');
+      h.before(li);
     }
     const h2 = document.createElement('li'); h2.className = 'jsec'; h2.textContent = `Записки · ${SAVE.notes.length}/${NOTES.length}`; after.after(h2);
   }
@@ -1783,7 +1826,7 @@ if (import.meta.env.DEV || new URLSearchParams(location.search).has('debug')) {
     calm() { if (ent) { ent.state = 'dormant'; ent.timer = 1e9; ent.m.group.visible = false; } },
     // разбудить монстра рядом с игроком
     wake() { if (ent) { ent.timer = 0; } },
-    tp(x, z, yaw) { pl.x = x; pl.z = z; if (yaw !== undefined) pl.yaw = yaw; pl.vx = pl.vz = 0; },
+    tp(x, z, yaw) { pl.x = x; pl.z = z; if (yaw !== undefined) pl.yaw = yaw; pl.vx = pl.vz = 0; pl.wake = 1; },
     look(yaw, pitch = 0) { pl.yaw = yaw; pl.pitch = pitch; },
     // встать перед дверью выхода и смотреть на неё
     toExit(dist = 2.2) {
@@ -1794,6 +1837,18 @@ if (import.meta.env.DEV || new URLSearchParams(location.search).has('debug')) {
       }
       return false;
     },
+    // встать перед дивной находкой (kind или индекс) и смотреть на неё
+    toFind(k = 0, dist) {
+      const fs = game.finds || [], f = typeof k === 'number' ? fs[k] : fs.find((q) => q.kind === k);
+      if (!f) return false;
+      const [px, pz] = findPoint(f), dd = dist || f.radius + 3.2;
+      for (let a = 0; a < 16; a++) {
+        const ang = a / 16 * Math.PI * 2 + 0.4, x = px + Math.sin(ang) * dd, z = pz + Math.cos(ang) * dd;
+        if (!blocked(x, z) && lvl.los(x, z, px, pz)) { this.tp(x, z, faceTo(px, pz)); pl.yaw = Math.atan2(-(px - x), -(pz - z)); pl.pitch = 0.08; return f.kind; }
+      }
+      return false;
+    },
+    finds() { return (game.finds || []).map((f) => f.kind + (f.found ? '*' : '')); },
     // поставить монстра перед игроком
     meet(dist = 4) {
       if (!ent) return false;
