@@ -19,6 +19,7 @@ import { device, detectDevice, autoProfile, isAndroid } from './core/device.js';
 import { FIND_KINDS, FIND_IDS, buildFinds, updateFinds, findPoint } from './world/finds.js';
 import { makeWrist, poseWrist, drawRadar } from './world/wrist.js';
 import { createMinimap, drawMinimap, trackTrail, resetMinimap } from './ui/minimap.js';
+import { playCutscene } from './ui/cutscene.js';
 import { makeDust, updateDust } from './render/dust.js';
 import { preloadMonsters, makeMonsterMesh } from './world/monster-models.js';
 import { updateLockers } from './world/lockers.js';
@@ -1521,17 +1522,15 @@ async function newGame() {
   hideAllPanels(); game.mode = 'prologue'; game.endless = false;
   const box = $('proLines'); box.textContent = '';
   const pro = $('prologue'); pro.classList.remove('fade'); show('prologue');
-  let skip = false; const sk = () => { skip = true; }; pro.addEventListener('pointerdown', sk, { once: true });
-  // строки появляются по одной; на экране не больше четырёх — старые уходят
-  for (const t of PROLOGUE) {
-    if (skip) break;
-    const p = document.createElement('p'); p.textContent = t; box.appendChild(p);
-    while (box.children.length > 4) box.firstElementChild.remove();
-    await sleep(40); p.classList.add('on');
-    const n = 14 + Math.round(t.length / 5); for (let k = 0; k < n && !skip; k++) await sleep(100);
-  }
-  if (!skip) await sleep(800);
-  pro.removeEventListener('pointerdown', sk);
+  // кат-сцена: нарисованные сцены «на плёнке» + строки предыстории субтитрами
+  pro.classList.add('cine');
+  const skipped = await playCutscene(pro, PROLOGUE, {
+    geiger: () => sound.geiger(),
+    boom: () => sound.boom(),
+    scene: (sc) => { if (sc === 3) sound.slam(0, -3); if (sc === 4) sound.torch(true); }
+  });
+  if (!skipped) await sleep(500);
+  pro.classList.remove('cine');
   hide('prologue');
   startLevel(0, true);
 }
@@ -2076,6 +2075,8 @@ function loop(now) {
   });
   if (game.coop) coopFrame(dt);
   if (m === 'ending') return;
+  // кат-сцена закрывает экран целиком — 3D-мир под ней не рисуем (видеочип свободен для неё)
+  if (m === 'prologue' && document.getElementById('prologue').classList.contains('cine')) return;
   const pt1 = PERF ? performance.now() : 0;
   if (PERF) { renderer.info.autoReset = false; renderer.info.reset(); }
   composer.render(dt);

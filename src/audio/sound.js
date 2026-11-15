@@ -150,6 +150,13 @@ class Sound {
     const p = this.at(this.lx + Math.cos(a) * d, 1.4, this.lz + Math.sin(a) * d, 6); if (!p) return;
     this.smp(n, { dest: p, lp: 900 + Math.random() * 1600, vol: 0.5 + Math.random() * 0.3, rate: 0.85 + Math.random() * 0.25 });
   }
+  // кат-сцена: щелчок дозиметра и взрыв
+  geiger() { if (this.ctx) this.noise(0.01, 'highpass', 2600, 0.7, 0.3 + Math.random() * 0.2, this.fx, 0.001); }
+  boom() {
+    if (!this.ctx) return;
+    this.smp('impact', { vol: 1, dest: this.fx, rate: 0.6 }); this.smp('impact', { vol: 0.8, dest: this.fx, rate: 0.45, delay: 0.08 });
+    this.tone(42, 3.5, 'sine', 0.9, 24, this.fx); this.noise(3, 'lowpass', 260, 0.8, 0.9, this.fx, 0.004, 0, 0, this.bb);
+  }
   torch(on) { if (!this.smp(on ? 'clickOn' : 'clickOff', { vol: 0.5, dest: this.fx })) this.click(); }
   // кривая перегруза для рыка
   shaper(k = 40) {
