@@ -79,9 +79,7 @@ composer.addPass(renderPass);
 // Запечённый AO стен уже есть — этот добавляет контакт мебели, шкафчиков, монстра, находок.
 const aoPass = new N8AOPass(scene, camera, 16, 16);
 Object.assign(aoPass.configuration, { gammaCorrection: false, aoRadius: 1.3, distanceFalloff: 1.0, intensity: 3.6, depthAwareUpsampling: true });
-let aoMode = 0;
 function setAO(mode, samples) {
-  aoMode = mode;
   if (mode) {
     aoPass.setQualityMode(mode === 2 ? 'Medium' : 'Performance');
     aoPass.configuration.halfRes = mode === 1;

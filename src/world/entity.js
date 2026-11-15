@@ -70,15 +70,6 @@ function tvGrinTex() {
   for (let y = 0; y < 192; y += 3) { x.fillStyle = 'rgba(0,0,30,0.22)'; x.fillRect(0, y, 256, 1); }
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
 }
-function staticFaceTex() {
-  const c = canvas(128, 96), x = c.getContext('2d'), d = x.createImageData(128, 96);
-  for (let i = 0; i < 128 * 96; i++) { const v = 40 + Math.random() * 120; d.data[i * 4] = v * 0.8; d.data[i * 4 + 1] = v; d.data[i * 4 + 2] = v * 0.9; d.data[i * 4 + 3] = 255; }
-  x.putImageData(d, 0, 0);
-  x.fillStyle = 'rgba(0,0,0,0.8)'; for (const ex of [44, 84]) { x.beginPath(); x.ellipse(ex, 38, 9, 13, 0, 0, 7); x.fill(); }
-  x.beginPath(); x.ellipse(64, 70, 18, 7, 0, 0, 7); x.fill();
-  for (let y = 0; y < 96; y += 3) { x.fillStyle = 'rgba(0,0,0,0.25)'; x.fillRect(0, y, 128, 1); }
-  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
-}
 function decorate(L, P) {
   const { head, chest, spine, hips, jaw, eyes, mat, dark, glow, tooth, mats, wrists } = P;
   const M = (g, m) => new THREE.Mesh(g, m);

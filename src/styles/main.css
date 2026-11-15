@@ -40,7 +40,7 @@ button:focus-visible{outline:2px solid var(--lamp);outline-offset:2px}
 #menu{z-index:20;align-items:stretch;background:linear-gradient(90deg,rgba(8,6,2,.92) 0%,rgba(8,6,2,.6) 48%,rgba(8,6,2,.05) 100%)}
 .mwrap{display:flex;flex-direction:column;justify-content:center;gap:22px;padding:calc(20px + var(--st)) 24px calc(20px + var(--sb)) calc(28px + var(--sl));width:min(560px,100%);overflow:auto;touch-action:pan-y}
 .brand{display:flex;flex-direction:column;gap:10px}
-.mwrap .logo{font-size:clamp(42px,9vw,84px)}
+.mwrap .logo{font-size:clamp(36px,7.6vw,68px);overflow-wrap:normal;white-space:nowrap}
 .rec{margin:0;font-size:12px;letter-spacing:.25em;display:flex;gap:8px;align-items:center}
 .tag{margin:0;color:var(--dim);max-width:38ch}
 .mlist{display:flex;flex-direction:column;gap:2px}
@@ -253,3 +253,11 @@ body.scanning #tools,body.scanning #hud .bars{opacity:.12}
 #endLines .choice{margin-top:18px;gap:14px;flex-wrap:wrap;justify-content:center}
 .paper .meta:empty{display:none}
 .paper .meta{font-family:var(--f-body);font-size:12px;letter-spacing:.08em;opacity:.65;margin-top:-4px}
+/* телефон горизонтально: документ целиком на экране, кнопка «Закрыть» видна */
+@media (max-height:520px){
+  .paper.doc{font-size:12px;line-height:16.5px;padding:10px 18px;gap:5px}
+  .paper.doc h3{font-size:15px}
+  .paper .stamp{font-size:8px;padding:2px 7px}
+  .paper .meta{font-size:10px}
+  .paper.doc .btn{padding:6px 12px}
+}

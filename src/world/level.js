@@ -702,7 +702,7 @@ function buildLevel(th, G, opts = {}) {
   for (let ty = 0; ty < mh; ty++) for (let tx = 0; tx < mw; tx++) {
     const t = g[ty * mw + tx];
     if (t !== 0 && t !== 4 && t !== 5 && t !== 6) continue;
-    const room = t === 4, x0 = tx * S, z0 = ty * S, x1 = x0 + S, z1 = z0 + S, fy = floorY(t);
+    const room = t === 4, x0 = tx * S, z0 = ty * S, z1 = z0 + S, fy = floorY(t);
     const fb = room ? gRF : t === 6 ? gP : gF;
     fb.grid([x0, fy, z1], [S, 0, 0], [0, 0, -S], [0, 1, 0], FU, FU, (fu, fv, x, y, z) => [x / S, -z / S], room ? rFloorBake : floorBake);
     if (!noCeil || room) (room ? gRC : gC).grid([x0, HH, z0], [S, 0, 0], [0, 0, S], [0, -1, 0], FU, FU, (fu, fv, x, y, z) => [x / S, z / S], room ? rCeilBake : ceilBake);
@@ -944,7 +944,6 @@ function buildLevel(th, G, opts = {}) {
   }
 
   // --- Улыбки: плакаты, неон, мягкие блоки, шарики в бассейнах
-  const anim = [];
   const faces = [];
   if (th.props === 'smiles' || th.props === 'circus') {
     for (let ty = 1; ty < mh - 1; ty++) for (let tx = 1; tx < mw - 1; tx++) {
@@ -968,7 +967,7 @@ function buildLevel(th, G, opts = {}) {
       else break;
       k++;
     }
-    const blocks = [], COL = [0xe8483f, 0x3d7fe0, 0x3fbf62, 0xf28a30, 0xc06ad8];
+    const COL = [0xe8483f, 0x3d7fe0, 0x3fbf62, 0xf28a30, 0xc06ad8];
     const bm = COL.map((c) => []);
     for (let ty = 1; ty < mh - 1; ty++) for (let tx = 1; tx < mw - 1; tx++) {
       if (g[ty * mw + tx] !== 0 || isRes(tx, ty) || r() > 0.07) continue;
