@@ -4,12 +4,12 @@
 
 const THEMES = [
   {
-    pbr: { wall: { id: 'Wallpaper001C', tint: 0xe4cf78, rep: 1, pat: 0.14, soft: 0.45, gr: [0.25, 0.35, 0.45, 0.2, 0.1] }, floor: { id: 'Carpet011', tint: 0xc9b67a, rep: 1.5, gr: [0.3, 0.55, 0, 0, 0.3] }, ceil: { id: 'OfficeCeiling001', tint: 0xf2ecd8, rep: 1, gr: [0.15, 0.5, 0, 0, 0] } },
+    pbr: { wall: { id: 'Wallpaper001C', tint: 0xe4cf78, rep: 1, pat: 0.14, soft: 0.45, gr: [0.25, 0.35, 0.45, 0.2, 0.1] }, floor: { id: 'Carpet011', tint: 0xdcc684, rep: 1.5, gr: [0.28, 0.45, 0, 0, 0.3] }, ceil: { id: 'OfficeCeiling001', tint: 0xf2ecd8, rep: 1, gr: [0.15, 0.5, 0, 0, 0] } },
     details: 'yellow', id: 0, name: 'Жёлтые комнаты', tip: 'Найди дверь с зелёной табличкой «ВЫХОД».',
     layout: 'maze', n: 10, open: 0.34, rooms: 4, h: 2.7, secret: 'love', grime: 0.3,
     wall: 'wallpaper', floor: 'carpet', ceil: 'tiles',
     wallCol: [214, 202, 128], floorCol: [146, 132, 86], ceilCol: [224, 218, 192],
-    fog: 0x2e2a12, fogD: 0.05, lampCol: [1.0, 0.92, 0.7], lampI: 1,
+    fog: 0x8a7a3c, fogD: 0.026, dense: true, bakeK: 1.3, lampCol: [1.0, 0.94, 0.76], lampI: 1,
     dead: 0.08, power: 1.0, black: 0.5, needKey: false, lockers: 0,
     water: 4, batt: 2, props: null, spawn: 45, entSpeed: 1.0, step: 'carpet'
   },

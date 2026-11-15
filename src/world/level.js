@@ -522,9 +522,12 @@ function wallpaperPattern() {
 
 // Фото-материал (CC0): цвет + нормали + шероховатость, свет — тот же запечённый в вершины.
 // Рельеф проявляется за счёт сравнения нормали из карты с геометрической: впадины темнее, «верх» светлее.
+// Яркость «нарисованных» ламп потолка (густая сетка, как в Dimension 9): одна на все уровни, обновляется в update()
+const LAMPE = { value: new THREE.Color(0, 0, 0) };
+
 // gr — «жизнь» поверхности: [разброс тона, пятна, грязь у пола, подтёки, мокрые блики], 0..1
 const GR_DEF = [0.22, 0.35, 0.4, 0.15, 0.2];
-function pbrMat(s, uni = BAKE, hh = H) {
+function pbrMat(s, uni = BAKE, hh = H, dense = false) {
   for (const tx of [s.c, s.n, s.r]) if (tx) tx.repeat.set(s.rep || 1, s.rep || 1);
   const m = new THREE.MeshStandardMaterial({ map: s.c, normalMap: s.n || null, roughnessMap: s.r || null, roughness: 1, metalness: 0, color: s.tint ?? 0xffffff });
   const gr = s.gr || GR_DEF;
@@ -532,6 +535,7 @@ function pbrMat(s, uni = BAKE, hh = H) {
     sh.uniforms.uBake = uni; sh.uniforms.uAmbK = AMBK; sh.uniforms.uTexK = { value: s.soft ?? 1 };
     sh.uniforms.uGrime = { value: grimeTex() }; sh.uniforms.uGr = { value: new THREE.Vector4(gr[0], gr[1], gr[2], gr[3]) };
     sh.uniforms.uWet = { value: gr[4] }; sh.uniforms.uHH = { value: hh };
+    sh.uniforms.uDense = { value: dense ? 1 : 0 }; sh.uniforms.uLampE = LAMPE;
     sh.uniforms.uPat = { value: s.pat || 0 }; sh.uniforms.uPatT = { value: s.pat ? wallpaperPattern() : grimeTex() };
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nattribute vec3 bake;\nvarying vec3 vBake;\nvarying vec3 vWP;\nvarying vec3 vWN;')
@@ -540,7 +544,7 @@ function pbrMat(s, uni = BAKE, hh = H) {
       .replace('#include <common>', `#include <common>
 varying vec3 vBake;\nvarying vec3 vWP;\nvarying vec3 vWN;
 uniform float uBake;\nuniform float uAmbK;\nuniform float uTexK;
-uniform sampler2D uGrime;\nuniform vec4 uGr;\nuniform float uWet;\nuniform float uHH;\nuniform float uPat;\nuniform sampler2D uPatT;
+uniform sampler2D uGrime;\nuniform vec4 uGr;\nuniform float uWet;\nuniform float uHH;\nuniform float uPat;\nuniform sampler2D uPatT;\nuniform float uDense;\nuniform vec3 uLampE;
 float gStain = 0.0;`)
       // soft < 1: пятна и узор текстуры спокойнее (смешиваем с ровным цветом)
       .replace('#include <map_fragment>', `#include <map_fragment>
@@ -568,6 +572,8 @@ float gStain = 0.0;`)
 \t  }
 \t}`)
       // мокрые места блестят
+      // густая сетка небольших квадратных ламп на потолке (каждый метр): светятся сами, без геометрии
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n\tif (uDense > 0.5 && vWN.y < -0.5) { vec2 q = abs(fract(vWP.xz + 0.5) - 0.5); float m = smoothstep(0.125, 0.11, max(q.x, q.y)); totalEmissiveRadiance += m * uLampE; }')
       .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n\troughnessFactor *= 1.0 - gStain * uWet * 0.6;')
       .replace('#include <lights_fragment_maps>', `#include <lights_fragment_maps>
 \tirradiance = irradiance * uAmbK + vBake * uBake;
@@ -737,7 +743,7 @@ function buildLevel(th, G, opts = {}) {
   const ceilT = tex(TX.ceilCanvas(th, r));
   const mWall = P.wall ? pbrMat(P.wall, BAKE, HH) : bakedMat(wallT, BAKE, { bumpMap: wallT, bumpScale: 1.2 });
   const mFloor = P.floor ? pbrMat(P.floor, BAKE, HH) : bakedMat(floorT, BAKE, { bumpMap: floorT, bumpScale: 1.5 });
-  const mCeil = P.ceil ? pbrMat(P.ceil, BAKE, HH) : bakedMat(ceilT);
+  const mCeil = P.ceil ? pbrMat(P.ceil, BAKE, HH, !!th.dense) : bakedMat(ceilT);
   const mesh = (gb, m) => { for (const geo of gb.geoms()) add(new THREE.Mesh(geo, m)); };
   mesh(gW, mWall); mesh(gF, mFloor); mesh(gC, mCeil);
   // мелкие детали на стенах (розетки, решётки, щиты…) — не у выходов
@@ -750,8 +756,10 @@ function buildLevel(th, G, opts = {}) {
 
   // --- лампы на потолке
   const lampT = tex(TX.lampCanvas(), { repeat: false });
-  const lampGeo = new THREE.BoxGeometry(1.2, 0.05, 1.2);
-  const frameGeo = new THREE.BoxGeometry(1.3, 0.03, 1.3);
+  // dense: густая сетка небольших квадратных ламп на каждой клетке (как в Dimension 9); свет запечён от основных
+  const LS = th.dense ? 0.24 : 1.2;
+  const lampGeo = new THREE.BoxGeometry(LS, 0.05, LS);
+  const frameGeo = new THREE.BoxGeometry(LS + 0.1, 0.03, LS + 0.1);
   const lampMat = new THREE.MeshBasicMaterial({ map: lampT, color: new THREE.Color().fromArray(LC).multiplyScalar(3.2) });
   const emMat = new THREE.MeshBasicMaterial({ map: lampT, color: new THREE.Color().fromArray(EC).multiplyScalar(2.2) });
   const deadMat = new THREE.MeshLambertMaterial({ map: lampT, color: 0x56544c });
@@ -1260,6 +1268,7 @@ function buildLevel(th, G, opts = {}) {
   function update(dt, t, power, emPower) {
     lampMat.color.setRGB(LC[0], LC[1], LC[2]).multiplyScalar(3.2 * power + 0.02);
     emMat.color.setRGB(EC[0], EC[1], EC[2]).multiplyScalar(2.2 * emPower);
+    LAMPE.value.copy(lampMat.color).multiplyScalar(0.7);
     if (lampIM && flick.i >= 0) {
       flick.t -= dt;
       const on = flick.t <= 0 ? 1 : (Math.random() < (flick.burst ? 0.25 : 0.55) ? 1 : 0.06);

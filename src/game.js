@@ -116,12 +116,12 @@ const FX = {
   uniforms: {
     tDiffuse: { value: null }, uRes: { value: new THREE.Vector2(640, 360) }, uVhs: { value: 0.25 }, uTime: { value: 0 }, uGrain: { value: 0.08 }, uVig: { value: 0.3 }, uAb: { value: 0.15 },
     uDist: { value: 0 }, uRed: { value: 0 }, uFade: { value: 0 }, uWhite: { value: 0 }, uSat: { value: 1 }, uNV: { value: 0 },
-    uExpo: { value: 1 }, uTM: { value: 1 }
+    uExpo: { value: 1 }, uTM: { value: 1 }, uLens: { value: 1 }
   },
   vertexShader: 'varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
   fragmentShader: `
     varying vec2 vUv; uniform sampler2D tDiffuse; uniform vec2 uRes; uniform float uVhs;
-    uniform float uTime,uGrain,uVig,uAb,uDist,uRed,uFade,uWhite,uSat,uNV,uExpo,uTM;
+    uniform float uTime,uGrain,uVig,uAb,uDist,uRed,uFade,uWhite,uSat,uNV,uExpo,uTM,uLens;
     float rnd(vec2 c){ return fract(sin(dot(c,vec2(12.9898,78.233)))*43758.5453); }
     // ACES Filmic + sRGB — дословно как в three.js r160 (tonemapping_pars_fragment / colorspace_pars_fragment)
     vec3 zkRRT(vec3 v){ vec3 a=v*(v+0.0245786)-0.000090537; vec3 b=v*(0.983729*v+0.4329510)+0.238081; return a/b; }
@@ -134,6 +134,8 @@ const FX = {
     vec3 S(vec2 uv){ vec3 c=texture2D(tDiffuse,uv).rgb; return uTM>0.5 ? toSRGB(acesTM(c)) : c; }
     void main(){
       vec2 uv=vUv; vec2 c=uv-0.5;
+      // ширококутный объектив камеры (как в Dimension 9): кадр выгибается к краям, углы уходят в темноту
+      { float r2=dot(c*vec2(uRes.x/uRes.y,1.0),c*vec2(uRes.x/uRes.y,1.0))/(0.25*(1.0+uRes.x*uRes.x/(uRes.y*uRes.y))); float k=0.22*uLens; uv=0.5+c*(1.0+k*r2)/(1.0+k*0.55); c=uv-0.5; }
       float band=step(0.993,rnd(vec2(floor(uv.y*90.0),floor(uTime*18.0))));
       uv.x+=(band*0.025+sin(uv.y*38.0+uTime*7.0)*0.003)*uDist;
       uv+=c*dot(c,c)*0.08*uDist;
@@ -144,6 +146,8 @@ const FX = {
       // цвет «плывёт» вправо относительно яркости, как на VHS
       vec2 cb=vec2(1.6/uRes.x,0.0)*uVhs*(uRes.y/480.0);
       vec3 col=vec3(S(uv+off+cb).r,S(uv).g,S(uv-off-cb*0.6).b);
+      // за краем объектива — темнота (мягкий край)
+      { vec2 e=smoothstep(vec2(0.5),vec2(0.49),abs(uv-0.5)); col*=e.x*e.y; }
       vec3 bl=(S(uv+cb*2.0)+S(uv-cb*2.0))*0.5;
       float ly=dot(col,vec3(0.299,0.587,0.114)); col=mix(col,vec3(ly)+(bl-vec3(dot(bl,vec3(0.299,0.587,0.114))))*1.0,0.35*uVhs);
       // цветокор: мягкая S-кривая, тени в холодную зелень, света тёплые
@@ -166,6 +170,7 @@ const FX = {
 const fxPass = new ShaderPass(FX);
 composer.addPass(fxPass);
 const U = fxPass.uniforms;
+U.uLens.value = SAVE.set.lens === false ? 0 : 1;
 U.uVhs.value = LOOK.vhs;
 // Живой свет ближайших ламп: даёт блики и рельеф на фото-текстурах. Основной свет по-прежнему запечён.
 const lampLights = [];
@@ -335,7 +340,7 @@ function lights(dt, allowBlack) {
   }
   game.power = p;
   const P = p * th.power;
-  BAKE.value = Math.PI * P * LOOK.bake; AMBK.value = LOOK.wallAmb;
+  BAKE.value = Math.PI * P * LOOK.bake * (th.bakeK || 1); AMBK.value = LOOK.wallAmb;
   amb.intensity = LOOK.amb0 + LOOK.ambK * P + (pl.nv ? 2.2 : 0);
   return P;
 }
@@ -422,7 +427,7 @@ function applyCamera(dt) {
   camera.rotation.set(pl.pitch - (1 - wk) * 0.55 + shake, pl.yaw + shake, (1 - wk) * 0.35 + sway);
   const tf = (camera.aspect < 1 ? 92 : 72) + (pl.running ? 7 : 0) + (1 - pl.san / 100) * 6;
   pl.fov += (tf - pl.fov) * Math.min(1, dt * 4);
-  camera.fov = pl.fov; camera.updateProjectionMatrix();
+  camera.fov = pl.fov + 7 * U.uLens.value; camera.updateProjectionMatrix(); // объектив сужает края — угол обзора шире
 }
 function listener() {
   camera.getWorldDirection(tdir);
@@ -1720,6 +1725,9 @@ addEventListener('keydown', (e) => {
     if (e.code === 'KeyG') toolMark();
     if (e.code === 'KeyC' || e.code === 'ControlLeft') toolCrouch();
     if (e.code === 'KeyV') toolNV();
+    // L — объектив камеры, H — спрятать интерфейс (чистый кадр)
+    if (e.code === 'KeyL') { SAVE.set.lens = SAVE.set.lens === false; persist(); U.uLens.value = SAVE.set.lens === false ? 0 : 1; }
+    if (e.code === 'KeyH') document.body.classList.toggle('nohud');
   } else if (game.mode === 'reading' && (e.code === 'KeyE' || e.code === 'Enter')) closeNote();
   if (e.code.startsWith('Arrow') || e.code === 'Space') e.preventDefault();
 });

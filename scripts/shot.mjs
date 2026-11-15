@@ -72,15 +72,16 @@ async function run(bname, lv) {
   if (A.scale) ctxOpts.deviceScaleFactor = Number(A.scale);
   const ctx = await browser.newContext(ctxOpts);
   // Настройки сохранения: качество графики, подсказки уже показаны, все уровни открыты.
-  await ctx.addInitScript(({ q, diff }) => {
+  await ctx.addInitScript(({ q, diff, docs }) => {
     try {
       const k = 'zakulisye_v2';
       const s = JSON.parse(localStorage.getItem(k) || '{}');
       s.set = Object.assign({ sens: 1, vol: 0, q: 'auto', diff: 'normal', vib: false }, s.set || {}, { q, diff, vol: 0 });
       s.toolsTip = 1; s.max = Math.max(s.max ?? -1, 9);
+      if (!docs) s.docs = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]; // документы уровней не закрывают кадр (--docs — показать)
       localStorage.setItem(k, JSON.stringify(s));
     } catch (e) { /* ignore */ }
-  }, { q: A.q || 'high', diff: A.diff || 'normal' });
+  }, { q: A.q || 'high', diff: A.diff || 'normal', docs: !!A.docs });
   const page = await ctx.newPage();
   const errors = [];
   page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));

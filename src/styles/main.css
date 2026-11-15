@@ -266,3 +266,5 @@ body.scanning #tools,body.scanning #hud .bars{opacity:.12}
 #prologue.cine #proLines{position:absolute;left:0;right:0;bottom:calc(9% + var(--sb));align-items:center;padding:0 24px}
 #prologue.cine p{text-shadow:0 2px 6px #000,0 0 18px #000;font-size:clamp(16px,3vw,24px);max-width:44ch}
 #prologue.cine .skip{z-index:2}
+/* H — чистый кадр без интерфейса */
+body.nohud #hud, body.nohud #controls, body.nohud #toasts, body.nohud #obj{visibility:hidden}
