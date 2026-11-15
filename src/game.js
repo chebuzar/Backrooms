@@ -7,7 +7,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { N8AOPass } from './render/n8ao/N8AOPass.js';
 import { clamp, lerp, easeOut, angleDiff, pick, store, sleep, frames } from './core/util.js';
 import { monsterFor, MONSTERS as MON } from './data/game-data.js';
-import { theme, THEMES, DIFF, NOTES, ACH, PROLOGUE, ENDING, WHISPERS, LAST, notesFor, SECRETS, QUICK } from './data/game-data.js';
+import { theme, THEMES, DIFF, NOTES, ACH, PROLOGUE, ENDINGS, ENDING_Q, DOCS, WHISPERS, LAST, notesFor, SECRETS, QUICK } from './data/game-data.js';
 import { Net, makeCode } from './net/net.js';
 import { buildExtras, updateExtras, addMark, taskFor, TASK_GOAL, ANOMS, ANOM_KEYS } from './world/extras.js';
 import { genGrid, buildLevel, S, BAKE, AMBK, solidMove } from './world/level.js';
@@ -34,7 +34,8 @@ const DEV = device;
 
 // ---------- сохранение ----------
 const DEF = { sens: 1, vol: 80, q: 'auto', diff: 'normal', vib: true };
-const SAVE = Object.assign({ max: -1, cont: 0, notes: [], ach: [], anom: [] }, store.load());
+const SAVE = Object.assign({ max: -1, cont: 0, notes: [], ach: [], anom: [], docs: [] }, store.load());
+if (!Array.isArray(SAVE.docs)) SAVE.docs = [];
 if (!Array.isArray(SAVE.anom)) SAVE.anom = [];
 SAVE.set = Object.assign({}, DEF, SAVE.set || {});
 const persist = () => store.save(SAVE);
@@ -542,11 +543,28 @@ function openNote(it) {
   if (game.coop) game.overlay = true; else game.mode = 'reading';
   setAct(null); unlockPointer();
   const n = NOTES[it.id];
-  $('rTitle').textContent = n.t; $('rBody').textContent = n.b;
-  show('reader');
+  showPaper(n.t, n.b);
   sound.paper(); game.notesLv++;
   if (!SAVE.notes.includes(it.id)) { SAVE.notes.push(it.id); persist(); }
   if (SAVE.notes.length >= NOTES.length) unlock('archive');
+}
+// записка (от руки) или документ Объекта 4-Б (машинопись, гриф)
+function showPaper(title, body, doc = null) {
+  const pp = $('reader').querySelector('.paper'); pp.classList.toggle('doc', !!doc);
+  $('rTitle').textContent = title; $('rBody').textContent = body;
+  let st = pp.querySelector('.stamp'); if (!st) { st = document.createElement('div'); st.className = 'stamp'; pp.prepend(st); }
+  st.textContent = doc ? 'СОВЕРШЕННО СЕКРЕТНО' : '';
+  let mt = pp.querySelector('.meta'); if (!mt) { mt = document.createElement('div'); mt.className = 'meta'; $('rTitle').after(mt); }
+  mt.textContent = doc || '';
+  show('reader');
+}
+// документ уровня: показывается один раз, когда игрок очнулся; потом — в журнале
+function showDoc(lv) {
+  const d = DOCS[lv]; if (!d || game.mode !== 'play' || SAVE.docs.includes(lv)) return;
+  SAVE.docs.push(lv); persist(); if (SAVE.docs.length >= DOCS.length) unlock('docs');
+  if (game.coop) game.overlay = true; else game.mode = 'reading';
+  setAct(null); unlockPointer(); sound.paper();
+  showPaper(d.t, d.b, d.d);
 }
 function closeNote() { hide('reader'); game.overlay = false; if (game.mode === 'reading') game.mode = 'play'; }
 
@@ -1235,6 +1253,7 @@ async function startLevel(lv, fresh = false, opt = {}) {
   await sleep(Math.max(0, 4200 - (performance.now() - t0)));
   card.classList.add('fade'); showHUD();
   game.mode = 'play'; busy = false;
+  if (!game.endless || lv < DOCS.length) setTimeout(() => showDoc(lv), 3600);
   sound.stinger();
   if (game.pending) { const a = game.pending; game.pending = null; startLevel(a[0], a[1], a[2]); return; }
   setTimeout(() => { hide('card'); card.classList.remove('fade'); }, 950);
@@ -1323,11 +1342,26 @@ function fillStats(el, rows) {
 }
 async function showEnding() {
   game.mode = 'ending'; hideHUD();
-  const e = $('ending'); e.classList.remove('dark'); $('endFinal').classList.remove('on');
+  // начинается в темноте шахты; «наверх» — светлеет на строке про небо
+  const e = $('ending'); e.classList.add('dark'); $('endFinal').classList.remove('on');
   const box = $('endLines'); box.textContent = '';
-  const ls = ENDING.map((t) => { const p = document.createElement('p'); p.className = 'ln'; p.textContent = t; box.appendChild(p); return p; });
+  const line = (t) => { const p = document.createElement('p'); p.className = 'ln'; p.textContent = t; box.appendChild(p); return p; };
   show('ending');
-  for (const p of ls) { await sleep(1500); p.classList.add('on'); }
+  for (const t of ENDING_Q) { const p = line(t); await sleep(1500); p.classList.add('on'); }
+  // выбор: выйти наверх или остаться и закрыть Шов (в коопе решает хост, у гостя — выход)
+  let pick = 'leave';
+  if (!(game.coop && !game.coop.host)) {
+    await sleep(900);
+    const row = document.createElement('div'); row.className = 'row choice';
+    row.innerHTML = '<button class="btn primary" type="button">Подняться наверх</button><button class="btn" type="button">Остаться</button>';
+    box.appendChild(row);
+    pick = await new Promise((res) => { const [a, b] = row.querySelectorAll('button'); a.onclick = () => res('leave'); b.onclick = () => res('stay'); });
+    sound.ui();
+  }
+  unlock(pick === 'leave' ? 'endLeave' : 'endStay');
+  box.textContent = ''; await sleep(600);
+  const ls = ENDINGS[pick].map(line);
+  for (let i = 0; i < ls.length; i++) { await sleep(1700); if (pick === 'leave' && i === 2) e.classList.remove('dark'); ls[i].classList.add('on'); }
   await sleep(2600);
   e.classList.add('dark'); box.textContent = '';
   await sleep(3100);
@@ -1358,7 +1392,7 @@ function render(id) {
       li.querySelector('.ic').textContent = got ? '📜' : '🔒';
       li.querySelector('h3').textContent = got ? n.t : `${n.t} · не найдена`;
       li.querySelector('p').textContent = got ? n.b.slice(0, 70) + '…' : `Лежит где-то на уровне ${n.lv}.`;
-      if (got) li.addEventListener('click', () => { $('rTitle').textContent = n.t; $('rBody').textContent = n.b; show('reader'); sound.paper(); });
+      if (got) li.addEventListener('click', () => { showPaper(n.t, n.b); sound.paper(); });
       ul.appendChild(li);
     });
   }
@@ -1374,6 +1408,20 @@ function render(id) {
       li.querySelector('h3').textContent = got ? A.name : 'Не найдена';
       li.querySelector('p').textContent = got ? A.d : 'Где-то в Закулисье';
       after.after(li); after = li;
+    }
+    {
+      const hd = document.createElement('li'); hd.className = 'jsec'; hd.textContent = `Документы Объекта 4-Б · ${SAVE.docs.length}/${DOCS.length}`;
+      ul.prepend(hd); let a2 = hd;
+      DOCS.forEach((d, i) => {
+        const got = SAVE.docs.includes(i), li = document.createElement('li');
+        li.className = 'item' + (got ? ' click' : ' lock');
+        li.innerHTML = '<span class="ic"></span><div><h3></h3><p></p></div>';
+        li.querySelector('.ic').textContent = got ? '🗂' : '🔒';
+        li.querySelector('h3').textContent = got ? `${i + 1}. ${d.t}` : `${i + 1}. Засекречено`;
+        li.querySelector('p').textContent = got ? d.d : `Откроется на уровне ${i}`;
+        if (got) li.addEventListener('click', () => { showPaper(d.t, d.b, d.d); sound.paper(); });
+        a2.after(li); a2 = li;
+      });
     }
     const fs = SAVE.finds || [];
     const hf = document.createElement('li'); hf.className = 'jsec'; hf.textContent = `${tr('find.title')} · ${fs.length}/${FIND_IDS.length}`; h.before(hf);
@@ -1433,9 +1481,15 @@ async function newGame() {
   hideAllPanels(); game.mode = 'prologue'; game.endless = false;
   const box = $('proLines'); box.textContent = '';
   const pro = $('prologue'); pro.classList.remove('fade'); show('prologue');
-  const ps = PROLOGUE.map((t) => { const p = document.createElement('p'); p.textContent = t; box.appendChild(p); return p; });
   let skip = false; const sk = () => { skip = true; }; pro.addEventListener('pointerdown', sk, { once: true });
-  for (const p of ps) { if (skip) break; p.classList.add('on'); for (let k = 0; k < 16 && !skip; k++) await sleep(100); }
+  // строки появляются по одной; на экране не больше четырёх — старые уходят
+  for (const t of PROLOGUE) {
+    if (skip) break;
+    const p = document.createElement('p'); p.textContent = t; box.appendChild(p);
+    while (box.children.length > 4) box.firstElementChild.remove();
+    await sleep(40); p.classList.add('on');
+    const n = 14 + Math.round(t.length / 5); for (let k = 0; k < n && !skip; k++) await sleep(100);
+  }
   if (!skip) await sleep(800);
   pro.removeEventListener('pointerdown', sk);
   hide('prologue');
@@ -1989,7 +2043,7 @@ function loop(now) {
 if (import.meta.env.DEV || new URLSearchParams(location.search).has('debug')) {
   const faceTo = (x, z) => Math.atan2(-(x - pl.x), -(z - pl.z));
   window.__zk = {
-    game, pl, SAVE, renderer, scene, camera, sound, THREE, wrist, LOOK, bloom, amb, U, applyQuality, aoPass,
+    game, pl, SAVE, renderer, scene, camera, sound, THREE, wrist, LOOK, bloom, amb, U, applyQuality, aoPass, ending: () => showEnding(), prologue: () => newGame(),
     get lvl() { return lvl; },
     get ent() { return ent; },
     get ready() { return game.mode === 'play' && !busy; },

@@ -16,7 +16,7 @@ export default {
   'splash.hint': '🎧 Play with headphones · 📱 Hold your phone sideways',
 
   'menu.rec': 'REC · CAMERA 0',
-  'menu.tag': 'You slipped through reality. The lights are humming. Find the exit before something finds you.',
+  'menu.tag': "Chernobyl, 1987. Beneath the plant lies Object 4-B and a «Seam» in reality. Six expeditions never came back. You are the seventh.",
   'menu.continue': 'Continue',
   'menu.new': 'New game',
   'menu.online': 'Play with a friend',
