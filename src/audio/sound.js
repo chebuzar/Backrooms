@@ -212,7 +212,7 @@ class Sound {
     if (this.dreadG) {
       const t = Math.max(s.prox || 0, s.chase ? 1 : 0);
       this.set(this.dreadG, game ? 0.035 + 0.4 * t : menu ? 0.04 : 0, 0.9);
-      const fq = Math.round((380 + 3400 * t) / 20) * 20;
+      const fq = 380 + 3400 * t;
       if (fq !== this.dreadFq) { this.dreadFq = fq; this.dreadF.frequency.setTargetAtTime(fq, this.ctx.currentTime, 0.9); }
     }
     // далёкие звуки раз в 20–50 с (не во время погони)
