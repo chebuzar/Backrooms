@@ -283,6 +283,18 @@ function genGrid(th, level, seed, o = {}) {
   }
   if (g[sy * mw + sx] !== 0) g[sy * mw + sx] = 0;
   let d = bfs(g, mw, mh, sx, sy, walkT);
+  // находка в замкнутом кармане: прорубить проход к ближайшей достижимой клетке (сначала по X, потом по Y)
+  let carved = false;
+  for (const f of finds) {
+    if (d[f.ty * mw + f.tx] >= 0) continue;
+    let x = f.tx, y = f.ty;
+    for (let guard = 0; guard < mw + mh && d[y * mw + x] < 0; guard++) {
+      if (x !== sx) x += Math.sign(sx - x); else if (y !== sy) y += Math.sign(sy - y); else break;
+      if (x > 0 && y > 0 && x < mw - 1 && y < mh - 1 && !walkT(g[y * mw + x])) g[y * mw + x] = 0;
+    }
+    carved = true;
+  }
+  if (carved) d = bfs(g, mw, mh, sx, sy, walkT);
   for (let i = 0; i < d.length; i++) if (d[i] < 0 && walkT(g[i])) g[i] = 1;   // закрыть недостижимое
   let maxD = 0; for (let i = 0; i < d.length; i++) if (d[i] > maxD) maxD = d[i];
   // выход: самая дальняя сухая клетка у стены

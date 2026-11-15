@@ -71,7 +71,7 @@ export default {
 
   'help.title': 'How to play',
   'help.goal.h': 'Goal',
-  'help.goal': 'Every level has its own task: collect fuses, find code digits on the walls, close valves, pull levers, collect tickets, or grab the key card and outrun the chase. The task is shown before the level and at the top of the screen.',
+  'help.goal': 'Every level is a huge open world made of different zones: mazes, atriums, pools, warehouses. Find the EXIT door at the far end of the world and don’t let It catch you. Look for strange discoveries on the way — they restore your sanity. The minimap in the corner shows where you have been, and the wrist scanner shows what is near.',
   'help.tools.h': 'Tools',
   'help.tools': 'The <b>Scanner</b> picks up interference within 16 metres: task items, anomalies and It. It cannot see the exit. The beep carries far and costs 8% battery. The <b>EMP</b> stuns It for 3 seconds if It is closer than 9 metres. One charge per level. The <b>Map</b> only shows what you have seen. A <b>Mark</b> draws a chalk arrow on the floor. <b>Quiet</b>: crouch and your steps are almost silent. <b>Camera</b>: night vision, but it drains the battery fast.',
   'help.anom.h': 'Anomalies',

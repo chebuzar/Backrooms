@@ -629,7 +629,7 @@ function foundSecret(kind) {
 
 // ---------- игровой кадр ----------
 function updatePlay(dt) {
-  const th = game.th, D = DIFF[SAVE.set.diff] || DIFF.normal;
+  const th = game.th, D = DIFF[game.diff] || DIFF.normal;
   game.time += dt; game.runTime += dt;
   pl.wake = Math.min(1, pl.wake + dt / 2.4);
   updatePlayer(dt, pl.wake > 0.45);
