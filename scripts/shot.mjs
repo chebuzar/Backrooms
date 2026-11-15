@@ -53,6 +53,8 @@ if (!base) {
 
 const query = new URLSearchParams({ debug: '1' });
 if (A.lang) query.set('lang', A.lang);
+// --query "tier=3&apple" — дополнительные параметры адреса (напр. притвориться устройством: apple|android, tier=0..3)
+if (A.query) for (const [k, v] of new URLSearchParams(A.query)) query.set(k, v);
 const url = base + (base.includes('?') ? '&' : '?') + query;
 
 const LAUNCH = {

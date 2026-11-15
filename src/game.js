@@ -14,6 +14,7 @@ import { Entity, makeEntityMesh, disposeMesh } from './world/entity.js';
 import { Sound } from './audio/sound.js';
 import { setTexScale } from './render/textures.js';
 import { t as tr } from './i18n/index.js';
+import { device, detectDevice, autoProfile, isAndroid } from './core/device.js';
 import { FIND_KINDS, FIND_IDS, buildFinds, updateFinds, findPoint } from './world/finds.js';
 import { makeWrist, poseWrist, drawRadar } from './world/wrist.js';
 import { createMinimap, drawMinimap, trackTrail, resetMinimap } from './ui/minimap.js';
@@ -27,9 +28,8 @@ import { themeTex, setAniso, setTexHi, texSet } from './render/assets.js';
 const $ = (id) => document.getElementById(id);
 const isTouch = (window.matchMedia && matchMedia('(pointer: coarse)').matches) || ('ontouchstart' in window);
 document.documentElement.classList.toggle('touch', isTouch);
-// Android: GPU телефонов (Mali/Adreno) слабее по заливке, MSAA и памяти, чем Apple; экраны 90–120 Гц.
-// Отдельный профиль ниже (кадры ≤ 60, без MSAA, 1K-текстуры, 1 живая лампа, bloom в ¼). Apple не трогаем.
-const isAndroid = /Android/i.test(navigator.userAgent) || new URLSearchParams(location.search).has('android');
+// платформа и сила видеокарты (src/core/device.js) → профиль графики (PROFILES ниже)
+const DEV = device;
 
 // ---------- сохранение ----------
 const DEF = { sens: 1, vol: 80, q: 'auto', diff: 'normal', vib: true };
@@ -69,15 +69,13 @@ let dust = null;
 // h — внутренняя высота кадра в пикселях: стиль старой камеры, крупный пиксель, заодно быстрее на телефонах.
 const LOOK = { vhsPixel: false, vhs: 0.25, dyn: { n: 3, I: 2.2, dist: 9 }, amb0: 0.25, ambK: 1.3, wallAmb: 0.22, bake: 1.0, h: { low: 300, med: 400, high: 480 }, bloom: [0.55, 0.5, 0.88], exposure: 1.05 };
 renderer.toneMappingExposure = LOOK.exposure;
-// число живых ламп задаёт стоимость каждого пикселя (свет считается и при яркости 0) — на Android одна
-if (isAndroid) LOOK.dyn.n = 1;
 const composerRT = new THREE.WebGLRenderTarget(16, 16, { type: THREE.HalfFloatType, samples: 4 });
 const composer = new EffectComposer(renderer, composerRT);
 composer.addPass(new RenderPass(scene, camera));
 const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), LOOK.bloom[0], LOOK.bloom[1], LOOK.bloom[2]);
 composer.addPass(bloom);
-// Android: свечение считаем в ¼ разрешения кадра вместо ½ — 10 проходов размытия в 4 раза дешевле
-if (isAndroid) { const bs = bloom.setSize.bind(bloom); bloom.setSize = (w, h) => bs(w / 2, h / 2); }
+// свечение можно считать в ¼ кадра вместо ½ (bloomDiv = 2) — 10 проходов размытия в 4 раза дешевле
+{ const bs = bloom.setSize.bind(bloom); bloom.setSize = (w, h) => bs(w / bloomDiv, h / bloomDiv); }
 composer.addPass(new OutputPass());
 const FX = {
   uniforms: {
@@ -129,7 +127,7 @@ const lampLights = [];
 for (let i = 0; i < LOOK.dyn.n; i++) { const L = new THREE.PointLight(0xfff0d0, 0, LOOK.dyn.dist, 2); scene.add(L); lampLights.push(L); }
 let lampPickT = 0;
 function updateLampLights(dt, P) {
-  const hi = quality === 'high' ? LOOK.dyn.n : quality === 'med' ? Math.min(2, LOOK.dyn.n) : 0;
+  const hi = Math.min(prof.lamps, LOOK.dyn.n);
   lampPickT -= dt;
   if (lampPickT <= 0 && lvl) {
     lampPickT = 0.25;
@@ -150,28 +148,44 @@ function updateLampLights(dt, P) {
   for (const L of lampLights) L.intensity = L.userData.on ? LOOK.dyn.I * P * (L.userData.emerg ? 0.4 : 1) * (game.th.lampI || 1) : 0;
 }
 
-let quality = 'med', basePR = 1, curPR = 1;
+// ---------- профили графики ----------
+// pr(dpr, h) — плотность кадра (h — высота окна в CSS-px; 1080/h = Full HD по высоте),
+// floor(base, h, fps) — ниже чего авто-разрешение не опускается, msaa — сглаживание,
+// tex2k — 2K-текстуры (≈180 МБ видеопамяти) или 1K, lamps — живые лампы (каждая утяжеляет каждый пиксель),
+// bloom: 0 — нет, 1 — в ¼ кадра, 2 — в ½, aniso — чёткость текстур под углом.
+const PROFILES = {
+  low: { pr: (d) => Math.min(d, 1) * 0.75, floor: (b) => b * 0.5, msaa: 0, tex2k: false, lamps: 0, bloom: 0, aniso: 4 },
+  med: { pr: (d, h) => Math.min(2, Math.max(d * 0.85, 900 / h)), floor: (b) => b * 0.5, msaa: 2, tex2k: true, lamps: 2, bloom: 2, aniso: 8 },
+  // на Retina (DPR ≥ 2) пиксели мелкие — хватает MSAA 2×
+  high: { pr: (d, h) => Math.min(2, Math.max(d, 1080 / h)), floor: (b, h, fps) => (DEV.form === 'desktop' ? Math.min(b, 1080 / h) * (fps < 30 ? 0.75 : 1) : b * 0.7), msaa: (b) => (b >= 1.9 ? 2 : 4), tex2k: true, lamps: 3, bloom: 2, aniso: 8 },
+  // «Ультра» — мощные Apple: родное разрешение экрана до 3× (iPhone Pro — 1179 строк), MSAA 4× (на чипах Apple почти бесплатно), анизотропия 16×
+  ultra: { pr: (d, h) => Math.min(3, Math.max(d, 1080 / h)), floor: (b) => Math.min(b, 2), msaa: 4, tex2k: true, lamps: 3, bloom: 2, aniso: 16 },
+  // Android: кадры ≤ 60; MSAA на HalfFloat-кадре дорогое на Mali/Adreno; 1K-текстуры; свечение в ¼
+  droidLow: { pr: (d, h) => Math.min(d, 600 / h), floor: (b, h) => Math.min(b, 400 / h), msaa: 0, tex2k: false, lamps: 0, bloom: 1, aniso: 2 },
+  droid: { pr: (d, h) => Math.min(d, 720 / h), floor: (b, h) => Math.min(b, 480 / h), msaa: 0, tex2k: false, lamps: 1, bloom: 1, aniso: 4 },
+  droidHigh: { pr: (d, h) => Math.min(2, d, 900 / h), floor: (b, h) => Math.min(b, 600 / h), msaa: 2, tex2k: true, lamps: 2, bloom: 2, aniso: 8 }
+};
+// выбор игрока → профиль. «Авто» — по устройству; «Средняя» на Android — облегчённая.
+function profileName() {
+  const q = SAVE.set.q;
+  if (q === 'auto') return autoProfile(DEV);
+  if (q === 'med' && isAndroid) return 'droid';
+  return PROFILES[q] ? q : 'med';
+}
+let quality = 'med', prof = PROFILES.med, basePR = 1, curPR = 1, bloomDiv = 1;
+const anisoNow = () => Math.min(prof.aniso, maxAniso);
 function applyQuality() {
-  // «Авто»: компьютер и планшет (iPad) — высокая, телефон — средняя
-  let q = SAVE.set.q; if (q === 'auto') q = isTouch && Math.min(screen.width, screen.height) < 700 ? 'med' : 'high';
-  quality = q;
-  const dpr = window.devicePixelRatio || 1;
-  // Full HD: высота кадра не меньше 1080 px на «Высокой» (на Retina/iPad — родное разрешение до 2×)
-  const h = Math.max(240, innerHeight);
-  basePR = q === 'low' ? Math.min(dpr, 1) * 0.75 : q === 'med' ? Math.min(2, Math.max(dpr * 0.85, 900 / h)) : Math.min(2, Math.max(dpr, 1080 / h));
-  // Android «Авто»: кадр 720 строк (HD) — экран телефона маленький, разница с 900 почти не видна, а пикселей на 35% меньше
-  const andAuto = isAndroid && SAVE.set.q === 'auto';
-  if (andAuto) basePR = Math.min(dpr, 720 / h);
-  // 2K-текстуры ≈ 180 МБ видеопамяти: на Android только на явной «Высокой»
-  setTexHi(q !== 'low' && (!isAndroid || SAVE.set.q === 'high'));
-  if (LOOK.vhsPixel) basePR = Math.min(dpr, Math.max(0.25, LOOK.h[q] / Math.max(240, innerHeight)));
-  setTexScale(q === 'low' ? 1 : 2);
-  // на Retina (iPad/iPhone/Mac, DPR ≥ 2) пиксели мелкие — хватает MSAA 2×, видеокарте вдвое легче
-  // на Android MSAA на HalfFloat-кадре дорогое (Mali/Adreno) — только на явной «Высокой»
-  const samples = q === 'low' || (isAndroid && SAVE.set.q !== 'high') ? 0 : q === 'med' || basePR >= 1.9 ? 2 : 4;
+  const q = profileName(); quality = q; prof = PROFILES[q];
+  const dpr = window.devicePixelRatio || 1, h = Math.max(240, innerHeight);
+  basePR = prof.pr(dpr, h);
+  if (LOOK.vhsPixel && LOOK.h[q]) basePR = Math.min(dpr, Math.max(0.25, LOOK.h[q] / h));
+  setTexHi(prof.tex2k); setTexScale(q === 'low' ? 1 : 2); setAniso(anisoNow());
+  const samples = typeof prof.msaa === 'function' ? prof.msaa(basePR) : prof.msaa;
   for (const rt of [composer.renderTarget1, composer.renderTarget2]) if (rt.samples !== samples) { rt.samples = samples; rt.dispose(); }
+  // выключенная лампа исключается из шейдера (одна перекомпиляция при смене профиля, а не каждый кадр)
+  lampLights.forEach((L, i) => { L.visible = i < prof.lamps; });
+  bloom.enabled = prof.bloom > 0; bloomDiv = prof.bloom === 1 ? 2 : 1;
   curPR = basePR; setPR(curPR);
-  bloom.enabled = q !== 'low';
 }
 function setPR(pr) { renderer.setPixelRatio(pr); composer.setPixelRatio(pr); resize(); }
 // авто-качество: если кадров мало, снижаем разрешение рендера; если много — возвращаем
@@ -181,8 +195,7 @@ function autoRes(dt) {
   perf.t += dt; perf.n++;
   if (perf.t < 2.5) return;
   const fps = perf.n / perf.t; perf.t = 0; perf.n = 0;
-  const floor = isAndroid ? Math.min(basePR, 480 / Math.max(240, innerHeight))
-    : quality === 'high' ? Math.min(basePR, 1080 / Math.max(240, innerHeight)) * (fps < 30 ? 0.75 : 1) : basePR * 0.5;
+  const floor = prof.floor(basePR, Math.max(240, innerHeight), fps);
   if (fps < 45 && curPR > floor) { curPR = Math.max(floor, curPR * 0.88); setPR(curPR); }
   else if (fps > 56 && curPR < basePR) { curPR = Math.min(basePR, curPR * 1.12); setPR(curPR); }
 }
@@ -227,7 +240,7 @@ function buildDemo() {
   disposeWorld();
   const th = theme(0), seed = 20261114;
   const G = genGrid(th, 0, seed, { demo: true });
-  lvl = buildLevel(th, G, { seed, demo: true, aniso: maxAniso, pbr: demoPbr });
+  lvl = buildLevel(th, G, { seed, demo: true, aniso: anisoNow(), pbr: demoPbr });
   scene.add(lvl.root);
   scene.fog.color.set(th.fog); scene.fog.density = th.fogD;
   game.th = th; game.black = false;
@@ -1152,12 +1165,12 @@ async function startLevel(lv, fresh = false, opt = {}) {
   const thG = Object.assign({}, th, { needKey: task.kind === 'key' }), thB = Object.assign({}, th, { needKey: task.kind !== 'exit' });
   // Открытый мир: в ~9 раз больше площади, поэтому воды и батареек больше (но не в 9 раз — их надо искать).
   const G = genGrid(thG, lv, seed, { world: WORLD, allowSecret: lv <= LAST, noteIds: lv <= LAST ? notesFor(lv) : [], water: Math.max(2, Math.round(th.water * D.items * (WORLD ? 2.5 : 1))), batt: Math.max(1, Math.round(th.batt * D.items * (WORLD ? 2.5 : 1))) });
-  setAniso(Math.min(isAndroid ? 4 : 8, maxAniso));
+  setAniso(anisoNow());
   const pbr = (await themeTex(th)) || {};
   const [lockMetal, lockWood] = await Promise.all([texSet('PaintedMetal012'), texSet('Wood066')]);
   pbr.locker = { metal: lockMetal, wood: lockWood };
   await Promise.race([preloadMonsters(), sleep(12000)]);
-  lvl = buildLevel(thB, G, { seed, aniso: maxAniso, pbr });
+  lvl = buildLevel(thB, G, { seed, aniso: anisoNow(), pbr });
   scene.add(lvl.root);
   game.finds = buildFinds(lvl, G.finds, seed, lvl.glowT);
   game.task = task; game.ex = buildExtras(lvl, task, seed, lv);
@@ -1417,7 +1430,14 @@ function syncSettings() {
   $('sSens').value = s.sens; $('vSens').textContent = Number(s.sens).toFixed(1);
   $('sVol').value = s.vol; $('vVol').textContent = s.vol;
   for (const [id, v] of [['segQ', s.q], ['segD', s.diff], ['segV', s.vib ? '1' : '0']]) $(id).querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.v === v));
+  // что определилось: «Устройство: Apple · мощное. Авто = Ультра»
+  const di = $('devInfo');
+  if (di) {
+    const ap = autoProfile(DEV), qn = { droidLow: 'low', droid: 'med', droidHigh: 'high' }[ap] || ap;
+    di.textContent = tr('set.dev', { dev: tr('dev.' + DEV.platform), power: tr('dev.t' + DEV.tier), q: tr('set.q.' + qn) });
+  }
 }
+window.addEventListener('langchange', () => syncSettings());
 $('sSens').addEventListener('input', (e) => { SAVE.set.sens = +e.target.value; persist(); syncSettings(); });
 $('sVol').addEventListener('input', (e) => { SAVE.set.vol = +e.target.value; sound.setVol(SAVE.set.vol / 100); persist(); syncSettings(); });
 $('segQ').addEventListener('click', (e) => { const v = e.target.dataset.v; if (!v) return; SAVE.set.q = v; persist(); applyQuality(); syncSettings(); });
@@ -2001,7 +2021,7 @@ if (import.meta.env.DEV || new URLSearchParams(location.search).has('debug')) {
     info() {
       return { mode: game.mode, level: game.level, theme: game.th && game.th.name, san: +pl.san.toFixed(1), bat: +pl.bat.toFixed(1),
         x: +pl.x.toFixed(2), z: +pl.z.toFixed(2), ent: ent ? ent.state : null, entDist: ent ? +ent.dist.toFixed(1) : null,
-        pr: renderer.getPixelRatio(), quality: SAVE.set.q, calls: renderer.info.render.calls, tris: renderer.info.render.triangles };
+        pr: renderer.getPixelRatio(), quality: SAVE.set.q, profile: quality, dev: `${DEV.platform}/${DEV.form}/t${DEV.tier}/${DEV.source}`, calls: renderer.info.render.calls, tris: renderer.info.render.triangles };
     }
   };
 }
@@ -2009,10 +2029,13 @@ if (import.meta.env.DEV || new URLSearchParams(location.search).has('debug')) {
 // ---------- запуск ----------
 async function boot() {
   const lm = $('loadMsg'); if (lm) lm.textContent = tr('load.graphics');
-  applyQuality();
+  // сила устройства → профиль «Авто»; detect-gpu рисует пробный кадр в наш контекст — сбросить кэш состояний three.js
+  try { await detectDevice(renderer.getContext()); } catch (e) { /* остаётся оценка по имени GPU */ }
+  renderer.resetState();
+  applyQuality(); syncSettings();
   try { await Promise.race([document.fonts.ready, sleep(2500)]); await Promise.race([Promise.all(['700 100px Caveat', '600 30px "IBM Plex Mono"'].map((f) => document.fonts.load(f))), sleep(2000)]); } catch (e) { /* шрифты не критичны */ }
   if (lm) lm.textContent = tr('load.rooms');
-  setAniso(Math.min(isAndroid ? 4 : 8, maxAniso));
+  setAniso(anisoNow());
   try { demoPbr = await Promise.race([themeTex(theme(0)), sleep(15000).then(() => null)]); } catch (e) { demoPbr = null; }
   await frames(1);
   buildDemo();
