@@ -173,9 +173,11 @@ const PROFILES = {
   low: { pr: (d) => Math.min(d, 1) * 0.75, floor: (b) => b * 0.5, msaa: 0, tex2k: false, lamps: 0, bloom: 0, aniso: 4, ao: 0 },
   med: { pr: (d, h) => Math.min(2, Math.max(d * 0.85, 900 / h)), floor: (b) => b * 0.5, msaa: 2, tex2k: true, lamps: 2, bloom: 2, aniso: 8, ao: 1 },
   // на Retina (DPR ≥ 2) пиксели мелкие — хватает MSAA 2×
-  high: { pr: (d, h) => Math.min(2, Math.max(d, 1080 / h)), floor: (b, h, fps) => (DEV.form === 'desktop' ? Math.min(b, 1080 / h) * (fps < 30 ? 0.75 : 1) : b * 0.7), msaa: (b) => (b >= 1.9 ? 2 : 4), tex2k: true, lamps: 3, bloom: 2, aniso: 8, ao: 1 },
+  // ноутбуки и iPad: ровно Full HD (1080 строк), а не родные 1600–2048 Retina — вдвое меньше работы, картинка та же
+  high: { pr: (d, h) => (DEV.form === 'phone' ? Math.min(2, Math.max(d, 1080 / h)) : Math.min(2, Math.max(1080 / h, Math.min(d, 1)))), floor: (b, h, fps) => (DEV.form === 'desktop' ? Math.min(b, 1080 / h) * (fps < 30 ? 0.75 : 1) : b * 0.7), msaa: (b) => (b >= 1.9 ? 2 : 4), tex2k: true, lamps: 3, bloom: 2, aniso: 8, ao: 1 },
   // «Ультра» — мощные Apple: родное разрешение экрана до 3× (iPhone Pro — 1179 строк), MSAA 4× (на чипах Apple почти бесплатно), анизотропия 16×
-  ultra: { pr: (d, h) => Math.min(3, Math.max(d, 1080 / h)), floor: (b) => Math.min(b, 2), msaa: 4, tex2k: true, lamps: 3, bloom: 2, aniso: 16, ao: 2 },
+  // на iPad/ноутбуке «Ультра» = до 1440 строк (iPad Pro раньше считал 2048); тени AO в ½ с умным апскейлом
+  ultra: { pr: (d, h) => (DEV.form === 'phone' ? Math.min(3, Math.max(d, 1080 / h)) : Math.min(d, Math.max(1440 / h, 1))), floor: (b, h) => Math.min(b, 1080 / h), msaa: 4, tex2k: true, lamps: 3, bloom: 2, aniso: 16, ao: 1 },
   // Android: кадры ≤ 60; MSAA на HalfFloat-кадре дорогое на Mali/Adreno; 1K-текстуры; свечение в ¼
   droidLow: { pr: (d, h) => Math.min(d, 600 / h), floor: (b, h) => Math.min(b, 400 / h), msaa: 0, tex2k: false, lamps: 0, bloom: 1, aniso: 2, ao: 0 },
   droid: { pr: (d, h) => Math.min(d, 720 / h), floor: (b, h) => Math.min(b, 480 / h), msaa: 0, tex2k: false, lamps: 1, bloom: 1, aniso: 4, ao: 0 },
@@ -2016,7 +2018,8 @@ function loop(now) {
   requestAnimationFrame(loop);
   // Android-экраны 90/120 Гц: без ограничения игра рисует до 120 кадров, телефон греется и сбрасывает частоты.
   // Держим ≤ 60 (Safari на iPhone ограничивает сам).
-  if (isAndroid) { if (now < nextFrame - 1.5) return; nextFrame = Math.max(nextFrame + 1000 / 60, now); }
+  // экраны 90/120/144 Гц (Android, ноутбуки, iPad Pro ProMotion): в «Авто» не больше 60 кадров — меньше нагрев и расход батареи
+  if (isAndroid || SAVE.set.q === 'auto') { if (now < nextFrame - 1.5) return; nextFrame = Math.max(nextFrame + 1000 / 60, now); }
   const rawDt = (now - last) / 1000, dt = Math.min(0.05, rawDt); last = now; tAll += dt;
   autoRes(rawDt);
   U.uTime.value = tAll;
