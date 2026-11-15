@@ -27,6 +27,9 @@ import { themeTex, setAniso, setTexHi, texSet } from './render/assets.js';
 const $ = (id) => document.getElementById(id);
 const isTouch = (window.matchMedia && matchMedia('(pointer: coarse)').matches) || ('ontouchstart' in window);
 document.documentElement.classList.toggle('touch', isTouch);
+// Android: GPU телефонов (Mali/Adreno) слабее по заливке, MSAA и памяти, чем Apple; экраны 90–120 Гц.
+// Отдельный профиль ниже (кадры ≤ 60, без MSAA, 1K-текстуры, 1 живая лампа, bloom в ¼). Apple не трогаем.
+const isAndroid = /Android/i.test(navigator.userAgent) || new URLSearchParams(location.search).has('android');
 
 // ---------- сохранение ----------
 const DEF = { sens: 1, vol: 80, q: 'auto', diff: 'normal', vib: true };
@@ -66,11 +69,15 @@ let dust = null;
 // h — внутренняя высота кадра в пикселях: стиль старой камеры, крупный пиксель, заодно быстрее на телефонах.
 const LOOK = { vhsPixel: false, vhs: 0.25, dyn: { n: 3, I: 2.2, dist: 9 }, amb0: 0.25, ambK: 1.3, wallAmb: 0.22, bake: 1.0, h: { low: 300, med: 400, high: 480 }, bloom: [0.55, 0.5, 0.88], exposure: 1.05 };
 renderer.toneMappingExposure = LOOK.exposure;
+// число живых ламп задаёт стоимость каждого пикселя (свет считается и при яркости 0) — на Android одна
+if (isAndroid) LOOK.dyn.n = 1;
 const composerRT = new THREE.WebGLRenderTarget(16, 16, { type: THREE.HalfFloatType, samples: 4 });
 const composer = new EffectComposer(renderer, composerRT);
 composer.addPass(new RenderPass(scene, camera));
 const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), LOOK.bloom[0], LOOK.bloom[1], LOOK.bloom[2]);
 composer.addPass(bloom);
+// Android: свечение считаем в ¼ разрешения кадра вместо ½ — 10 проходов размытия в 4 раза дешевле
+if (isAndroid) { const bs = bloom.setSize.bind(bloom); bloom.setSize = (w, h) => bs(w / 2, h / 2); }
 composer.addPass(new OutputPass());
 const FX = {
   uniforms: {
@@ -152,11 +159,16 @@ function applyQuality() {
   // Full HD: высота кадра не меньше 1080 px на «Высокой» (на Retina/iPad — родное разрешение до 2×)
   const h = Math.max(240, innerHeight);
   basePR = q === 'low' ? Math.min(dpr, 1) * 0.75 : q === 'med' ? Math.min(2, Math.max(dpr * 0.85, 900 / h)) : Math.min(2, Math.max(dpr, 1080 / h));
-  setTexHi(q !== 'low');
+  // Android «Авто»: кадр 720 строк (HD) — экран телефона маленький, разница с 900 почти не видна, а пикселей на 35% меньше
+  const andAuto = isAndroid && SAVE.set.q === 'auto';
+  if (andAuto) basePR = Math.min(dpr, 720 / h);
+  // 2K-текстуры ≈ 180 МБ видеопамяти: на Android только на явной «Высокой»
+  setTexHi(q !== 'low' && (!isAndroid || SAVE.set.q === 'high'));
   if (LOOK.vhsPixel) basePR = Math.min(dpr, Math.max(0.25, LOOK.h[q] / Math.max(240, innerHeight)));
   setTexScale(q === 'low' ? 1 : 2);
   // на Retina (iPad/iPhone/Mac, DPR ≥ 2) пиксели мелкие — хватает MSAA 2×, видеокарте вдвое легче
-  const samples = q === 'low' ? 0 : q === 'med' || basePR >= 1.9 ? 2 : 4;
+  // на Android MSAA на HalfFloat-кадре дорогое (Mali/Adreno) — только на явной «Высокой»
+  const samples = q === 'low' || (isAndroid && SAVE.set.q !== 'high') ? 0 : q === 'med' || basePR >= 1.9 ? 2 : 4;
   for (const rt of [composer.renderTarget1, composer.renderTarget2]) if (rt.samples !== samples) { rt.samples = samples; rt.dispose(); }
   curPR = basePR; setPR(curPR);
   bloom.enabled = q !== 'low';
@@ -169,7 +181,8 @@ function autoRes(dt) {
   perf.t += dt; perf.n++;
   if (perf.t < 2.5) return;
   const fps = perf.n / perf.t; perf.t = 0; perf.n = 0;
-  const floor = quality === 'high' ? Math.min(basePR, 1080 / Math.max(240, innerHeight)) * (fps < 30 ? 0.75 : 1) : basePR * 0.5;
+  const floor = isAndroid ? Math.min(basePR, 480 / Math.max(240, innerHeight))
+    : quality === 'high' ? Math.min(basePR, 1080 / Math.max(240, innerHeight)) * (fps < 30 ? 0.75 : 1) : basePR * 0.5;
   if (fps < 45 && curPR > floor) { curPR = Math.max(floor, curPR * 0.88); setPR(curPR); }
   else if (fps > 56 && curPR < basePR) { curPR = Math.min(basePR, curPR * 1.12); setPR(curPR); }
 }
@@ -1139,7 +1152,7 @@ async function startLevel(lv, fresh = false, opt = {}) {
   const thG = Object.assign({}, th, { needKey: task.kind === 'key' }), thB = Object.assign({}, th, { needKey: task.kind !== 'exit' });
   // Открытый мир: в ~9 раз больше площади, поэтому воды и батареек больше (но не в 9 раз — их надо искать).
   const G = genGrid(thG, lv, seed, { world: WORLD, allowSecret: lv <= LAST, noteIds: lv <= LAST ? notesFor(lv) : [], water: Math.max(2, Math.round(th.water * D.items * (WORLD ? 2.5 : 1))), batt: Math.max(1, Math.round(th.batt * D.items * (WORLD ? 2.5 : 1))) });
-  setAniso(Math.min(8, maxAniso));
+  setAniso(Math.min(isAndroid ? 4 : 8, maxAniso));
   const pbr = (await themeTex(th)) || {};
   const [lockMetal, lockWood] = await Promise.all([texSet('PaintedMetal012'), texSet('Wood066')]);
   pbr.locker = { metal: lockMetal, wood: lockWood };
@@ -1898,9 +1911,12 @@ function renderLevels() {
 }
 
 // ---------- главный цикл ----------
-let last = performance.now();
+let last = performance.now(), nextFrame = 0;
 function loop(now) {
   requestAnimationFrame(loop);
+  // Android-экраны 90/120 Гц: без ограничения игра рисует до 120 кадров, телефон греется и сбрасывает частоты.
+  // Держим ≤ 60 (Safari на iPhone ограничивает сам).
+  if (isAndroid) { if (now < nextFrame - 1.5) return; nextFrame = Math.max(nextFrame + 1000 / 60, now); }
   const rawDt = (now - last) / 1000, dt = Math.min(0.05, rawDt); last = now; tAll += dt;
   autoRes(rawDt);
   U.uTime.value = tAll;
@@ -1996,7 +2012,7 @@ async function boot() {
   applyQuality();
   try { await Promise.race([document.fonts.ready, sleep(2500)]); await Promise.race([Promise.all(['700 100px Caveat', '600 30px "IBM Plex Mono"'].map((f) => document.fonts.load(f))), sleep(2000)]); } catch (e) { /* шрифты не критичны */ }
   if (lm) lm.textContent = tr('load.rooms');
-  setAniso(Math.min(8, maxAniso));
+  setAniso(Math.min(isAndroid ? 4 : 8, maxAniso));
   try { demoPbr = await Promise.race([themeTex(theme(0)), sleep(15000).then(() => null)]); } catch (e) { demoPbr = null; }
   await frames(1);
   buildDemo();
