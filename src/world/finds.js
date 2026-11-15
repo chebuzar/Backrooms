@@ -363,4 +363,4 @@ function findPoint(f) {
   return [f.x, f.z];
 }
 
-export { FIND_KINDS, FIND_IDS, buildFinds, updateFinds, findPoint };
+export { FIND_KINDS, FIND_IDS, buildFinds, updateFinds, findPoint, shaded };

@@ -15,6 +15,8 @@ import { Sound } from './audio/sound.js';
 import { setTexScale } from './render/textures.js';
 import { t as tr } from './i18n/index.js';
 import { FIND_KINDS, FIND_IDS, buildFinds, updateFinds, findPoint } from './world/finds.js';
+import { makeWrist, poseWrist, drawRadar } from './world/wrist.js';
+import { createMinimap, drawMinimap, trackTrail, resetMinimap } from './ui/minimap.js';
 
 const $ = (id) => document.getElementById(id);
 const isTouch = (window.matchMedia && matchMedia('(pointer: coarse)').matches) || ('ontouchstart' in window);
@@ -51,6 +53,7 @@ const flash = new THREE.SpotLight(0xfff2dc, 0, 32, 0.5, 0.65, 1.0);
 flash.position.set(0.15, -0.1, 0.45);
 const fTarget = new THREE.Object3D(); fTarget.position.set(0, -0.15, -5);
 camera.add(flash); camera.add(fTarget); flash.target = fTarget;
+const wrist = makeWrist(); camera.add(wrist.root);
 
 const composerRT = new THREE.WebGLRenderTarget(16, 16, { type: THREE.HalfFloatType, samples: 4 });
 const composer = new EffectComposer(renderer, composerRT);
@@ -630,6 +633,7 @@ function updatePlay(dt) {
     scene.fog.color.setHex(th.fog).multiplyScalar(game.fogK); scene.fog.density = th.fogD * (1.6 - 0.6 * game.fogK); }
   updateInteract();
   applyCamera(dt);
+  updateWristMap(dt);
   // эффекты
   const ls = clamp((60 - pl.san) / 60, 0, 1);
   setFX({
@@ -668,6 +672,34 @@ function hud() {
   const s = Math.floor(game.runTime), c = `${String(Math.floor(s / 3600)).padStart(2, '0')}:${String(Math.floor(s / 60) % 60).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
   if (c !== lastClock) { $('hClock').textContent = c; lastClock = c; }
 }
+// ---------- сканер на руке и мини-карта ----------
+let minimap = null;
+function scanBlips() {
+  const b = [];
+  for (const it of lvl.items) {
+    if (it.taken || !['key', 'fuse', 'ticket', 'valve', 'lever', 'clue', 'note', 'batt', 'water'].includes(it.type)) continue;
+    b.push({ id: 'i' + (it.wx ?? it.x) + ',' + (it.wz ?? it.z), x: it.wx ?? it.x, z: it.wz ?? it.z, kind: 'item' });
+  }
+  for (const an of game.ex.anoms) if (!an.used) b.push({ id: 'a' + an.ax + ',' + an.az, x: an.ax, z: an.az, kind: 'anom' });
+  for (const f of game.finds || []) if (!f.found) { const [x, z] = findPoint(f); b.push({ id: 'f' + f.kind, x, z, kind: 'find' }); }
+  if (ent && ent.active) b.push({ id: 'ent', x: ent.x, z: ent.z, kind: 'ent' });
+  return b;
+}
+function updateWristMap(dt) {
+  const up = game.scanT > 0 && !pl.hidden && game.mode === 'play';
+  poseWrist(wrist, dt, up, tAll, pl.bob || 0);
+  const sc = wrist.raise > 0.3; if (sc !== game.scanUI) { game.scanUI = sc; document.body.classList.toggle('scanning', sc); }
+  if (wrist.root.visible) drawRadar(wrist, dt, tAll, pl.x, pl.z, pl.yaw, scanBlips());
+  if (!minimap) minimap = createMinimap($('minimap'));
+  trackTrail(minimap, pl.x, pl.z);
+  minimap.t -= dt;
+  if (minimap.t <= 0) {
+    minimap.t = 1 / 15;
+    const dIdx = lvl.idx(lvl.door.x - lvl.door.nx * 0.5, lvl.door.z - lvl.door.nz * 0.5);
+    drawMinimap(minimap, { lvl, seen: game.seen, px: pl.x, pz: pl.z, yaw: pl.yaw, finds: game.finds, doorSeen: !!game.seen[dIdx] || game.exitKnown, solid: (tt) => tt === 1 || tt === 2 || tt === 5 });
+  }
+}
+
 // ---------- дивные находки ----------
 function updateFindsPlay(dt) {
   if (!game.finds || !game.finds.length) return;
@@ -760,7 +792,7 @@ function syncTools() {
 function toolScan() {
   if (game.mode !== 'play' || pl.scanCD > 0 || pl.hidden) return;
   if (pl.bat < 8) { toast('Сканеру не хватает заряда'); return; }
-  pl.scanCD = 25; game.scanT = 2.6; pl.burst = 3; pl.bat = Math.max(0, pl.bat - 8);
+  pl.scanCD = 25; game.scanT = 4.2; pl.burst = 3; pl.bat = Math.max(0, pl.bat - 8);
   sound.scan(); vib(20);
   const box = $('scanLayer'); box.classList.remove('pulse'); void box.offsetWidth; box.classList.add('pulse');
   buildScanMarks();
@@ -782,7 +814,6 @@ function buildScanMarks() {
   for (const an of game.ex.anoms) if (!an.used && near(an.ax, an.az)) addM(an.ax, 1.2, an.az, 'anom');
   if (ent && ent.active && ent.dist < R) addM(ent.x, 1.6, ent.z, 'ent');
   game.scanMarks = marks;
-  if (!marks.length) whisper('…тишина…', 1800);
 }
 function updateScan(dt) {
   if (pl.scanCD > 0) { pl.scanCD -= dt; if (pl.scanCD <= 0) syncTools(); }
@@ -1057,6 +1088,7 @@ async function startLevel(lv, fresh = false, opt = {}) {
   });
   if (fresh) { game.runTime = 0; game.deaths = 0; }
   game.zoneId = null; game.zone = null; game.zoneT = 0; game.zonesSeen = new Set();
+  if (minimap) resetMinimap(minimap); wrist.raise = 0; wrist.root.visible = false; game.scanUI = false; document.body.classList.remove('scanning');
   if (!SAVE.toolsTip) { SAVE.toolsTip = 1; persist(); setTimeout(() => { if (game.mode === 'play') toast(isTouch ? 'Кнопки внизу: сканер, ЭМИ, карта, метка, тихий шаг, камера. Всё садит батарею или шумит' : 'Q сканер · R ЭМИ · M карта · G метка · C присесть · V камера. Всё садит батарею или шумит'); }, 6000); }
   SAVE.max = Math.max(SAVE.max, lv); SAVE.cont = lv; persist();
   if (lv >= 10) unlock('deep');
@@ -1815,7 +1847,7 @@ function loop(now) {
 if (import.meta.env.DEV || new URLSearchParams(location.search).has('debug')) {
   const faceTo = (x, z) => Math.atan2(-(x - pl.x), -(z - pl.z));
   window.__zk = {
-    game, pl, SAVE, renderer, scene, camera, sound, THREE,
+    game, pl, SAVE, renderer, scene, camera, sound, THREE, wrist,
     get lvl() { return lvl; },
     get ent() { return ent; },
     get ready() { return game.mode === 'play' && !busy; },
