@@ -23,3 +23,8 @@
 
 - `models/human.glb` — «Animated Man» (Animated Human.fbx): Idle, Walk, Run, Punch, Death
 - `models/zombie.glb` — «Animated Zombie» (ZombieSmooth.fbx): Idle, Walk, Run, Crawl, Bite
+
+## Code
+
+- **N8AO** (screen-space ambient occlusion) by N8python — CC0 1.0. Vendored three.js pass in `src/render/n8ao/` (the pmndrs `N8AOPostPass` is omitted). https://github.com/N8python/n8ao
+- **detect-gpu** by pmndrs — MIT. GPU benchmark data bundled with the game. https://github.com/pmndrs/detect-gpu

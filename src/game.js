@@ -4,6 +4,7 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { N8AOPass } from './render/n8ao/N8AOPass.js';
 import { clamp, lerp, easeOut, angleDiff, pick, store, sleep, frames } from './core/util.js';
 import { monsterFor, MONSTERS as MON } from './data/game-data.js';
 import { theme, THEMES, DIFF, NOTES, ACH, PROLOGUE, ENDING, WHISPERS, LAST, notesFor, SECRETS, QUICK } from './data/game-data.js';
@@ -71,7 +72,22 @@ const LOOK = { vhsPixel: false, vhs: 0.25, dyn: { n: 3, I: 2.2, dist: 9 }, amb0:
 renderer.toneMappingExposure = LOOK.exposure;
 const composerRT = new THREE.WebGLRenderTarget(16, 16, { type: THREE.HalfFloatType, samples: 4 });
 const composer = new EffectComposer(renderer, composerRT);
-composer.addPass(new RenderPass(scene, camera));
+const renderPass = new RenderPass(scene, camera);
+composer.addPass(renderPass);
+// Мягкие тени в углах и под предметами (SSAO, N8AO, CC0 — src/render/n8ao). Заменяет RenderPass, когда включено профилем.
+// Запечённый AO стен уже есть — этот добавляет контакт мебели, шкафчиков, монстра, находок.
+const aoPass = new N8AOPass(scene, camera, 16, 16);
+Object.assign(aoPass.configuration, { gammaCorrection: false, aoRadius: 1.3, distanceFalloff: 1.0, intensity: 3.6, depthAwareUpsampling: true });
+let aoMode = 0;
+function setAO(mode, samples) {
+  aoMode = mode;
+  if (mode) {
+    aoPass.setQualityMode(mode === 2 ? 'Medium' : 'Performance');
+    aoPass.configuration.halfRes = mode === 1;
+    if (aoPass.beautyRenderTarget.samples !== samples) { aoPass.beautyRenderTarget.samples = samples; aoPass.beautyRenderTarget.dispose(); }
+  }
+  composer.passes[0] = mode ? aoPass : renderPass;
+}
 const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), LOOK.bloom[0], LOOK.bloom[1], LOOK.bloom[2]);
 composer.addPass(bloom);
 // свечение можно считать в ¼ кадра вместо ½ (bloomDiv = 2) — 10 проходов размытия в 4 раза дешевле
@@ -152,18 +168,19 @@ function updateLampLights(dt, P) {
 // pr(dpr, h) — плотность кадра (h — высота окна в CSS-px; 1080/h = Full HD по высоте),
 // floor(base, h, fps) — ниже чего авто-разрешение не опускается, msaa — сглаживание,
 // tex2k — 2K-текстуры (≈180 МБ видеопамяти) или 1K, lamps — живые лампы (каждая утяжеляет каждый пиксель),
-// bloom: 0 — нет, 1 — в ¼ кадра, 2 — в ½, aniso — чёткость текстур под углом.
+// bloom: 0 — нет, 1 — в ¼ кадра, 2 — в ½, aniso — чёткость текстур под углом,
+// ao — мягкие тени N8AO: 0 — нет, 1 — в ½ разрешения (быстро), 2 — полное.
 const PROFILES = {
-  low: { pr: (d) => Math.min(d, 1) * 0.75, floor: (b) => b * 0.5, msaa: 0, tex2k: false, lamps: 0, bloom: 0, aniso: 4 },
-  med: { pr: (d, h) => Math.min(2, Math.max(d * 0.85, 900 / h)), floor: (b) => b * 0.5, msaa: 2, tex2k: true, lamps: 2, bloom: 2, aniso: 8 },
+  low: { pr: (d) => Math.min(d, 1) * 0.75, floor: (b) => b * 0.5, msaa: 0, tex2k: false, lamps: 0, bloom: 0, aniso: 4, ao: 0 },
+  med: { pr: (d, h) => Math.min(2, Math.max(d * 0.85, 900 / h)), floor: (b) => b * 0.5, msaa: 2, tex2k: true, lamps: 2, bloom: 2, aniso: 8, ao: 1 },
   // на Retina (DPR ≥ 2) пиксели мелкие — хватает MSAA 2×
-  high: { pr: (d, h) => Math.min(2, Math.max(d, 1080 / h)), floor: (b, h, fps) => (DEV.form === 'desktop' ? Math.min(b, 1080 / h) * (fps < 30 ? 0.75 : 1) : b * 0.7), msaa: (b) => (b >= 1.9 ? 2 : 4), tex2k: true, lamps: 3, bloom: 2, aniso: 8 },
+  high: { pr: (d, h) => Math.min(2, Math.max(d, 1080 / h)), floor: (b, h, fps) => (DEV.form === 'desktop' ? Math.min(b, 1080 / h) * (fps < 30 ? 0.75 : 1) : b * 0.7), msaa: (b) => (b >= 1.9 ? 2 : 4), tex2k: true, lamps: 3, bloom: 2, aniso: 8, ao: 1 },
   // «Ультра» — мощные Apple: родное разрешение экрана до 3× (iPhone Pro — 1179 строк), MSAA 4× (на чипах Apple почти бесплатно), анизотропия 16×
-  ultra: { pr: (d, h) => Math.min(3, Math.max(d, 1080 / h)), floor: (b) => Math.min(b, 2), msaa: 4, tex2k: true, lamps: 3, bloom: 2, aniso: 16 },
+  ultra: { pr: (d, h) => Math.min(3, Math.max(d, 1080 / h)), floor: (b) => Math.min(b, 2), msaa: 4, tex2k: true, lamps: 3, bloom: 2, aniso: 16, ao: 2 },
   // Android: кадры ≤ 60; MSAA на HalfFloat-кадре дорогое на Mali/Adreno; 1K-текстуры; свечение в ¼
-  droidLow: { pr: (d, h) => Math.min(d, 600 / h), floor: (b, h) => Math.min(b, 400 / h), msaa: 0, tex2k: false, lamps: 0, bloom: 1, aniso: 2 },
-  droid: { pr: (d, h) => Math.min(d, 720 / h), floor: (b, h) => Math.min(b, 480 / h), msaa: 0, tex2k: false, lamps: 1, bloom: 1, aniso: 4 },
-  droidHigh: { pr: (d, h) => Math.min(2, d, 900 / h), floor: (b, h) => Math.min(b, 600 / h), msaa: 2, tex2k: true, lamps: 2, bloom: 2, aniso: 8 }
+  droidLow: { pr: (d, h) => Math.min(d, 600 / h), floor: (b, h) => Math.min(b, 400 / h), msaa: 0, tex2k: false, lamps: 0, bloom: 1, aniso: 2, ao: 0 },
+  droid: { pr: (d, h) => Math.min(d, 720 / h), floor: (b, h) => Math.min(b, 480 / h), msaa: 0, tex2k: false, lamps: 1, bloom: 1, aniso: 4, ao: 0 },
+  droidHigh: { pr: (d, h) => Math.min(2, d, 900 / h), floor: (b, h) => Math.min(b, 600 / h), msaa: 2, tex2k: true, lamps: 2, bloom: 2, aniso: 8, ao: 1 }
 };
 // выбор игрока → профиль. «Авто» — по устройству; «Средняя» на Android — облегчённая.
 function profileName() {
@@ -182,6 +199,7 @@ function applyQuality() {
   setTexHi(prof.tex2k); setTexScale(q === 'low' ? 1 : 2); setAniso(anisoNow());
   const samples = typeof prof.msaa === 'function' ? prof.msaa(basePR) : prof.msaa;
   for (const rt of [composer.renderTarget1, composer.renderTarget2]) if (rt.samples !== samples) { rt.samples = samples; rt.dispose(); }
+  setAO(prof.ao, samples);
   // выключенная лампа исключается из шейдера (одна перекомпиляция при смене профиля, а не каждый кадр)
   lampLights.forEach((L, i) => { L.visible = i < prof.lamps; });
   bloom.enabled = prof.bloom > 0; bloomDiv = prof.bloom === 1 ? 2 : 1;
@@ -1971,7 +1989,7 @@ function loop(now) {
 if (import.meta.env.DEV || new URLSearchParams(location.search).has('debug')) {
   const faceTo = (x, z) => Math.atan2(-(x - pl.x), -(z - pl.z));
   window.__zk = {
-    game, pl, SAVE, renderer, scene, camera, sound, THREE, wrist, LOOK, bloom, amb, U, applyQuality,
+    game, pl, SAVE, renderer, scene, camera, sound, THREE, wrist, LOOK, bloom, amb, U, applyQuality, aoPass,
     get lvl() { return lvl; },
     get ent() { return ent; },
     get ready() { return game.mode === 'play' && !busy; },

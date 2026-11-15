@@ -3,6 +3,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { rng, clamp, smooth } from '../core/util.js';
 import * as TX from '../render/textures.js';
 import { buildLockers, LOCKER_W, LOCKER_DEP, LOCKER_BIG_W } from './lockers.js';
+import { buildDetails, DETAIL_SETS } from './details.js';
 
 // Генерация лабиринта, геометрия, запечённый свет, предметы, тайная комната.
 
@@ -465,20 +466,90 @@ function bakedMat(map, uni = BAKE, extra = {}) {
   return m;
 }
 
+// Карта «грязи» 256² (бесшовная): R — крупные пятна (разный тон по большим площадям), G — мелкий шум (подтёки),
+// B — пятна-разводы с тёмным краем. Накладывается в мировых координатах, чтобы фото-текстура не повторялась «обоями».
+let GRIME = null;
+function grimeTex() {
+  if (GRIME) return GRIME;
+  const N = 256, R = rng(0x51ed), c = document.createElement('canvas'); c.width = c.height = N;
+  const ctx = c.getContext('2d'), img = ctx.createImageData(N, N), d = img.data;
+  const layer = (P) => { const v = new Float32Array(P * P); for (let i = 0; i < v.length; i++) v[i] = R(); return v; };
+  const octs = (periods) => periods.map((P) => ({ P, v: layer(P) }));
+  const sample = (o, x, y) => {
+    const fx = x / N * o.P, fy = y / N * o.P, x0 = Math.floor(fx), y0 = Math.floor(fy), tx = fx - x0, ty = fy - y0;
+    const at = (i, j) => o.v[((j % o.P + o.P) % o.P) * o.P + ((i % o.P + o.P) % o.P)];
+    const sx = tx * tx * (3 - 2 * tx), sy = ty * ty * (3 - 2 * ty);
+    return (at(x0, y0) * (1 - sx) + at(x0 + 1, y0) * sx) * (1 - sy) + (at(x0, y0 + 1) * (1 - sx) + at(x0 + 1, y0 + 1) * sx) * sy;
+  };
+  const fbm = (os, x, y) => { let s = 0, w = 0, a = 1; for (const o of os) { s += sample(o, x, y) * a; w += a; a *= 0.5; } return s / w; };
+  const big = octs([3, 6, 12, 24]), small = octs([16, 32, 64]);
+  const st = new Float32Array(N * N);
+  for (let k = 0; k < 22; k++) {
+    const cx = R() * N, cy = R() * N, rad = 8 + R() * 30, rim = 0.5 + R() * 0.4;
+    for (let y = Math.floor(cy - rad - 2); y <= cy + rad + 2; y++) for (let x = Math.floor(cx - rad - 2); x <= cx + rad + 2; x++) {
+      const q = Math.hypot(x - cx, y - cy) / rad; if (q > 1) continue;
+      const wob = 0.85 + 0.3 * sample(small[0], x * 3, y * 3), e = q / wob; if (e > 1) continue;
+      const v = 0.55 * (1 - e) + rim * Math.exp(-((e - 0.9) ** 2) / 0.006);
+      const i = (((y % N) + N) % N) * N + (((x % N) + N) % N); st[i] = Math.max(st[i], Math.min(1, v));
+    }
+  }
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const i = y * N + x, b = fbm(big, x, y), s = fbm(small, x, y);
+    d[i * 4] = Math.min(255, Math.max(0, (b - 0.5) * 2.2 * 128 + 128)); d[i * 4 + 1] = Math.min(255, Math.max(0, (s - 0.5) * 2.4 * 128 + 128));
+    d[i * 4 + 2] = st[i] * 255; d[i * 4 + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+  GRIME = new THREE.CanvasTexture(c); GRIME.wrapS = GRIME.wrapT = THREE.RepeatWrapping; GRIME.generateMipmaps = true;
+  return GRIME;
+}
+
 // Фото-материал (CC0): цвет + нормали + шероховатость, свет — тот же запечённый в вершины.
 // Рельеф проявляется за счёт сравнения нормали из карты с геометрической: впадины темнее, «верх» светлее.
-function pbrMat(s, uni = BAKE) {
+// gr — «жизнь» поверхности: [разброс тона, пятна, грязь у пола, подтёки, мокрые блики], 0..1
+const GR_DEF = [0.22, 0.35, 0.4, 0.15, 0.2];
+function pbrMat(s, uni = BAKE, hh = H) {
   for (const tx of [s.c, s.n, s.r]) if (tx) tx.repeat.set(s.rep || 1, s.rep || 1);
   const m = new THREE.MeshStandardMaterial({ map: s.c, normalMap: s.n || null, roughnessMap: s.r || null, roughness: 1, metalness: 0, color: s.tint ?? 0xffffff });
+  const gr = s.gr || GR_DEF;
   m.onBeforeCompile = (sh) => {
     sh.uniforms.uBake = uni; sh.uniforms.uAmbK = AMBK; sh.uniforms.uTexK = { value: s.soft ?? 1 };
+    sh.uniforms.uGrime = { value: grimeTex() }; sh.uniforms.uGr = { value: new THREE.Vector4(gr[0], gr[1], gr[2], gr[3]) };
+    sh.uniforms.uWet = { value: gr[4] }; sh.uniforms.uHH = { value: hh };
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nattribute vec3 bake;\nvarying vec3 vBake;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\n\tvBake = bake;');
+      .replace('#include <common>', '#include <common>\nattribute vec3 bake;\nvarying vec3 vBake;\nvarying vec3 vWP;\nvarying vec3 vWN;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\n\tvBake = bake; vWP = (modelMatrix * vec4(position, 1.0)).xyz; vWN = normal;');
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vBake;\nuniform float uBake;\nuniform float uAmbK;\nuniform float uTexK;')
+      .replace('#include <common>', `#include <common>
+varying vec3 vBake;\nvarying vec3 vWP;\nvarying vec3 vWN;
+uniform float uBake;\nuniform float uAmbK;\nuniform float uTexK;
+uniform sampler2D uGrime;\nuniform vec4 uGr;\nuniform float uWet;\nuniform float uHH;
+float gStain = 0.0;`)
       // soft < 1: пятна и узор текстуры спокойнее (смешиваем с ровным цветом)
-      .replace('#include <map_fragment>', '#include <map_fragment>\n\tdiffuseColor.rgb = mix(diffuse * 0.8, diffuseColor.rgb, uTexK);')
+      .replace('#include <map_fragment>', `#include <map_fragment>
+\tdiffuseColor.rgb = mix(diffuse * 0.8, diffuseColor.rgb, uTexK);
+\t{ bool flat_ = abs(vWN.y) > 0.5; vec2 gp = flat_ ? vWP.xz : vec2(vWP.x + vWP.z, vWP.y);
+\t  float big = texture2D(uGrime, gp * 0.035).r, big2 = texture2D(uGrime, gp * 0.011 + 0.37).r;
+\t  // крупный разброс тона: стена не «одна краска», ковёр выцвел полосами
+\t  diffuseColor.rgb *= 1.0 + (big * 0.65 + big2 * 0.35 - 0.5) * uGr.x * 1.6;
+\t  // пятна-разводы: темнее и в коричневый
+\t  float st = texture2D(uGrime, gp * 0.09 + 0.13).b * smoothstep(0.35, 0.75, big2 + 0.2);
+\t  gStain = st; diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.62, 0.55, 0.42), st * uGr.y);
+\t  if (!flat_) {
+\t    float y = vWP.y; float n = texture2D(uGrime, vec2(gp.x * 0.6, y * 0.05)).g;
+\t    // грязь у пола и копоть под потолком
+\t    float foot = 1.0 - smoothstep(0.0, 0.22 + 0.35 * big, y + 0.02);
+\t    diffuseColor.rgb *= 1.0 - uGr.z * 0.45 * foot;
+\t    float top = smoothstep(uHH - 0.5 - 0.3 * big, uHH, y);
+\t    diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.85, 0.78, 0.6), top * uGr.z * 0.6);
+\t    // подтёки от потолка: вертикальные полосы
+\t    float sx = texture2D(uGrime, vec2(gp.x * 0.9, 0.5)).g;
+\t    float streak = smoothstep(0.62, 0.8, sx) * smoothstep(uHH - 2.2 * (0.4 + big), uHH, y + n * 0.4);
+\t    gStain = max(gStain, streak * 0.8);
+\t    diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.66, 0.6, 0.48), streak * uGr.w);
+\t  }
+\t}`)
+      // мокрые места блестят
+      .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\n\troughnessFactor *= 1.0 - gStain * uWet * 0.6;')
       .replace('#include <lights_fragment_maps>', `#include <lights_fragment_maps>
 \tirradiance = irradiance * uAmbK + vBake * uBake;
 \t{ vec3 gN = normalize(vNormal); float rel = clamp(dot(normal, gN), 0.0, 1.0);
@@ -592,6 +663,7 @@ function buildLevel(th, G, opts = {}) {
   const tallRepeat = th.wall === 'concrete' || th.wall === 'tiles';
   const P = opts.pbr || {};
   const gSk = new CGB(), skirt = !!(P.wall && /^Wallpaper/.test(P.wall.id));
+  const wallFaces = [];
   const gW = new CGB(), gF = new CGB(), gC = new CGB(), gD = new GB(), gRW = new GB(), gRF = new GB(), gRC = new GB(), gP = new CGB(), gPS = new CGB();
   const floorBake = (x, y, z, n, o) => { lightAt(x, y, z, 0, 1, 0, o); mul(o, aoXZ(x, z, -9, -9)); };
   const ceilBake = (x, y, z, n, o) => { lightAt(x, y, z, 0, -1, 0, o); mul(o, 0.72 + 0.28 * aoXZ(x, z, -9, -9)); };
@@ -635,6 +707,7 @@ function buildLevel(th, G, opts = {}) {
         const so = [o[0] + n[0] * 0.014, fy, o[2] + n[2] * 0.014];
         gSk.grid(so, u, [0, 0.13, 0], n, WU, [0, 1], (fu, fv) => [fu * 2, fv * 0.12], wallBake(tx + dx, ty + dy, fy));
       }
+      if (b === gW) wallFaces.push({ o, u, n, bake: wallBake(tx + dx, ty + dy, fy) });
       b.grid(o, u, [0, hgt, 0], n, WU, vs, uvf, room
         ? (x, y, z, nn, out) => { roomLight(x, y, z, out); mul(out, aoXZ(x + nn[0] * 0.02, z + nn[2] * 0.02, tx + dx, ty + dy) * (0.6 + 0.4 * smooth(y / 0.5))); }
         : wallBake(tx + dx, ty + dy, fy));
@@ -643,11 +716,17 @@ function buildLevel(th, G, opts = {}) {
   const wallT = tex(TX.wallCanvas(th, r), { clampT: !tallRepeat });
   const floorT = tex(TX.floorCanvas(th, r));
   const ceilT = tex(TX.ceilCanvas(th, r));
-  const mWall = P.wall ? pbrMat(P.wall) : bakedMat(wallT, BAKE, { bumpMap: wallT, bumpScale: 1.2 });
-  const mFloor = P.floor ? pbrMat(P.floor) : bakedMat(floorT, BAKE, { bumpMap: floorT, bumpScale: 1.5 });
-  const mCeil = P.ceil ? pbrMat(P.ceil) : bakedMat(ceilT);
+  const mWall = P.wall ? pbrMat(P.wall, BAKE, HH) : bakedMat(wallT, BAKE, { bumpMap: wallT, bumpScale: 1.2 });
+  const mFloor = P.floor ? pbrMat(P.floor, BAKE, HH) : bakedMat(floorT, BAKE, { bumpMap: floorT, bumpScale: 1.5 });
+  const mCeil = P.ceil ? pbrMat(P.ceil, BAKE, HH) : bakedMat(ceilT);
   const mesh = (gb, m) => { for (const geo of gb.geoms()) add(new THREE.Mesh(geo, m)); };
   mesh(gW, mWall); mesh(gF, mFloor); mesh(gC, mCeil);
+  // мелкие детали на стенах (розетки, решётки, щиты…) — не у выходов
+  {
+    const det = buildDetails(wallFaces, DETAIL_SETS[th.details], rng(((opts.seed || 1) ^ 0x5eed) >>> 0), HH, BAKE, AMBK,
+      (x, z) => EX.some((e) => Math.abs(e.x - x) + Math.abs(e.z - z) < 1.6));
+    add(det); textures.push(...det.userData.textures);
+  }
   if (skirt) mesh(gSk, bakedMat(null, BAKE, { color: 0x3e2e1e }));
 
   // --- лампы на потолке
