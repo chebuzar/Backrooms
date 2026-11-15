@@ -674,8 +674,8 @@ function updatePlay(dt) {
   if (eD < 9) drain += (9 - eD) * 0.3 * D.drain * (ent && ent.ai.drain ? ent.ai.drain : 1);
   if (stared) drain += 2.2 * D.drain;
   if (game.black) drain += 1.0 * D.drain;
-  if (!pl.light && P < 0.3) drain += 0.4;
-  if (pl.hidden) drain += 0.5;
+  // в шкафчике рассудок тает как обычно: без доплаты за укрытие и за выключенный фонарик (он там недоступен)
+  if (!pl.light && P < 0.3 && !pl.hidden) drain += 0.4;
   if (ptile === 3 || ptile === 4) drain = -4;
   pl.san = clamp(pl.san - drain * dt, 0, 100);
   game.minSan = Math.min(game.minSan, pl.san);
