@@ -43,6 +43,21 @@ const persist = () => store.save(SAVE);
 // ---------- рендер ----------
 const canvas = $('c');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
+// В готовой игре не проверяем ошибки шейдеров: проверка заставляет браузер (особенно Safari на iPad) ждать
+// окончания компиляции синхронно — отсюда рывки. На dev-сервере проверка остаётся.
+renderer.debug.checkShaderErrors = !!import.meta.env.DEV;
+// Подготовить ВСЕ шейдеры уровня заранее, включая скрытые сейчас объекты (спящий монстр, предметы, находки):
+// иначе они компилируются в момент первого появления — iPad «замирает» ровно когда выходит монстр.
+// Свет не трогаем: число источников должно совпадать с тем, что будет в игре.
+async function precompile() {
+  const hidden = [];
+  scene.traverse((o) => { if (!o.visible && !o.isLight) { hidden.push(o); o.visible = true; } });
+  try {
+    if (renderer.compileAsync) await Promise.race([renderer.compileAsync(scene, camera), sleep(6000)]);
+    else renderer.compile(scene, camera);
+  } catch (e) { /* не критично */ }
+  for (const o of hidden) o.visible = false;
+}
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.1;
@@ -841,7 +856,9 @@ function updateWristMap(dt) {
   const up = game.scanT > 0 && !pl.hidden && game.mode === 'play';
   poseWrist(wrist, dt, up, tAll, pl.bob || 0, camera.aspect);
   const sc = wrist.raise > 0.3; if (sc !== game.scanUI) { game.scanUI = sc; document.body.classList.toggle('scanning', sc); }
-  if (wrist.root.visible) drawRadar(wrist, dt, tAll, pl.x, pl.z, pl.yaw, scanBlips());
+  // радар на запястье: холст 256² перерисовывается и грузится в видеочип — 30 раз в секунду достаточно
+  game.radT = (game.radT || 0) + dt;
+  if (wrist.root.visible && game.radT >= 1 / 30) { drawRadar(wrist, game.radT, tAll, pl.x, pl.z, pl.yaw, scanBlips()); game.radT = 0; }
   if (!minimap) minimap = createMinimap($('minimap'));
   trackTrail(minimap, pl.x, pl.z);
   minimap.t -= dt;
@@ -1258,7 +1275,7 @@ async function startLevel(lv, fresh = false, opt = {}) {
   if (opt.taken) for (const i of opt.taken) markTaken(i, null, true);
   for (const r of rp.values()) { r.inLvl = false; r.dead = false; }
   applyCamera(0.016);
-  try { renderer.compile(scene, camera); } catch (e) { /* ignore */ }
+  await precompile();
   setObjective();
   await sleep(Math.max(0, 4200 - (performance.now() - t0)));
   card.classList.add('fade'); showHUD();

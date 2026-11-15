@@ -182,7 +182,9 @@ class Sound {
   setVol(v) { this.vol = v; if (this.master) this.master.gain.setTargetAtTime(v, this.ctx.currentTime, 0.05); }
   suspend() { try { if (this.ctx) this.ctx.suspend(); } catch (e) { /* ignore */ } }
   resume() { try { if (this.ctx) this.ctx.resume(); } catch (e) { /* ignore */ } }
-  set(n, v, tc = 0.08) { if (n) n.gain.setTargetAtTime(v, this.ctx.currentTime, tc); }
+  // Плавно сменить громкость узла. Команду шлём только когда цель изменилась: в Safari каждая такая команда
+  // остаётся в очереди автоматизации, и при 60 вызовах в секунду на десяток узлов звук начинает грузить процессор.
+  set(n, v, tc = 0.08) { if (!n || (n._zkT !== undefined && Math.abs(n._zkT - v) < 0.0005)) return; n._zkT = v; n.gain.setTargetAtTime(v, this.ctx.currentTime, tc); }
   setBeacon(x, y, z) { if (this.ctx) this.pos(this.beaP, x, y, z); }
   setBox(x, y, z) { if (this.ctx) this.pos(this.boxP, x, y, z); }
   setCircus(x, y, z) { if (this.ctx) this.pos(this.cirP, x, y, z); }
@@ -210,7 +212,8 @@ class Sound {
     if (this.dreadG) {
       const t = Math.max(s.prox || 0, s.chase ? 1 : 0);
       this.set(this.dreadG, game ? 0.035 + 0.4 * t : menu ? 0.04 : 0, 0.9);
-      this.dreadF.frequency.setTargetAtTime(380 + 3400 * t, this.ctx.currentTime, 0.9);
+      const fq = Math.round((380 + 3400 * t) / 20) * 20;
+      if (fq !== this.dreadFq) { this.dreadFq = fq; this.dreadF.frequency.setTargetAtTime(fq, this.ctx.currentTime, 0.9); }
     }
     // далёкие звуки раз в 20–50 с (не во время погони)
     if (game && !s.chase && this.S) { this.ambT -= dt; if (this.ambT <= 0) { this.ambT = 20 + Math.random() * 30; this.ambientEvent(s.office); } }
