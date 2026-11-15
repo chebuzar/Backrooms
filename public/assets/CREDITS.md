@@ -28,3 +28,7 @@
 
 - **N8AO** (screen-space ambient occlusion) by N8python — CC0 1.0. Vendored three.js pass in `src/render/n8ao/` (the pmndrs `N8AOPostPass` is omitted). https://github.com/N8python/n8ao
 - **detect-gpu** by pmndrs — MIT. GPU benchmark data bundled with the game. https://github.com/pmndrs/detect-gpu
+
+## Sounds
+
+- `assets/sfx/*.mp3` — **Meta Open Sound** (Oculus Audio Pack) by Meta, **CC0 1.0**. https://github.com/facebookincubator/Meta-open-sound — converted from OGG to MP3, peak-normalized to −1 dBFS. Sources: CREAMnstr_CreatureCreepy*, DSGNDron_DroneCreepy*, DSGNImpt_ImpactCreepyReverb*, MUSCStr_StringsCreepy*, MUSCKeyd_PipeOrganCreepy, METLFric_ScratchCreepyReverb*, CHAINMvmt_ChainsCreepy, VOXWhsp_WhispersCreepy*, VOXFem/VOXMale_GroanCreepy, VOXScrm_FemaleScream, HMNBrth_*Breathing, DOORKnck_OfficeDoorKnock, DOORMetl_HatchClose, DOORWood_OfficeDoorClose, MACHMisc_MachineHum_LOOP, MECHSwtch_SwitchSmallOn/Off, CLOCKTick_ClockCreepyReverb.

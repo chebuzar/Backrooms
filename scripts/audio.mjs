@@ -19,6 +19,9 @@ const PRESETS = {
   steps: [3, `amb(); for (let i = 0; i < 5; i++) at(0.3 + i * 0.45, () => s.step('carpet'));`],
   hall: [5, `s.setReverb(3.6, 0.5); amb(); for (let i = 0; i < 4; i++) at(0.3 + i * 0.45, () => s.step('concrete')); at(2.4, () => s.slam(3, -6));`],
   ambience: [6, `amb();`],
+  // записи (CC0): ставка «появление», «заметил», далёкие события, голоса, фон страха по близости
+  fear: [16, `amb(); at(0.3, () => s.hit()); at(3, () => { s.setEnt(3, 1.8, -4); s.spotted(); }); [0,1,2,3,4].forEach((i) => at(6 + i * 1.8, () => s.ambientEvent(true))); at(15, () => s.torch(true));`],
+  dread: [10, `amb(); at(0.1, () => { G.prox = 0; s.frame(0.016, G); }); at(5, () => { G.prox = 1; G.chase = true; for (let k = 0; k < 40; k++) s.frame(0.1, G); });`],
   voices: [12, `amb(); ['watcher','blind','crawler','grinner','drowned','swimmer','puppet','mimic','stalker','shadow'].forEach((k, i) => at(0.3 + i * 1.15, () => s.voice(k, 2, -3, true)));`],
   'steps-dry': [3, `for (let i = 0; i < 5; i++) at(0.3 + i * 0.45, () => s.step('carpet'));`],
   'concrete-dry': [3, `for (let i = 0; i < 5; i++) at(0.3 + i * 0.45, () => s.step('concrete'));`]
@@ -39,6 +42,7 @@ for (const name of names) {
   const res = await page.evaluate(async ([dur, code]) => {
     const SR = 44100, ctx = new OfflineAudioContext(2, SR * dur, SR);
     const s = new window.__zk.sound.constructor(); s.vol = 0.8; s.init(ctx);
+    await s.loadSamples('/assets/sfx/');
     const G = { mode: 'game', power: 1, prox: 0, beacon: false, ent: false, chase: false, tin: 0, wade: 0, box: false, circus: false, black: false };
     const amb = () => s.frame(0.016, G);
     const jobs = [];

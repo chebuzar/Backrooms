@@ -513,7 +513,7 @@ function toggleLight() {
   if (game.mode !== 'play') return;
   if (pl.bat <= 0) { toast('🔋 Фонарик сел. Найди батарейку.'); return; }
   if (pl.hidden) return;
-  pl.light = !pl.light; sound.click();
+  pl.light = !pl.light; sound.torch(pl.light);
   $('bLight').classList.toggle('on', pl.light);
 }
 
@@ -1478,7 +1478,7 @@ $('bEndless').addEventListener('click', () => { sound.ui(); game.endless = true;
 $('bEndMenu').addEventListener('click', () => { sound.ui(); hide('ending'); if (game.coop) leaveCoop(); toMenu(); });
 $('splash').addEventListener('click', () => {
   try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) { /* ignore */ }
-  sound.init(); sound.setVol(SAVE.set.vol / 100);
+  sound.init(); sound.setVol(SAVE.set.vol / 100); sound.loadSamples(import.meta.env.BASE_URL + 'assets/sfx/');
   hide('splash'); toMenu();
   if (isTouch) { try { const el = document.documentElement; if (!el.requestFullscreen && el.webkitRequestFullscreen) el.webkitRequestFullscreen(); else if (el.requestFullscreen) el.requestFullscreen().then(() => { try { screen.orientation.lock('landscape').catch(() => {}); } catch (e) { /* ignore */ } }).catch(() => {}); } catch (e) { /* ignore */ } }
 });
@@ -1976,7 +1976,7 @@ function loop(now) {
   if (ent) sound.setEnt(ent.x, 1.8, ent.z);
   sound.frame(dt, {
     mode: (m === 'menu' || m === 'prologue') ? 'menu' : inGame ? 'game' : 'off',
-    power: game.power * game.th.power, prox: game.prox, beacon: true, ent: !!(ent && ent.active), chase: !!(ent && ent.state === 'chase'),
+    power: game.power * game.th.power, prox: game.prox, office: game.th.details === 'office', beacon: true, ent: !!(ent && ent.active), chase: !!(ent && ent.state === 'chase'),
     tin: clamp((40 - pl.san) / 40, 0, 1), wade: m === 'play' ? game.wade || 0 : 0, box: !!(lvl && lvl.secret), circus: !!(lvl && lvl.circus) && game.musicOn, black: game.black && inGame
   });
   if (game.coop) coopFrame(dt);

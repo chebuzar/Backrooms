@@ -9,7 +9,7 @@ const MELODY = [
 ];
 
 class Sound {
-  constructor() { this.ctx = null; this.vol = 0.8; this.boxT = 0; this.boxI = 0; this.bellT = 3; }
+  constructor() { this.ctx = null; this.vol = 0.8; this.boxT = 0; this.boxI = 0; this.bellT = 3; this.ambT = 18; this.lx = 0; this.lz = 0; this.ex = 0; this.ez = 0; }
 
   // ctxOverride — OfflineAudioContext для записи звуков в файл (scripts/audio.mjs).
   init(ctxOverride) {
@@ -98,6 +98,59 @@ class Sound {
       this.rev.buffer = b; this.revSize = sec;
     }
   }
+  // ---------- записанные звуки (CC0, Meta Open Sound — public/assets/sfx) ----------
+  // Грузятся после первого жеста; пока не загрузились — играют синтезированные звуки.
+  loadSamples(base) {
+    if (!this.ctx || this.S) return this.loading;
+    this.S = {};
+    const names = ['creature1', 'creature2', 'creature3', 'creatureFar1', 'creatureFar2', 'impact1', 'impact2', 'impact3', 'strings1', 'strings2',
+      'scrape1', 'scrape2', 'chains', 'whisper', 'whisperFar', 'groanF', 'groanM', 'scream', 'breathM', 'breathF', 'knock', 'slamMetal',
+      'doorClose', 'clickOn', 'clickOff', 'clock', 'drone1', 'drone2', 'organ'];
+    const decode = (ab) => new Promise((res, rej) => { const p = this.ctx.decodeAudioData(ab, res, rej); if (p && p.then) p.then(res, rej); });
+    // по очереди, тяжёлые (гул) — последними: не забиваем сеть на старте
+    this.loading = (async () => {
+      for (const n of names) {
+        try { const r = await fetch(base + n + '.mp3'); if (!r.ok) continue; this.S[n] = await decode(await r.arrayBuffer()); } catch (e) { /* нет звука — останется синтез */ }
+        if (n === 'drone1') this.startDread();
+      }
+    })();
+    return this.loading;
+  }
+  // вариант по имени: 'creature' → creature1..3
+  pickS(name) {
+    if (!this.S) return null;
+    if (this.S[name]) return this.S[name];
+    const v = []; for (let i = 1; i <= 3; i++) if (this.S[name + i]) v.push(this.S[name + i]);
+    if (name === 'groan' || name === 'breath') for (const s of ['M', 'F']) if (this.S[name + s]) v.push(this.S[name + s]);
+    return v.length ? v[(Math.random() * v.length) | 0] : null;
+  }
+  // проиграть запись: vol, rate, dest (узел; по умолчанию bus), delay, lp — фильтр «издалека», pan −1..1
+  smp(name, o = {}) {
+    const b = this.pickS(name); if (!b || !this.ctx) return false;
+    const c = this.ctx, s = c.createBufferSource(); s.buffer = b; s.playbackRate.value = o.rate || 1;
+    let n = s;
+    if (o.lp) { const f = this.filt('lowpass', o.lp, 0.7); n.connect(f); n = f; }
+    if (o.pan && c.createStereoPanner) { const p = c.createStereoPanner(); p.pan.value = o.pan; n.connect(p); n = p; }
+    n.connect(this.g(o.vol ?? 0.6, o.dest || this.bus));
+    s.start(c.currentTime + (o.delay || 0));
+    return true;
+  }
+  // фон страха: тёмный гул, громче и «открытее», когда Он близко или гонится
+  startDread() {
+    if (this.dreadG || !this.S.drone1) return;
+    const s = this.ctx.createBufferSource(); s.buffer = this.S.drone1; s.loop = true;
+    this.dreadF = this.filt('lowpass', 500, 0.7); this.dreadG = this.g(0, this.bus);
+    s.connect(this.dreadF); this.dreadF.connect(this.dreadG); s.start();
+  }
+  // случайные далёкие звуки: где-то в 12–28 м от игрока
+  ambientEvent(office) {
+    const ev = ['creatureFar', 'scrape', 'chains', 'groan', 'whisperFar', 'doorClose', 'knock', 'slamMetal', 'creatureFar', 'scrape'];
+    if (office) ev.push('clock');
+    const n = ev[(Math.random() * ev.length) | 0], a = Math.random() * Math.PI * 2, d = 12 + Math.random() * 16;
+    const p = this.at(this.lx + Math.cos(a) * d, 1.4, this.lz + Math.sin(a) * d, 6); if (!p) return;
+    this.smp(n, { dest: p, lp: 900 + Math.random() * 1600, vol: 0.5 + Math.random() * 0.3, rate: 0.85 + Math.random() * 0.25 });
+  }
+  torch(on) { if (!this.smp(on ? 'clickOn' : 'clickOff', { vol: 0.5, dest: this.fx })) this.click(); }
   // кривая перегруза для рыка
   shaper(k = 40) {
     const s = this.ctx.createWaveShaper(), n = 1024, cv = new Float32Array(n);
@@ -119,6 +172,7 @@ class Sound {
   }
   listen(x, y, z, fx, fy, fz) {
     if (!this.ctx) return;
+    this.lx = x; this.lz = z;
     const l = this.ctx.listener;
     if (l.positionX) {
       l.positionX.value = x; l.positionY.value = y; l.positionZ.value = z;
@@ -132,7 +186,7 @@ class Sound {
   setBeacon(x, y, z) { if (this.ctx) this.pos(this.beaP, x, y, z); }
   setBox(x, y, z) { if (this.ctx) this.pos(this.boxP, x, y, z); }
   setCircus(x, y, z) { if (this.ctx) this.pos(this.cirP, x, y, z); }
-  setEnt(x, y, z) { if (this.ctx) this.pos(this.entP, x, y, z); }
+  setEnt(x, y, z) { this.ex = x; this.ez = z; if (this.ctx) this.pos(this.entP, x, y, z); }
 
   frame(dt, s) {
     if (!this.ctx) return;
@@ -152,6 +206,14 @@ class Sound {
     this.set(this.boxG, game && s.box ? 0.8 : 0, 0.6);
     this.set(this.rumG, game && s.black ? 0.9 : 0, s.black ? 0.4 : 0.8);
     this.set(this.cirG, game && s.circus ? 0.9 * Math.max(0.15, Math.min(1, s.power)) : 0, 0.5);
+    // фон страха: громче и ярче с близостью/погоней
+    if (this.dreadG) {
+      const t = Math.max(s.prox || 0, s.chase ? 1 : 0);
+      this.set(this.dreadG, game ? 0.035 + 0.4 * t : menu ? 0.04 : 0, 0.9);
+      this.dreadF.frequency.setTargetAtTime(380 + 3400 * t, this.ctx.currentTime, 0.9);
+    }
+    // далёкие звуки раз в 20–50 с (не во время погони)
+    if (game && !s.chase && this.S) { this.ambT -= dt; if (this.ambT <= 0) { this.ambT = 20 + Math.random() * 30; this.ambientEvent(s.office); } }
     if (game && s.circus) {
       this.cT -= dt;
       if (this.cT <= 0) { this.waltzBeat(this.cB++); this.cT = 0.44; }
@@ -184,24 +246,27 @@ class Sound {
   }
   // ---------- страх ----------
   hit() {   // резкий удар при появлении
+    if (this.smp('impact', { vol: 0.95, dest: this.fx })) { this.smp('strings', { vol: 0.55, dest: this.fx, delay: 0.04 }); this.tone(70, 1.4, 'sine', 0.35, 30, this.fx); return; }
     for (const f of [92, 97.5, 138, 146.8, 207]) this.tone(f, 1.6, 'sawtooth', 0.12, f * 0.94);
     this.noise(0.9, 'bandpass', 1400, 0.6, 0.7, null, 0.004); this.noise(1.4, 'lowpass', 180, 1, 0.9, null, 0.004);
     this.tone(2600, 0.9, 'square', 0.03, 1900);
   }
   powerDown() { this.tone(120, 1.4, 'sawtooth', 0.12, 30); this.noise(0.12, 'highpass', 3000, 0.7, 0.4); this.tone(60, 2.2, 'sine', 0.35, 28, null, 0.2); }
-  breathBehind(x, z) { const p = this.at(x, 1.6, z, 0.8); if (!p) return; this.noise(0.9, 'bandpass', 700, 1.2, 0.35, p, 0.35); this.noise(1.1, 'bandpass', 520, 1.2, 0.3, p, 0.45, 1.0); }
+  breathBehind(x, z) { const p = this.at(x, 1.6, z, 0.8); if (!p) return; if (this.smp('breath', { dest: p, vol: 0.9, rate: 0.92 })) return; this.noise(0.9, 'bandpass', 700, 1.2, 0.35, p, 0.35); this.noise(1.1, 'bandpass', 520, 1.2, 0.3, p, 0.45, 1.0); }
   runSteps(x0, z0, x1, z1) {
     for (let k = 0; k < 9; k++) {
       const t = k / 8, p = this.at(x0 + (x1 - x0) * t, 0.3, z0 + (z1 - z0) * t, 2.5); if (!p) return;
       this.tone(64, 0.16, 'sine', 0.6, 36, p, k * 0.21); this.noise(0.14, 'lowpass', 320, 1, 0.35, p, 0.004, k * 0.21);
     }
   }
-  screamFar(x, z) { const p = this.at(x, 1.6, z, 6); if (!p) return; for (const [f, d] of [[620, 0], [700, 0.05], [540, 0.1]]) this.tone(f, 1.4, 'sawtooth', 0.09, f * 0.55, p, d); this.noise(1.3, 'bandpass', 1500, 2, 0.12, p, 0.05); }
-  scratch(x, z) { const p = this.at(x, 1.2, z, 2); if (!p) return; for (let k = 0; k < 4; k++) this.noise(0.35, 'bandpass', 3200 + Math.random() * 1500, 6, 0.22, p, 0.02, k * 0.42); }
-  whisperEar() { this.noise(1.6, 'bandpass', 3000, 5, 0.1, null, 0.6); this.noise(1.2, 'bandpass', 2200, 6, 0.08, null, 0.5, 0.4); }
+  screamFar(x, z) { const p = this.at(x, 1.6, z, 6); if (!p) return; if (this.smp('scream', { dest: p, vol: 0.55, lp: 1800, rate: 0.9 })) return; for (const [f, d] of [[620, 0], [700, 0.05], [540, 0.1]]) this.tone(f, 1.4, 'sawtooth', 0.09, f * 0.55, p, d); this.noise(1.3, 'bandpass', 1500, 2, 0.12, p, 0.05); }
+  scratch(x, z) { const p = this.at(x, 1.2, z, 2); if (!p) return; if (this.smp('scrape', { dest: p, vol: 0.8 })) return; for (let k = 0; k < 4; k++) this.noise(0.35, 'bandpass', 3200 + Math.random() * 1500, 6, 0.22, p, 0.02, k * 0.42); }
+  whisperEar() { if (this.smp('whisper', { vol: 0.5, pan: Math.random() < 0.5 ? -0.95 : 0.95, dest: this.fx })) return; this.noise(1.6, 'bandpass', 3000, 5, 0.1, null, 0.6); this.noise(1.2, 'bandpass', 2200, 6, 0.08, null, 0.5, 0.4); }
   voice(kind, x, z, chase) {
     const p = this.at(x, 1.9, z, 3); if (!p) return;
     const v = chase ? 1.4 : 1;
+    const RATE = { blind: 1.25, grinner: 1.1, drowned: 0.75, swimmer: 0.85, puppet: 1.3, mimic: 0.95 };
+    if (Math.random() < 0.7 && this.smp(chase ? 'creature' : (Math.random() < 0.5 ? 'creature' : 'groan'), { dest: p, vol: 0.75 * v, rate: (RATE[kind] || 0.8) * (0.92 + Math.random() * 0.16) })) return;
     if (kind === 'blind') { for (let k = 0; k < 4; k++) this.noise(0.04, 'bandpass', 3800, 8, 0.4 * v, p, 0.002, k * 0.12); }
     else if (kind === 'grinner') { for (let k = 0; k < 6; k++) this.tone(900 + k * 40 + Math.random() * 80, 0.09, 'triangle', 0.08 * v, 700, p, k * 0.11); }
     else if (kind === 'drowned') { for (let k = 0; k < 8; k++) this.tone(180 + Math.random() * 260, 0.07, 'sine', 0.16 * v, 90, p, k * 0.09); this.noise(0.8, 'lowpass', 400, 2, 0.12, p, 0.2); }
@@ -249,7 +314,7 @@ class Sound {
   key0() { this.tone(1200, 0.06, 'square', 0.05); }
   alarm(t = 2.4) { for (let k = 0; k < t / 0.6; k++) { this.tone(700, 0.3, 'sawtooth', 0.06, 980, null, k * 0.6); this.tone(980, 0.3, 'sawtooth', 0.06, 700, null, k * 0.6 + 0.3); } }
   ring(x, z) { const p = this.at(x, 1.4, z, 4); if (!p) return; for (let k = 0; k < 8; k++) { this.tone(1050, 0.06, 'square', 0.07, 1050, p, k * 0.1); this.tone(1400, 0.06, 'square', 0.05, 1400, p, k * 0.1 + 0.05); } }
-  knock(x, z, n = 3) { const p = this.at(x, 1.3, z, 3); if (!p) return; for (let k = 0; k < n; k++) { this.tone(90, 0.15, 'sine', 0.6, 60, p, k * 0.32); this.noise(0.1, 'lowpass', 700, 1, 0.5, p, 0.002, k * 0.32); } }
+  knock(x, z, n = 3) { const p = this.at(x, 1.3, z, 3); if (!p) return; if (this.smp('knock', { dest: p, vol: 0.9, rate: 0.85 + Math.random() * 0.2 })) return; for (let k = 0; k < n; k++) { this.tone(90, 0.15, 'sine', 0.6, 60, p, k * 0.32); this.noise(0.1, 'lowpass', 700, 1, 0.5, p, 0.002, k * 0.32); } }
   tick(x, z) { const p = this.at(x, 1.8, z, 2); if (!p) return; this.noise(0.03, 'bandpass', 4000, 6, 0.3, p, 0.001); }
   phoneVoice() { this.noise(2.4, 'bandpass', 1200, 4, 0.12, null, 0.2); for (let k = 0; k < 7; k++) this.tone(180 + Math.random() * 60, 0.22, 'sawtooth', 0.04, 150, null, k * 0.3); }
   blinkSnd(x, z) { const p = this.at(x, 1.5, z, 2.5); if (!p) return; this.noise(0.12, 'bandpass', 4200, 2, 0.4, p, 0.002); this.tone(1800, 0.1, 'square', 0.05, 300, p); }
@@ -328,6 +393,7 @@ class Sound {
     if (!this.ctx) return;
     const c = this.ctx, t = c.currentTime + 0.06, out = this.fx;
     this.scareT = 2.2;
+    this.smp('creature', { vol: 1, dest: out, rate: 0.75, delay: 0.05 }); this.smp('impact', { vol: 1, dest: out, delay: 0.04 }); this.smp('scream', { vol: 0.45, dest: out, rate: 0.7, delay: 0.12 });
     // 1. удар по низам
     this.tone(70, 1.6, 'sine', 1.0, 28, out, 0.06);
     this.noise(0.7, 'lowpass', 900, 0.8, 0.9, out, 0.003, 0.06, 120);
@@ -365,13 +431,16 @@ class Sound {
   buzz() { this.tone(100, 0.14, 'square', 0.035); }
   spark(x, z) { const p = this.at(x, 2.6, z); if (p) { this.noise(0.25, 'highpass', 3500, 0.7, 0.5, p); this.noise(0.1, 'highpass', 5000, 0.7, 0.3, p, 0.005, 0.2); } }
   distantSteps(x, z) { const p = this.at(x, 0.3, z); if (!p) return; for (let k = 0; k < 6; k++) { this.tone(60, 0.22, 'sine', 0.55, 35, p, k * 0.5); this.noise(0.2, 'lowpass', 260, 1, 0.3, p, 0.005, k * 0.5); } }
-  slam(x, z) { const p = this.at(x, 1.2, z); if (p) { this.noise(0.8, 'lowpass', 400, 1, 0.9, p); this.tone(70, 0.6, 'sine', 0.8, 40, p); } }
+  slam(x, z) { const p = this.at(x, 1.2, z); if (p && this.smp(Math.random() < 0.5 ? 'slamMetal' : 'doorClose', { dest: p, vol: 1 })) return; if (p) { this.noise(0.8, 'lowpass', 400, 1, 0.9, p); this.tone(70, 0.6, 'sine', 0.8, 40, p); } }
   creak(x, z) { const p = this.at(x, 1.5, z); if (p) { this.tone(170, 1.3, 'sawtooth', 0.06, 240, p); this.tone(340, 1.1, 'triangle', 0.03, 300, p, 0.1); } }
-  whisper() { this.noise(1.4, 'bandpass', 2600, 4, 0.06, null, 0.5); this.noise(1.1, 'bandpass', 3300, 5, 0.04, null, 0.4, 0.3); }
+  whisper() { if (this.smp('whisper', { vol: 0.32, pan: Math.random() < 0.5 ? -0.8 : 0.8 })) return; this.noise(1.4, 'bandpass', 2600, 4, 0.06, null, 0.5); this.noise(1.1, 'bandpass', 3300, 5, 0.04, null, 0.4, 0.3); }
   drip(x, z) { const p = this.at(x, 0.5, z, 1.5); if (p) this.tone(1900, 0.12, 'sine', 0.2, 1100, p); }
   wake() { this.tone(70, 2.2, 'sawtooth', 0.1, 40); this.noise(2, 'lowpass', 300, 1, 0.1, null, 0.6); }
-  spotted() { this.tone(48, 1.4, 'sawtooth', 0.14, 36); this.noise(0.8, 'bandpass', 2400, 2, 0.08, null, 0.2); }
-  stinger() { this.tone(50, 2.2, 'sine', 0.3, 35); this.noise(1.8, 'lowpass', 500, 1, 0.12, null, 0.3); }
+  spotted() {
+    if (this.smp('strings', { vol: 0.6, dest: this.fx })) { const p = this.at(this.ex, 1.8, this.ez, 3); if (p) this.smp('creature', { dest: p, vol: 0.9, rate: 0.9 }); return; }
+    this.tone(48, 1.4, 'sawtooth', 0.14, 36); this.noise(0.8, 'bandpass', 2400, 2, 0.08, null, 0.2);
+  }
+  stinger() { if (this.smp('impact', { vol: 0.7, dest: this.fx, rate: 0.85 })) return; this.tone(50, 2.2, 'sine', 0.3, 35); this.noise(1.8, 'lowpass', 500, 1, 0.12, null, 0.3); }
   lockerIn() { this.tone(180, 0.12, 'square', 0.06, 120); this.noise(0.25, 'bandpass', 1200, 2, 0.15); this.tone(90, 0.2, 'sine', 0.2, 60, null, 0.12); }
   lockerOut() { this.noise(0.3, 'bandpass', 900, 1.5, 0.14); this.tone(220, 0.15, 'square', 0.05, 160); }
   // вход в новую зону: тихий низкий аккорд
