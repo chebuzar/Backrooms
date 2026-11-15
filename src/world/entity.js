@@ -552,8 +552,7 @@ class Entity {
     if (dist <= 4 || o.stared) this.yaw += angleDiff(this.yaw, Math.atan2(dx, dz)) * Math.min(1, dt * 8);
     this.anim(dt, o);
     this.y += (L.groundY(this.x, this.z) - this.y) * Math.min(1, dt * 5);
-    this.m.group.position.set(this.x, this.y, this.z);
-    this.m.group.rotation.y = this.yaw;
+    if (this.smTick !== false) { this.m.group.position.set(this.x, this.y, this.z); this.m.group.rotation.y = this.yaw; }
     for (const p of T) if (!p.safe && !p.dead && Math.hypot(p.x - this.x, p.z - this.z) < 0.85) return { kill: p.id };
     return null;
   }
@@ -574,8 +573,7 @@ class Entity {
     if (this.state === 'dormant') return;
     this.anim(dt, {});
     this.y += (this.lvl.groundY(this.x, this.z) - this.y) * Math.min(1, dt * 5);
-    this.m.group.position.set(this.x, this.y, this.z);
-    this.m.group.rotation.y = this.yaw;
+    if (this.smTick !== false) { this.m.group.position.set(this.x, this.y, this.z); this.m.group.rotation.y = this.yaw; }
   }
 
   anim(dt, o = {}) {
@@ -586,7 +584,12 @@ class Entity {
     if (moving && (prev < 0) !== (s < 0) && !(this.ai.mimic && o.moving)) this.hooks.step && this.hooks.step(this.x, this.z, this.speed);
     if (m.glb) {
       // готовая модель: скелетная анимация + нервное подёргивание головы
-      m.update(dt, this.speed, this.frozen);
+      // покадрово (11 к/с), пока бродит и подкрадывается; плавно и быстро — в погоне
+      this.smT = (this.smT || 0) + dt;
+      const tick = this.state === 'chase' || this.frozen || this.smT >= 1 / 11;
+      if (tick) this.smT = 0;
+      this.smTick = tick;
+      m.update(dt, this.speed, this.frozen, !tick);
       this.twT -= dt;
       if (this.twT <= 0) { this.twT = 0.4 + Math.random() * 2.2; this.tw = (Math.random() - 0.5) * 0.9; }
       if (m.headBone) { m.headBone.rotation.z += (this.frozen ? 0.4 : this.tw) * 0.6; }

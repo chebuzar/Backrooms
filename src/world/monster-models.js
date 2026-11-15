@@ -134,10 +134,14 @@ export function makeMonsterMesh(look = {}) {
     a.reset().setEffectiveWeight(1).fadeIn(fade).play(); if (cur) cur.fadeOut(fade); cur = a;
   };
   play('idle', 0);
+  let acc = 0;
   const m = {
     group, head: headA, jaw, chest: chestA, spine: spineA, hips: hipsA, arms: [], legs: [], eyes, mat, look: L, mats, mixer, glb: true, headBone: head,
     // speed — скорость монстра, м/с; frozen — замер под взглядом
-    update(dt, speed, frozen) {
+    // hold — «стоп-кадр»: позу не обновляем, время копим (покадровое движение, пока Он не гонится)
+    update(dt, speed, frozen, hold) {
+      acc += dt; if (hold) return;
+      dt = acc; acc = 0;
       if (frozen) { mixer.timeScale = 0; }
       else if (speed < 0.3) { play('idle'); mixer.timeScale = 1; }
       else if (speed < 2.2) { play('walk'); mixer.timeScale = (R.wSpeed || 1) * speed / 1.3; }

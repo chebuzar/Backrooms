@@ -293,6 +293,15 @@ function lights(dt, allowBlack) {
     if (Math.random() < 0.28) { game.dip = 0.5 + Math.random() * 0.3; game.dipT = 0.03 + Math.random() * 0.12; if (allowBlack && Math.random() < 0.4) sound.buzz(); }
   }
   if (game.dipT > 0) { game.dipT -= dt; if (!game.black) p *= game.dip; }
+  // Он рядом — лампы сходят с ума: чем ближе, тем чаще и глубже гаснут
+  if (allowBlack && ent && ent.active && ent.state !== 'dormant' && !game.black) {
+    const near = clamp(1 - ent.dist / 12, 0, 1);
+    if (near > 0) {
+      game.mfT = (game.mfT || 0) - dt;
+      if (game.mfT <= 0) { game.mfT = 0.03 + Math.random() * (0.25 - 0.18 * near); const was = game.mfOn !== false; game.mfOn = Math.random() > near * 0.55; if (was && !game.mfOn && Math.random() < 0.3) sound.buzz(); }
+      if (!game.mfOn) p *= 0.1 + 0.35 * (1 - near);
+    } else game.mfOn = true;
+  }
   game.power = p;
   const P = p * th.power;
   BAKE.value = Math.PI * P * LOOK.bake; AMBK.value = LOOK.wallAmb;
