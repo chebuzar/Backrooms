@@ -2032,9 +2032,9 @@ function loop(now) {
   requestAnimationFrame(loop);
   // Android-экраны 90/120 Гц: без ограничения игра рисует до 120 кадров, телефон греется и сбрасывает частоты.
   // Держим ≤ 60 (Safari на iPhone ограничивает сам).
-  // Android-экраны 90/120 Гц: без ограничения игра рисует до 120 кадров, телефон греется и сбрасывает частоты.
   if (isAndroid) { if (now < nextFrame - 1.5) return; nextFrame = Math.max(nextFrame + 1000 / 60, now); }
   const rawDt = (now - last) / 1000, dt = Math.min(0.05, rawDt); last = now; tAll += dt;
+  const pt0 = PERF ? performance.now() : 0;
   autoRes(rawDt);
   U.uTime.value = tAll;
   if (!lvl) return;
@@ -2060,7 +2060,29 @@ function loop(now) {
   });
   if (game.coop) coopFrame(dt);
   if (m === 'ending') return;
+  const pt1 = PERF ? performance.now() : 0;
+  if (PERF) { renderer.info.autoReset = false; renderer.info.reset(); }
   composer.render(dt);
+  if (PERF) perfFrame(rawDt * 1000, pt1 - pt0, performance.now() - pt1);
+}
+
+// ---------- панель замеров (?perf в адресе) ----------
+// Показывает на реальном устройстве, на что уходит время кадра: логика игры, отправка кадра в видеочип,
+// сами кадры и «рывки» (> 50 мс) с тем, что в этот момент происходило. Игру не меняет.
+const PERF = new URLSearchParams(location.search).has('perf');
+let perfEl = null; const PS = { n: 0, t: 0, upd: 0, ren: 0, max: 0, spikes: [], acc: 0 };
+function perfFrame(frame, upd, ren) {
+  if (!perfEl) { perfEl = document.createElement('pre'); perfEl.style.cssText = 'position:fixed;left:6px;bottom:6px;z-index:99;margin:0;padding:6px 8px;background:rgba(0,0,0,.72);color:#9f9;font:11px/1.35 monospace;pointer-events:none;white-space:pre'; document.body.appendChild(perfEl); }
+  PS.n++; PS.t += frame; PS.upd += upd; PS.ren += ren; PS.max = Math.max(PS.max, frame); PS.acc += frame;
+  if (frame > 50) { PS.spikes.unshift(`${frame.toFixed(0)}мс: ${game.mode}${ent && ent.active ? ' монстр' : ''}${upd > ren ? ' логика ' + upd.toFixed(0) : ' рендер ' + ren.toFixed(0)}`); PS.spikes.length = Math.min(PS.spikes.length, 5); }
+  if (PS.acc < 500) return;
+  const i = renderer.info, mem = performance.memory ? ` · JS ${(performance.memory.usedJSHeapSize / 1048576).toFixed(0)} МБ` : '';
+  perfEl.textContent = `${DEV.platform}/${DEV.form} t${DEV.tier} · ${quality} · ${renderer.domElement.width}×${renderer.domElement.height}\n` +
+    `FPS ${(1000 * PS.n / PS.t).toFixed(0)} · кадр ${(PS.t / PS.n).toFixed(1)} (макс ${PS.max.toFixed(0)}) мс\n` +
+    `логика ${(PS.upd / PS.n).toFixed(1)} мс · отправка кадра ${(PS.ren / PS.n).toFixed(1)} мс\n` +
+    `вызовов ${i.render.calls} · треуг. ${(i.render.triangles / 1000).toFixed(0)}k · шейдеров ${i.programs ? i.programs.length : '?'} · текстур ${i.memory.textures}${mem}\n` +
+    (PS.spikes.length ? 'рывки:\n  ' + PS.spikes.join('\n  ') : 'рывков нет');
+  PS.n = PS.t = PS.upd = PS.ren = PS.max = PS.acc = 0;
 }
 
 // ---------- отладка ----------
