@@ -11,7 +11,8 @@
     "lint": "eslint .",
     "smoke": "node scripts/smoke.mjs",
     "check": "npm run lint && npm run build && npm run smoke",
-    "shot": "node scripts/shot.mjs"
+    "shot": "node scripts/shot.mjs",
+    "audio": "node scripts/audio.mjs"
   },
   "engines": {
     "node": ">=20"

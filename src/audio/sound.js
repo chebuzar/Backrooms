@@ -11,15 +11,26 @@ const MELODY = [
 class Sound {
   constructor() { this.ctx = null; this.vol = 0.8; this.boxT = 0; this.boxI = 0; this.bellT = 3; }
 
-  init() {
-    if (this.ctx) { if (this.ctx.state === 'suspended') this.ctx.resume(); return; }
+  // ctxOverride — OfflineAudioContext для записи звуков в файл (scripts/audio.mjs).
+  init(ctxOverride) {
+    if (this.ctx) { if (this.ctx.state === 'suspended' && this.ctx.resume) this.ctx.resume(); return; }
     const C = window.AudioContext || window.webkitAudioContext;
-    if (!C) return;
-    let c; try { c = new C({ latencyHint: 'interactive' }); } catch (e) { return; }
+    if (!C && !ctxOverride) return;
+    let c = ctxOverride;
+    if (!c) { try { c = new C({ latencyHint: 'interactive' }); } catch (e) { return; } }
     this.ctx = c;
+    // iPhone/iPad: без этого Web Audio молчит при беззвучном режиме (Safari 17+).
+    try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) { /* ignore */ }
     const comp = c.createDynamicsCompressor(); comp.threshold.value = -12; comp.knee.value = 12; comp.ratio.value = 5; comp.connect(c.destination);
     this.master = c.createGain(); this.master.gain.value = this.vol; this.master.connect(comp);
-    this.bus = c.createGain(); this.bus.connect(this.master);
+    // bus — мир и игрок (идёт через «приглушение» duck и в реверб); fx — испуг и интерфейс, мимо приглушения.
+    this.duck = c.createGain(); this.duck.connect(this.master);
+    this.bus = c.createGain(); this.bus.connect(this.duck);
+    this.fx = c.createGain(); this.fx.connect(this.master);
+    this.rev = c.createConvolver(); this.revG = this.g(0.35, this.duck); this.rev.connect(this.revG);
+    this.revSend = this.g(0, this.rev); this.bus.connect(this.revSend);
+    this.revSize = 0; this.setReverb(2.2, 0.35);
+    this.scareT = 0;
     const len = c.sampleRate * 3;
     this.wb = c.createBuffer(1, len, c.sampleRate);
     const w = this.wb.getChannelData(0); for (let i = 0; i < len; i++) w[i] = Math.random() * 2 - 1;
@@ -62,6 +73,36 @@ class Sound {
     this.cT = 0; this.cB = 0;
     // шкатулка
     this.boxP = this.panner(1.2); this.boxG = this.g(0, this.boxP);
+    // бредёшь по воде: непрерывный плеск, громкость от скорости
+    this.wadeG = this.g(0, this.bus);
+    const wd = this.loop(this.wb), wdf = this.filt('bandpass', 520, 0.9); wd.connect(wdf);
+    const wdg = this.g(0.6, this.wadeG); wdf.connect(wdg);
+    const wl = c.createOscillator(); wl.frequency.value = 1.7; const wlg = this.g(0.45, null); wl.connect(wlg); wlg.connect(wdg.gain); wl.start();
+    const wd2 = this.loop(this.wb), wdf2 = this.filt('highpass', 2600, 0.7); wd2.connect(wdf2); wdf2.connect(this.g(0.12, this.wadeG));
+    if (this.pendRev) { this.setReverb(...this.pendRev); this.pendRev = null; }
+  }
+  // Реверб: импульсный отклик генерируется шумом с экспоненциальным спадом. sec — длина хвоста, wet — громкость.
+  setReverb(sec, wet) {
+    if (!this.ctx) { this.pendRev = [sec, wet]; return; }
+    this.revWet = wet;
+    if (Math.abs(sec - this.revSize) > 0.05) {
+      const c = this.ctx, n = Math.max(1, Math.floor(c.sampleRate * sec)), b = c.createBuffer(2, n, c.sampleRate);
+      for (let ch = 0; ch < 2; ch++) {
+        const d = b.getChannelData(ch); let lp = 0;
+        for (let i = 0; i < n; i++) {
+          const k = i / n, env = Math.pow(1 - k, 2.6) * (i < c.sampleRate * 0.012 ? i / (c.sampleRate * 0.012) : 1);
+          lp += ((Math.random() * 2 - 1) - lp) * (0.55 - 0.4 * k); // хвост темнеет со временем
+          d[i] = lp * env;
+        }
+      }
+      this.rev.buffer = b; this.revSize = sec;
+    }
+  }
+  // кривая перегруза для рыка
+  shaper(k = 40) {
+    const s = this.ctx.createWaveShaper(), n = 1024, cv = new Float32Array(n);
+    for (let i = 0; i < n; i++) { const x = (i / (n - 1)) * 2 - 1; cv[i] = ((1 + k) * x) / (1 + k * Math.abs(x)); }
+    s.curve = cv; s.oversample = '2x'; return s;
   }
   g(v, dest) { const n = this.ctx.createGain(); n.gain.value = v; if (dest) n.connect(dest); return n; }
   osc(type, f, v, dest) { const o = this.ctx.createOscillator(); o.type = type; o.frequency.value = f; o.connect(this.g(v, dest)); o.start(); return o; }
@@ -96,8 +137,12 @@ class Sound {
   frame(dt, s) {
     if (!this.ctx) return;
     const game = s.mode === 'game', menu = s.mode === 'menu';
+    if (this.scareT > 0) this.scareT -= dt;
+    this.set(this.duck, this.scareT > 0 ? 0.04 : 1, this.scareT > 0 ? 0.015 : 0.6);
+    this.set(this.revSend, game ? this.revWet : menu ? 0.2 : 0, 0.3);
+    this.set(this.wadeG, game ? 0.5 * (s.wade || 0) : 0, 0.12);
     this.set(this.humG, (game || menu) ? 0.05 * Math.min(1, s.power) : 0, 0.03);
-    this.set(this.roomG, game ? 0.25 : menu ? 0.15 : 0, 0.5);
+    this.set(this.roomG, game ? 0.14 : menu ? 0.12 : 0, 0.5);
     this.set(this.statG, game ? 0.14 * s.prox * s.prox : 0, 0.15);
     this.set(this.tinG, game ? 0.012 * s.tin : 0, 0.5);
     this.set(this.musG, menu ? 0.09 : 0, 1.2);
@@ -224,14 +269,22 @@ class Sound {
     return p;
   }
   step(kind, run) {
-    const v = run ? 1.5 : 1;
+    const v = (run ? 1.5 : 1) * 1.9;
     if (kind === 'concrete') { this.noise(0.07, 'bandpass', 1800, 1, 0.12 * v); this.tone(90, 0.06, 'sine', 0.08 * v); }
     else if (kind === 'wet') { this.noise(0.12, 'bandpass', 900, 1.2, 0.12 * v); this.tone(1200, 0.06, 'sine', 0.02 * v, 600); }
-    else if (kind === 'water') { this.noise(0.28, 'bandpass', 700, 0.9, 0.22 * v, null, 0.03); this.noise(0.22, 'bandpass', 2400, 1.2, 0.06 * v, null, 0.02, 0.05); this.tone(900, 0.12, 'sine', 0.02 * v, 400); }
+    else if (kind === 'water') { this.splash(0.9 * v); }
+    else if (kind === 'puddle') { this.splash(0.45 * v); this.noise(0.09, 'lowpass', 420, 0.8, 0.12 * v); }
     else if (kind === 'balls') { for (let k = 0; k < 5; k++) this.noise(0.05, 'bandpass', 2200 + Math.random() * 2400, 3, 0.05 * v, null, 0.003, k * 0.03); this.noise(0.18, 'lowpass', 500, 1, 0.08 * v); }
     else if (kind === 'foam') { this.noise(0.1, 'lowpass', 260, 0.9, 0.22 * v); this.tone(70, 0.08, 'sine', 0.06 * v); }
     else if (kind === 'tile') { this.noise(0.06, 'bandpass', 2600, 1.4, 0.1 * v); this.noise(0.25, 'bandpass', 1800, 4, 0.02 * v, null, 0.01, 0.08); this.tone(140, 0.05, 'sine', 0.05 * v); }
     else { this.noise(0.12, 'lowpass', 380, 0.8, 0.2 * v); this.noise(0.08, 'bandpass', 1400, 2, 0.03 * v); }
+  }
+  // всплеск: тяжёлый плеск + капли
+  splash(v = 1) {
+    this.noise(0.34, 'lowpass', 1400, 0.8, 0.32 * v, null, 0.01, 0, 380);
+    this.noise(0.26, 'bandpass', 2800, 1.1, 0.12 * v, null, 0.006, 0.03, 1400);
+    this.tone(260, 0.16, 'sine', 0.12 * v, 90, null, 0.02);
+    for (let k = 0; k < 4; k++) { const f = 1300 + Math.random() * 2200; this.tone(f, 0.07, 'sine', 0.035 * v, f * 0.6, null, 0.08 + k * 0.05 + Math.random() * 0.04); }
   }
   entStep(x, z, sp) {
     const p = this.at(x, 0.3, z, 2.5); if (!p) return;
@@ -249,9 +302,42 @@ class Sound {
   locked() { this.tone(140, 0.35, 'square', 0.07); this.tone(120, 0.3, 'square', 0.05, null, null, 0.1); }
   doorOpen() { this.noise(0.9, 'lowpass', 600, 1, 0.25); this.tone(120, 0.8, 'sawtooth', 0.08, 60); this.tone(300, 0.6, 'triangle', 0.03, 900); }
   noclip() { this.noise(1.6, 'bandpass', 200, 1.5, 0.4, null, 0.2, 0, 3200); this.tone(80, 1.6, 'sawtooth', 0.12, 30); }
+  // Поимка: всё стихает, затем удар, перегруженный рык, визг, металлический скрежет.
   scream() {
-    this.noise(1.2, 'bandpass', 1700, 0.6, 0.8); this.tone(880, 1.1, 'sawtooth', 0.35, 150);
-    this.tone(1300, 1.0, 'square', 0.15, 200); this.tone(62, 1.2, 'sawtooth', 0.3, 40);
+    if (!this.ctx) return;
+    const c = this.ctx, t = c.currentTime + 0.06, out = this.fx;
+    this.scareT = 2.2;
+    // 1. удар по низам
+    this.tone(70, 1.6, 'sine', 1.0, 28, out, 0.06);
+    this.noise(0.7, 'lowpass', 900, 0.8, 0.9, out, 0.003, 0.06, 120);
+    // 2. рык: пачка пил через перегруз, высота падает, «трепет» 28 Гц
+    const sh = this.shaper(60), bp = this.filt('bandpass', 900, 0.7), rg = this.g(0.0001, out);
+    sh.connect(bp); bp.connect(rg);
+    rg.gain.setValueAtTime(0.0001, t); rg.gain.exponentialRampToValueAtTime(0.42, t + 0.03); rg.gain.setValueAtTime(0.42, t + 1.1); rg.gain.exponentialRampToValueAtTime(0.0001, t + 1.9);
+    const trem = c.createOscillator(); trem.frequency.value = 28; const tg = this.g(0.5, null); trem.connect(tg); tg.connect(rg.gain); trem.start(t); trem.stop(t + 2);
+    for (const f of [96, 101, 143, 151, 202, 289]) {
+      const o = c.createOscillator(); o.type = 'sawtooth'; o.frequency.setValueAtTime(f * 1.25, t); o.frequency.exponentialRampToValueAtTime(f * 0.62, t + 1.8);
+      o.connect(this.g(0.22, sh)); o.start(t); o.stop(t + 2);
+    }
+    // 3. визг: частотная модуляция
+    const car = c.createOscillator(); car.type = 'sawtooth'; car.frequency.setValueAtTime(1900, t); car.frequency.exponentialRampToValueAtTime(700, t + 1.5);
+    const mod = c.createOscillator(); mod.frequency.value = 37; const md = this.g(420, null); mod.connect(md); md.connect(car.frequency);
+    const sg = this.g(0.0001, out), sf = this.filt('highpass', 600, 0.7); car.connect(sf); sf.connect(sg);
+    sg.gain.setValueAtTime(0.0001, t); sg.gain.exponentialRampToValueAtTime(0.16, t + 0.05); sg.gain.exponentialRampToValueAtTime(0.0001, t + 1.6);
+    car.start(t); mod.start(t); car.stop(t + 1.7); mod.stop(t + 1.7);
+    // 4. скрежет металла
+    this.noise(1.3, 'bandpass', 3200, 12, 0.5, out, 0.01, 0.08, 5600);
+    this.noise(1.0, 'bandpass', 2100, 9, 0.3, out, 0.01, 0.2, 1200);
+  }
+  // Экран смерти: низкий гул, звон в ушах, замедляющееся сердце.
+  deathDrone() {
+    if (!this.ctx) return;
+    const out = this.fx;
+    this.tone(41, 7, 'sine', 0.35, 30, out, 0.1);
+    this.tone(43.5, 7, 'sine', 0.25, 31, out, 0.1);
+    this.tone(4100, 6, 'sine', 0.025, 3900, out, 0.2);
+    this.noise(6, 'lowpass', 300, 0.7, 0.12, out, 1.2, 0, 0, this.bb);
+    [0.6, 1.7, 3.1, 4.9].forEach((d, k) => { const v = 0.55 - k * 0.1; this.tone(58, 0.16, 'sine', v, 38, out, d); this.tone(52, 0.13, 'sine', v * 0.7, 36, out, d + 0.17); });
   }
   lightsOff() { this.noise(0.06, 'highpass', 3000, 0.7, 0.3); this.tone(100, 0.4, 'square', 0.06, 40); }
   lightsOn() { this.noise(0.05, 'highpass', 3200, 0.7, 0.18); this.noise(0.04, 'highpass', 3000, 0.7, 0.14, null, 0.005, 0.09); this.tone(100, 0.2, 'square', 0.04, null, null, 0.1); }

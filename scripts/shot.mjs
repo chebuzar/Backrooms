@@ -111,7 +111,7 @@ async function run(bname, lv) {
     await page.waitForTimeout(Number(A.wait || 1500));
     label = `lv${lv}-${scene}`;
   }
-  if (A.eval) { await page.evaluate(A.eval); await page.waitForTimeout(400); }
+  if (A.eval) { await page.evaluate(`(async () => { ${A.eval} })()`); await page.waitForTimeout(400); }
 
   let fps = null;
   if (A.fps) {

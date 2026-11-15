@@ -207,6 +207,9 @@ function moveCollide(dx, dz) {
   if (!blocked(pl.x + dx, pl.z)) pl.x += dx; else pl.vx *= 0.3;
   if (!blocked(pl.x, pl.z + dz)) pl.z += dz; else pl.vz *= 0.3;
 }
+const inPuddle = () => lvl.puddles.some(([x, z, r]) => (pl.x - x) ** 2 + (pl.z - z) ** 2 < r * r);
+// Реверб по типу пространства: [длина хвоста, с; громкость]
+const REVERB = { pool: [4.6, 0.6], halls: [3.6, 0.5], shelves: [4.0, 0.5], parking: [3.4, 0.45], circus: [2.4, 0.32], rooms: [1.1, 0.16], maze: [2.0, 0.3], smiles: [2.2, 0.34] };
 function updatePlayer(dt, canMove) {
   canMove = canMove && !pl.hidden && !game.overlay && !(pl.actT > 0) && !game.kpOpen;
   if (game.overlay) { input.ldx = input.ldy = 0; }
@@ -220,6 +223,7 @@ function updatePlayer(dt, canMove) {
     canMove = false; pl.vx = pl.vz = 0;
   }
   const inWater = lvl.tile(Math.floor(pl.x / S), Math.floor(pl.z / S)) === 6;
+  game.wade = inWater && game.th.props !== 'smiles' ? clamp(Math.hypot(pl.vx, pl.vz) / 2.5, 0, 1) : 0;
   pl.gy += (lvl.groundY(pl.x, pl.z) - pl.gy) * Math.min(1, dt * 6);
   let fw = 0, st = 0;
   if (canMove) {
@@ -244,7 +248,7 @@ function updatePlayer(dt, canMove) {
   const spd = Math.hypot(pl.vx, pl.vz);
   if (spd > 0.25) {
     const prev = Math.sin(pl.bobPh); pl.bobPh += dt * spd * 2.15; const s = Math.sin(pl.bobPh);
-    if ((prev < 0) !== (s < 0)) { sound.step(inWater ? (game.th.props === 'smiles' ? 'balls' : 'water') : game.th.step, run); if (ent && ent.active && ent.ai.mimic && ent.dist < 30) setTimeout(() => ent && sound.entStep(ent.x, ent.z, 2), 90); }
+    if ((prev < 0) !== (s < 0)) { sound.step(inWater ? (game.th.props === 'smiles' ? 'balls' : 'water') : inPuddle() ? 'puddle' : game.th.step, run); if (ent && ent.active && ent.ai.mimic && ent.dist < 30) setTimeout(() => ent && sound.entStep(ent.x, ent.z, 2), 90); }
     pl.bob = Math.abs(s) * 0.055 * Math.min(1, spd / 3) - 0.027;
   } else pl.bob *= Math.max(0, 1 - dt * 8);
   pl.noise = (run && spd > 3.5 ? 16 : spd > 0.5 ? (pl.crouch ? 0.8 : 4.5) : 0) * (inWater ? 1.7 : 1);
@@ -998,6 +1002,7 @@ async function startLevel(lv, fresh = false, opt = {}) {
   if (!SAVE.toolsTip) { SAVE.toolsTip = 1; persist(); setTimeout(() => { if (game.mode === 'play') toast(isTouch ? 'Кнопки внизу: сканер, ЭМИ, карта, метка, тихий шаг, камера. Всё садит батарею или шумит' : 'Q сканер · R ЭМИ · M карта · G метка · C присесть · V камера. Всё садит батарею или шумит'); }, 6000); }
   SAVE.max = Math.max(SAVE.max, lv); SAVE.cont = lv; persist();
   if (lv >= 10) unlock('deep');
+  sound.setReverb(...(REVERB[th.layout] || REVERB.maze));
   sound.setBeacon(lvl.door.x, 1.6, lvl.door.z);
   if (lvl.secret) sound.setBox(lvl.secret.x, 1.4, lvl.secret.z);
   if (lvl.circus) sound.setCircus(lvl.circus.x, 3, lvl.circus.z);
@@ -1075,6 +1080,7 @@ function die(reason) {
   game.overlay = false; hide('pause'); hide('reader'); hide('chatBox');
   $('bRetry').hidden = !!game.coop;
   if (game.coop) game.respawnT = 6;
+  sound.deathDrone();
   $('dTitle').textContent = reason === 'caught' ? 'ОНО НАШЛО ТЕБЯ' : 'РАССУДОК ПОТЕРЯН';
   $('dText').textContent = reason === 'caught' ? 'Не стоило отворачиваться.' : 'Ты забыл, как выглядит небо. Теперь ты часть Закулисья.';
   fillStats($('dStats'), [['Уровень', `${game.level} · ${game.th.name}`], ['Время в игре', fmtTime(game.runTime)], ['Записки', `${SAVE.notes.length}/${NOTES.length}`], ['Смертей', String(game.deaths)]]);
@@ -1728,7 +1734,7 @@ function loop(now) {
   sound.frame(dt, {
     mode: (m === 'menu' || m === 'prologue') ? 'menu' : inGame ? 'game' : 'off',
     power: game.power * game.th.power, prox: game.prox, beacon: true, ent: !!(ent && ent.active), chase: !!(ent && ent.state === 'chase'),
-    tin: clamp((40 - pl.san) / 40, 0, 1), box: !!(lvl && lvl.secret), circus: !!(lvl && lvl.circus) && game.musicOn, black: game.black && inGame
+    tin: clamp((40 - pl.san) / 40, 0, 1), wade: m === 'play' ? game.wade || 0 : 0, box: !!(lvl && lvl.secret), circus: !!(lvl && lvl.circus) && game.musicOn, black: game.black && inGame
   });
   if (game.coop) coopFrame(dt);
   if (m === 'ending') return;

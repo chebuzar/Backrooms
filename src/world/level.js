@@ -510,13 +510,16 @@ function buildLevel(th, G, opts = {}) {
     }
     if (geos.length) add(new THREE.Mesh(mergeGeometries(geos), new THREE.MeshLambertMaterial({ color: 0x5a5e60 })));
   }
+  const puddles = []; // [x, z, радиус] — для звука шагов по лужам
   if (th.props === 'puddles') {
     const geos = [];
     for (let ty = 0; ty < mh; ty++) for (let tx = 0; tx < mw; tx++) {
       if (g[ty * mw + tx] !== 0 || r() > 0.24) continue;
-      const c = new THREE.CircleGeometry(0.35 + r() * 0.45, 20);
+      const rad = 0.35 + r() * 0.45;
+      const c = new THREE.CircleGeometry(rad, 20);
       c.rotateX(-Math.PI / 2); c.scale(1, 1, 0.5 + r() * 0.4); c.rotateY(r() * Math.PI);
-      c.translate((tx + 0.5) * S + (r() - 0.5) * 0.7, 0.006, (ty + 0.5) * S + (r() - 0.5) * 0.7);
+      const px = (tx + 0.5) * S + (r() - 0.5) * 0.7, pz = (ty + 0.5) * S + (r() - 0.5) * 0.7;
+      c.translate(px, 0.006, pz); puddles.push([px, pz, rad * 0.85]);
       geos.push(c);
     }
     if (geos.length) add(new THREE.Mesh(mergeGeometries(geos), new THREE.MeshStandardMaterial({ color: 0x1c2410, roughness: 0.04, metalness: 0.35, transparent: true, opacity: 0.38, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1 })));
@@ -975,7 +978,7 @@ function buildLevel(th, G, opts = {}) {
   };
 
   return {
-    root, g, mw, mh, tile, lamps, items, colliders, secret, floorList, lockers, HH, circus,
+    root, g, mw, mh, tile, lamps, items, colliders, secret, floorList, lockers, HH, circus, puddles,
     spawn: { x: (G.spawn.tx + 0.5) * S, z: (G.spawn.ty + 0.5) * S, yaw: G.spawn.yaw },
     door: { x: dfx, z: dfz, nx: dnx, nz: dnz },
     idx: (x, z) => Math.floor(z / S) * mw + Math.floor(x / S),

@@ -28,6 +28,7 @@
 | `npm run smoke` | smoke-тест збірки: Chromium + WebKit, ru/uk/en, старт рівня 0 |
 | `npm run check` | lint + build + smoke |
 | `npm run shot -- <флаги>` | скріншот + помилки консолі + FPS (див. нижче) |
+| `npm run audio -- [пресети]` | запис звуків у `.shots/audio/*.wav` + пік/RMS (звук перевіряти цифрами: кроки мають бути помітно гучніші за фон) |
 
 ### Скріншоти (`scripts/shot.mjs`)
 
