@@ -163,7 +163,7 @@ kbd{font:inherit;font-size:12px;border:1px solid var(--line);padding:0 5px;backg
 .kgrid button{height:52px;border-radius:8px;border:1px solid #555;background:#2c322f;color:#eee;font-size:22px;touch-action:manipulation}
 .kgrid button:active{background:#46504a}
 .jsec{list-style:none;margin:14px 0 6px;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--lamp)}
-#slats{z-index:8;pointer-events:none;background:repeating-linear-gradient(to bottom,rgba(6,7,6,.96) 0 34px,rgba(6,7,6,.25) 34px 46px),radial-gradient(ellipse at center,transparent 30%,#000 85%);background-blend-mode:multiply}
+#slats{z-index:8;pointer-events:none;background:radial-gradient(ellipse at 50% 45%,transparent 25%,rgba(0,0,0,.55) 62%,#000 100%)}
 #coopBar{position:absolute;right:calc(70px + var(--sr));top:calc(12px + var(--st));display:flex;flex-direction:column;gap:3px;align-items:flex-end;font-size:11px;letter-spacing:.05em;text-shadow:0 0 3px #000}
 #coopBar[hidden],#coopBtns[hidden]{display:none}
 #coopBar span{padding:2px 8px;background:rgba(0,0,0,.45);border-left:3px solid var(--c,#fff)}

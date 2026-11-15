@@ -169,6 +169,8 @@ export default {
   'find.soda': 'SODA MACHINE',
   'find.soda.d': 'It still works. Cold soda restores your sanity.',
 
+  'lock.seen': 'it saw you hide',
+
   'card.level': 'LEVEL {n}',
   'pro.skip': 'tap to skip',
   'dead.retry': 'Try again',

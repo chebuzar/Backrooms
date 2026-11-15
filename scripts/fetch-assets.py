@@ -18,6 +18,7 @@ TEX = {
     'OfficeCeiling001': (1024, 512),
     'Concrete034': (1024, 512), 'Concrete031': (1024, 512), 'Concrete046': (1024, 512),
     'Asphalt031': (1024, 512), 'Tiles107': (1024, 512), 'Tiles132A': (1024, 512),
+    'PaintedMetal012': (1024, 512), 'Wood066': (1024, 512),
 }
 UA = {'User-Agent': 'Mozilla/5.0 (asset fetch script)'}
 
@@ -46,6 +47,10 @@ def credits():
     lines = ['# Ассеты и лицензии', '', 'Все текстуры — **CC0 1.0** (общественное достояние), ambientCG.com. Атрибуция не обязательна, но указываем источник.', '']
     for aid in sorted(os.listdir(ROOT)):
         lines.append(f'- `{aid}` — https://ambientcg.com/view?id={aid}')
+    lines += ['', '## 3D-модели', '',
+              '**CC0 1.0**, Quaternius (quaternius.com). Сконвертированы из FBX в GLB скриптом `scripts/convert-models.mjs`.', '',
+              '- `models/human.glb` — «Animated Man» (Animated Human.fbx): Idle, Walk, Run, Punch, Death',
+              '- `models/zombie.glb` — «Animated Zombie» (ZombieSmooth.fbx): Idle, Walk, Run, Crawl, Bite']
     open(os.path.join(ROOT, '..', 'CREDITS.md'), 'w').write('\n'.join(lines) + '\n')
 
 if __name__ == '__main__':

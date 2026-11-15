@@ -19,9 +19,10 @@ import { makeWrist, poseWrist, drawRadar } from './world/wrist.js';
 import { createMinimap, drawMinimap, trackTrail, resetMinimap } from './ui/minimap.js';
 import { makeDust, updateDust } from './render/dust.js';
 import { preloadMonsters, makeMonsterMesh } from './world/monster-models.js';
+import { updateLockers } from './world/lockers.js';
 // готовая модель, если загрузилась; иначе — процедурный монстр
 const monsterMesh = (look) => makeMonsterMesh(look) || makeEntityMesh(look);
-import { themeTex, setAniso, setTexHi } from './render/assets.js';
+import { themeTex, setAniso, setTexHi, texSet } from './render/assets.js';
 
 const $ = (id) => document.getElementById(id);
 const isTouch = (window.matchMedia && matchMedia('(pointer: coarse)').matches) || ('ontouchstart' in window);
@@ -429,8 +430,10 @@ function updateInteract() {
     if (an.used || !['phone', 'tv', 'door', 'bed'].includes(an.kind)) continue;
     if (Math.hypot(an.ax - pl.x, an.az - pl.z) < 1.5) { a = { type: 'anom', an, label: { phone: 'Ответить на звонок', tv: 'Выключить телевизор', door: 'Постучать в ответ', bed: 'Прилечь отдохнуть' }[an.kind] }; break; }
   }
-  if (!a) for (const lk of lvl.lockers) {
-    if (Math.hypot(lk.x + lk.fx * 0.75 - pl.x, lk.z + lk.fz * 0.75 - pl.z) < 1.0) { a = { type: 'locker', lk, label: 'Спрятаться в шкафчике' }; break; }
+  if (!a) {
+    let best = null, bd = 0.95;
+    for (const lk of lvl.lockers) { const d = Math.hypot(lk.x + lk.fx * 0.72 - pl.x, lk.z + lk.fz * 0.72 - pl.z); if (d < bd) { bd = d; best = lk; } }
+    if (best) a = { type: 'locker', lk: best, label: 'Спрятаться в шкафчике' };
   }
   setAct(a);
 }
@@ -472,9 +475,12 @@ function toggleLight() {
 
 // ---------- шкафчики ----------
 function hideIn(lk) {
-  const knows = !!(ent && ent.active && ent.state === 'chase' && ent.dist < 14);
-  pl.hidden = { lk, knows, near: false, bt: 2 };
-  pl.x = lk.x + lk.fx * 0.05; pl.z = lk.z + lk.fz * 0.05; pl.vx = pl.vz = 0;
+  // Он «знает», только если прямо сейчас видит, как ты залезаешь (не сквозь стены и не по памяти)
+  const knows = !!(ent && ent.active && ent.seeMeT < 0.4 && ent.dist < 20 && lvl.los(ent.x, ent.z, pl.x, pl.z));
+  pl.hidden = { lk, knows, near: false, bt: 2, t: 0 };
+  pl.x = lk.x - lk.fx * 0.02; pl.z = lk.z - lk.fz * 0.02; pl.vx = pl.vz = 0;
+  lk.want = 1; setTimeout(() => { if (pl.hidden && pl.hidden.lk === lk) lk.want = 0; }, 260);
+  if (knows) whisper(tr('lock.seen'), 2600);
   pl.hideYaw = Math.atan2(-lk.fx, -lk.fz); pl.yaw = pl.hideYaw; pl.pitch = 0;
   if (pl.light) { pl.light = false; $('bLight').classList.remove('on'); }
   show('slats'); sound.lockerIn(); vib(30);
@@ -482,6 +488,7 @@ function hideIn(lk) {
 function unhide() {
   const lk = pl.hidden.lk; pl.hidden = null;
   pl.x = lk.x + lk.fx * 0.85; pl.z = lk.z + lk.fz * 0.85;
+  lk.want = 1; setTimeout(() => { if (!pl.hidden || pl.hidden.lk !== lk) lk.want = 0; }, 650);
   hide('slats'); sound.lockerOut();
 }
 
@@ -654,7 +661,11 @@ function updatePlay(dt) {
   const eD = ent && ent.active ? ent.dist : 99;
   game.prox = clamp(1 - eD / 9, 0, 1);
   if (stared) { game.stare += dt; if (game.stare >= 5) unlock('stare'); } else game.stare = 0;
+  updateLockers(lvl.lockers, dt);
   if (pl.hidden) {
+    pl.hidden.t += dt;
+    // знал, но потерял интерес (сдался или ушёл далеко) — снова в безопасности
+    if (pl.hidden.knows && ent && (ent.state === 'roam' || ent.dist > 25)) pl.hidden.knows = false;
     if (!pl.hidden.knows && eD < 6) pl.hidden.near = true;
     if (pl.hidden.near && eD > 12) { unlock('hide'); pl.hidden.near = false; }
     pl.hidden.bt -= dt; if (pl.hidden.bt <= 0) { pl.hidden.bt = 2.6 + Math.random(); sound.breath(); }
@@ -710,9 +721,9 @@ function updatePlay(dt) {
 // Мир хоста: «Оно» охотится на всех игроков (вызывается и когда сам хост мёртв)
 function entTick(dt, stared) {
   const th = game.th, D = DIFF[game.diff] || DIFF.normal;
-  const targets = [{ id: net.id || 'me', x: pl.x, z: pl.z, yaw: pl.yaw, safe: !!pl.safe, dead: game.mode !== 'play', noise: pl.noise }];
+  const targets = [{ id: net.id || 'me', x: pl.x, z: pl.z, yaw: pl.yaw, safe: !!pl.safe, dead: game.mode !== 'play', noise: pl.noise, lit: !!pl.light, crouch: !!pl.crouch, mv: Math.hypot(pl.vx, pl.vz) }];
   let st = stared;
-  if (game.coop) for (const [id, r] of rp) { if (!r.inLvl) continue; targets.push({ id, x: r.x, z: r.z, yaw: r.yaw, safe: !!r.safe, dead: !!r.dead, noise: r.noise || 0 }); if (r.stare && !r.dead) st = true; }
+  if (game.coop) for (const [id, r] of rp) { if (!r.inLvl) continue; targets.push({ id, x: r.x, z: r.z, yaw: r.yaw, safe: !!r.safe, dead: !!r.dead, noise: r.noise || 0, lit: !!r.l, mv: 1 }); if (r.stare && !r.dead) st = true; }
   const lit = stared && pl.light && ent.dist < 14;
   const res = ent.update(dt, { targets, stared: st, lit, black: game.black, music: game.musicOn, moving: Math.hypot(pl.vx, pl.vz) > 0.5, force: game.chase, mul: th.entSpeed * D.speed * (game.chase ? 1.12 : 1) });
   if (res && res.kill) {
@@ -1124,7 +1135,9 @@ async function startLevel(lv, fresh = false, opt = {}) {
   // Открытый мир: в ~9 раз больше площади, поэтому воды и батареек больше (но не в 9 раз — их надо искать).
   const G = genGrid(thG, lv, seed, { world: WORLD, allowSecret: lv <= LAST, noteIds: lv <= LAST ? notesFor(lv) : [], water: Math.max(2, Math.round(th.water * D.items * (WORLD ? 2.5 : 1))), batt: Math.max(1, Math.round(th.batt * D.items * (WORLD ? 2.5 : 1))) });
   setAniso(Math.min(8, maxAniso));
-  const pbr = await themeTex(th);
+  const pbr = (await themeTex(th)) || {};
+  const [lockMetal, lockWood] = await Promise.all([texSet('PaintedMetal012'), texSet('Wood066')]);
+  pbr.locker = { metal: lockMetal, wood: lockWood };
   await Promise.race([preloadMonsters(), sleep(12000)]);
   lvl = buildLevel(thB, G, { seed, aniso: maxAniso, pbr });
   scene.add(lvl.root);
@@ -1136,6 +1149,8 @@ async function startLevel(lv, fresh = false, opt = {}) {
   ent = new Entity(lvl, monsterMesh(mdef.look), {
     step: (x, z, sp) => sound.entStep(x, z, sp),
     spot: () => { sound.spotted(); },
+    // заметил что-то краем глаза: тихий звук монстра — у игрока есть пара секунд, чтобы спрятаться
+    notice: () => { if (ent) sound.voice(ent.kind, ent.x, ent.z, false); },
     wake: () => { sound.wake(); whisper(mdef.name.toLowerCase() + (/[ая]$|ь$/.test(mdef.name) ? ' проснулась' : ' проснулся'), 3000); toast(`${mdef.name}: ${mdef.trait}`); },
     blink: (x, z) => { sound.blinkSnd(x, z); }
   }, mdef);
@@ -1209,6 +1224,7 @@ function updateTransition(dt) {
   }
 }
 function startScare() {
+  if (pl.hidden) { pl.hidden.lk.want = 1; hide('slats'); }
   game.mode = 'scare'; game.scT = 0; setAct(null); hideHUD(); unlockPointer();
   sound.scream(); vib([300, 60, 300, 60, 500]);
 }
@@ -1948,6 +1964,13 @@ if (import.meta.env.DEV || new URLSearchParams(location.search).has('debug')) {
       return false;
     },
     finds() { return (game.finds || []).map((f) => f.kind + (f.found ? '*' : '')); },
+    // встать перед ближайшим шкафчиком (смотреть на него) или залезть в него
+    toLocker(inside = false, dist = 1.35) {
+      let lk = null, bd = 1e9; for (const l of lvl.lockers) { const d = Math.hypot(l.x - pl.x, l.z - pl.z); if (d < bd) { bd = d; lk = l; } }
+      if (!lk) return false;
+      if (inside) { hideIn(lk); return true; }
+      const x = lk.x + lk.fx * dist + lk.fz * 0.4, z = lk.z + lk.fz * dist - lk.fx * 0.4; this.tp(x, z, Math.atan2(-(lk.x - x), -(lk.z - z))); pl.pitch = 0.12; return true;
+    },
     // поставить монстра перед игроком
     meet(dist = 4) {
       if (!ent) return false;

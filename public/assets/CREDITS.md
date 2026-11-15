@@ -10,10 +10,12 @@
 - `Concrete034` — https://ambientcg.com/view?id=Concrete034
 - `Concrete046` — https://ambientcg.com/view?id=Concrete046
 - `OfficeCeiling001` — https://ambientcg.com/view?id=OfficeCeiling001
+- `PaintedMetal012` — https://ambientcg.com/view?id=PaintedMetal012
 - `Tiles107` — https://ambientcg.com/view?id=Tiles107
 - `Tiles132A` — https://ambientcg.com/view?id=Tiles132A
 - `Wallpaper001A` — https://ambientcg.com/view?id=Wallpaper001A
 - `Wallpaper001C` — https://ambientcg.com/view?id=Wallpaper001C
+- `Wood066` — https://ambientcg.com/view?id=Wood066
 
 ## 3D-модели
 

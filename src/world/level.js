@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { rng, clamp, smooth } from '../core/util.js';
 import * as TX from '../render/textures.js';
+import { buildLockers, LOCKER_W, LOCKER_DEP, LOCKER_BIG_W } from './lockers.js';
 
 // Генерация лабиринта, геометрия, запечённый свет, предметы, тайная комната.
 
@@ -965,14 +966,12 @@ function buildLevel(th, G, opts = {}) {
     circus = { x: cx, z: cz, balloons, shapes, flag };
   }
 
-  // --- шкафчики
-  const lockers = [];
-  // в открытом мире шкафчиков много: несколько на каждую зону, иначе от монстра негде спрятаться
-  const nLock = G.zones ? 22 + (th.lockers || 0) * 3 : th.lockers, lockGap = G.zones ? 8 : 6;
+  // --- шкафчики: ряды металлических шкафчиков у стены (модель — lockers.js)
+  let lockers = [];
+  // в открытом мире шкафчиков много: несколько рядов на каждую зону, иначе от монстра негде спрятаться
+  const nLock = G.zones ? 12 + (th.lockers || 0) * 2 : th.lockers, lockGap = G.zones ? 8 : 6;
   if (!opts.demo && nLock) {
-    const lockT = tex(TX.lockerCanvas(r), { repeat: false });
-    const lm = new THREE.MeshLambertMaterial({ color: 0x4b574f }), lf = new THREE.MeshLambertMaterial({ map: lockT });
-    const cands = [];
+    const cands = [], spots = [];
     for (let ty = 1; ty < mh - 1; ty++) for (let tx = 1; tx < mw - 1; tx++) {
       if (g[ty * mw + tx] !== 0 || isRes(tx, ty)) continue;
       const walls = DIRS.filter(([a, b]) => tile(tx + a, ty + b) === 1);
@@ -981,16 +980,17 @@ function buildLevel(th, G, opts = {}) {
     }
     for (let i = cands.length - 1; i > 0; i--) { const j = (r() * (i + 1)) | 0; const t = cands[i]; cands[i] = cands[j]; cands[j] = t; }
     for (const [tx, ty, [a, b]] of cands) {
-      if (lockers.length >= nLock) break;
-      if (lockers.some((l) => Math.abs(l.tx - tx) + Math.abs(l.ty - ty) < lockGap)) continue;
-      const x = (tx + 0.5) * S + a * (S / 2 - 0.3), z = (ty + 0.5) * S + b * (S / 2 - 0.3);
-      const grp = new THREE.Group(); grp.position.set(x, 0, z); grp.rotation.y = Math.atan2(-a, -b);
-      const body = new THREE.Mesh(new THREE.BoxGeometry(0.64, 1.95, 0.56), [lm, lm, lm, lm, lf, lm]); body.position.y = 0.975; grp.add(body);
-      add(grp);
-      colliders.push({ x0: x - 0.32, x1: x + 0.32, z0: z - 0.32, z1: z + 0.32 });
+      if (spots.length >= nLock) break;
+      if (spots.some((l) => Math.abs(l.tx - tx) + Math.abs(l.ty - ty) < lockGap)) continue;
+      const n = r() < 0.55 ? 3 : 2, wx = (tx + 0.5) * S + a * S / 2, wz = (ty + 0.5) * S + b * S / 2;
+      spots.push({ tx, ty, x: wx, z: wz, fx: -a, fz: -b, n });
+      // столкновения: весь ряд (вдоль стены — ширина ряда, от стены — глубина)
+      const half = Math.max(n * LOCKER_W, LOCKER_BIG_W) / 2, x1 = wx - a * LOCKER_DEP, z1 = wz - b * LOCKER_DEP;
+      if (a !== 0) colliders.push({ x0: Math.min(wx, x1), x1: Math.max(wx, x1), z0: wz - half, z1: wz + half });
+      else colliders.push({ x0: wx - half, x1: wx + half, z0: Math.min(wz, z1), z1: Math.max(wz, z1) });
       reserved.add(tx + ',' + ty);
-      lockers.push({ tx, ty, x, z, fx: -a, fz: -b, obj: grp });
     }
+    lockers = buildLockers(root, spots, { sets: (opts.pbr && opts.pbr.locker) || {}, themeId: th.id || 0, r });
   }
 
   // --- предметы

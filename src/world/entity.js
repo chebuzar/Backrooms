@@ -322,6 +322,9 @@ class Entity {
     this.turnT = 0; this.lastDir = 0; this.blinkT = 3; this.fleeT = 0; this.lit = false;
     // память: где видел игрока в последний раз; сколько ещё обыскивать то место
     this.lastX = 0; this.lastZ = 0; this.searchT = 0; this.stunT = 0;
+    this.seeMeT = 99; // сколько секунд назад реально видел СВОЕГО игрока (для шкафчиков)
+    this.sus = 0;      // подозрение 0..1: копится, пока видит игрока; 1 — заметил и гонится
+    this.stuckT = 0; this.px = 0; this.pz = 0; this.noticed = false;
     mesh.group.visible = false;
   }
   get active() { return this.state !== 'dormant'; }
@@ -344,6 +347,12 @@ class Entity {
   setTarget(tx, ty) { this.field = this.lvl.bfs(tx, ty); this.wp = null; }
   pickRoam(px, pz) {
     const L = this.lvl, near = Math.random() < 0.25;
+    // иногда обходит шкафчики — прятаться становится напряжённо (но найти может только если видел)
+    if (L.lockers && L.lockers.length && Math.random() < 0.3) {
+      let lk = null, bd = 1e9;
+      for (let k = 0; k < 6; k++) { const c = L.lockers[(Math.random() * L.lockers.length) | 0], dd = Math.hypot(c.x - px, c.z - pz); if (dd > 8 && dd < 40 && dd < bd) { bd = dd; lk = c; } }
+      if (lk) { const tx = Math.floor((lk.x + lk.fx * 1.2) / S), tz = Math.floor((lk.z + lk.fz * 1.2) / S); if (L.tile(tx, tz) === 0) { this.setTarget(tx, tz); return; } }
+    }
     for (let k = 0; k < 50; k++) {
       const i = L.floorList[(Math.random() * L.floorList.length) | 0];
       const x = (i % L.mw + 0.5) * S, z = (((i / L.mw) | 0) + 0.5) * S;
@@ -406,21 +415,47 @@ class Entity {
       this.m.group.position.set(this.x, this.y, this.z);
       return null;
     }
-    let best = null, bestD = 1e9, seen = null, seenD = 1e9, heard = null;
+    let best = null, bestD = 1e9, seen = null, seenD = 1e9, heard = null, cand = null, candRate = 0;
+    // зрение: конус спереди (~140°), сбоку — только вблизи, сзади — почти вплотную.
+    // Дальность зависит от света: с фонариком тебя видно издалека, в темноте и пригнувшись — ближе.
+    const fx = Math.sin(this.yaw), fz = Math.cos(this.yaw);
     for (const p of T) {
       if (p.safe || p.dead) continue;
       const d = Math.hypot(p.x - this.x, p.z - this.z);
       if (d < bestD) { bestD = d; best = p; }
-      if (!ai.blind && d < 26 && d < seenD && L.los(this.x, this.z, p.x, p.z)) { seenD = d; seen = p; }
+      if (!ai.blind && d < 30 && L.los(this.x, this.z, p.x, p.z)) {
+        const dot = ((p.x - this.x) * fx + (p.z - this.z) * fz) / (d || 1);
+        const range = (p.lit ? 28 : 18) * (o.black ? 0.55 : 1) * (p.crouch ? 0.7 : 1);
+        if (this.state === 'chase' && d < range * 1.3) { if (d < seenD) { seenD = d; seen = p; } }
+        else if (d < range && (dot > 0.34 || (d < 6 && dot > -0.25) || d < 2.2)) {
+          const mv = p.mv || 0;
+          const rate = (1.35 - d / range) * (mv > 2.6 ? 1.7 : mv > 0.4 ? 1 : 0.5) * (p.lit ? 1.4 : 1) * (dot > 0.7 ? 1.25 : 0.8) * 1.5;
+          if (rate > candRate) { candRate = rate; cand = { p, d }; }
+        }
+      }
       const hr = p.noise * (ai.hear || 1);
       if (hr > 0 && d < hr && (!heard || d < heard.d)) heard = { p, d };
     }
+    if (!seen) {
+      if (cand) {
+        this.sus = Math.min(1, this.sus + dt * candRate);
+        if (this.sus >= 1) { seen = cand.p; seenD = cand.d; }
+        else if (this.sus > 0.4 && this.state !== 'chase' && !this.stunT) {
+          // что-то заметил: идёт проверить
+          if (!this.noticed) { this.noticed = true; this.hooks.notice && this.hooks.notice(); }
+          this.state = 'hunt'; this.searchT = Math.max(this.searchT, 7);
+          this.lastX = cand.p.x; this.lastZ = cand.p.z;
+          if (!this.field || Math.random() < dt * 2) this.setTarget(Math.floor(cand.p.x / S), Math.floor(cand.p.z / S));
+        }
+      } else { this.sus = Math.max(0, this.sus - dt * 0.18); if (this.sus < 0.2) this.noticed = false; }
+    } else this.sus = 1;
     // слепой «видит» только вплотную
     if (ai.blind && best && bestD < 2.2) { seen = best; seenD = bestD; }
     this.dist = Math.hypot(me.x - this.x, me.z - this.z);
     const tgt = seen || best || me;
     const dx = tgt.x - this.x, dz = tgt.z - this.z, dist = Math.hypot(dx, dz);
     const ptx = Math.floor(tgt.x / S), ptz = Math.floor(tgt.z / S);
+    this.seeMeT = seen && seen === me ? 0 : this.seeMeT + dt;
     if (seen) {
       if (this.state !== 'chase') this.hooks.spot && this.hooks.spot();
       this.state = 'chase'; this.mem = 2.2; this.unseen = 0;
@@ -497,6 +532,13 @@ class Entity {
       }
       else if (this.field[ci] < 0) { this.relocate(me.x, me.z, me.yaw); }
       [tx, tz] = this.next();
+    }
+    // застрял (упёрся в угол, топчется) — сбросить путь и выбрать другой
+    this.stuckT += dt;
+    if (this.stuckT > 2.5) {
+      const moved = Math.hypot(this.x - this.px, this.z - this.pz);
+      if (sp > 0.6 && moved < 0.4) { this.wp = null; this.field = null; if (this.state === 'hunt' && this.searchT > 0) this.searchNear(); else if (this.state !== 'chase') { this.state = 'roam'; this.pickRoam(me.x, me.z); } }
+      this.stuckT = 0; this.px = this.x; this.pz = this.z;
     }
     const mx = tx - this.x, mz = tz - this.z, ml = Math.hypot(mx, mz);
     if (ml > 0.001) {
