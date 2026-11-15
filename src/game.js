@@ -416,8 +416,8 @@ function updateInteract() {
     if (Math.hypot(it.x - pl.x, it.z - pl.z) < 1.5) { a = { type: 'note', it, label: 'Читать записку' }; break; }
   }
   if (!a) {
-    const d = lvl.door;
-    if (Math.hypot(d.x - pl.x, d.z - pl.z) < 1.9) {
+    const d = nearestExit();
+    if (d && Math.hypot(d.x - pl.x, d.z - pl.z) < 1.9) {
       const ok = taskDone(), code = !ok && game.task && game.task.kind === 'code';
       a = { type: 'door', ok: ok || code, label: doorLabel() };
     }
@@ -747,6 +747,11 @@ function hud() {
   const s = Math.floor(game.runTime), c = `${String(Math.floor(s / 3600)).padStart(2, '0')}:${String(Math.floor(s / 60) % 60).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
   if (c !== lastClock) { $('hClock').textContent = c; lastClock = c; }
 }
+// ---------- выходы (их несколько, все ведут на следующий уровень) ----------
+const exitsOf = () => (lvl && lvl.exits && lvl.exits.length ? lvl.exits : lvl ? [lvl.door] : []);
+function nearestExit(x = pl.x, z = pl.z) { let b = null, bd = 1e9; for (const e of exitsOf()) { const d = Math.hypot(e.x - x, e.z - z); if (d < bd) { bd = d; b = e; } } return b; }
+const exitSeen = (e) => !!game.seen[lvl.idx(e.x - e.nx * 0.5, e.z - e.nz * 0.5)] || game.exitKnown;
+
 // ---------- сканер на руке и мини-карта ----------
 let minimap = null;
 function scanBlips() {
@@ -770,8 +775,9 @@ function updateWristMap(dt) {
   minimap.t -= dt;
   if (minimap.t <= 0) {
     minimap.t = 1 / 15;
-    const dIdx = lvl.idx(lvl.door.x - lvl.door.nx * 0.5, lvl.door.z - lvl.door.nz * 0.5);
-    drawMinimap(minimap, { lvl, seen: game.seen, px: pl.x, pz: pl.z, yaw: pl.yaw, finds: game.finds, doorSeen: !!game.seen[dIdx] || game.exitKnown, solid: (tt) => tt === 1 || tt === 2 || tt === 5 });
+    drawMinimap(minimap, { lvl, seen: game.seen, px: pl.x, pz: pl.z, yaw: pl.yaw, finds: game.finds, exits: exitsOf().filter(exitSeen), solid: (tt) => tt === 1 || tt === 2 || tt === 5 });
+    // звуковой маячок — у ближайшего выхода
+    const ne = nearestExit(); if (ne && ne !== game.beaconAt) { game.beaconAt = ne; sound.setBeacon(ne.x, 1.6, ne.z); }
   }
 }
 
@@ -973,8 +979,7 @@ function drawMap() {
     x.fillRect(tx * k, tz * k, k, k);
   }
   const dot = (wx, wz, col, r = 0.35) => { x.fillStyle = col; x.beginPath(); x.arc(wx / S * k, wz / S * k, Math.max(2, k * r), 0, 7); x.fill(); };
-  const dIdx = L.idx(L.door.x - L.door.nx * 0.5, L.door.z - L.door.nz * 0.5);
-  if (game.seen[dIdx]) { x.fillStyle = '#2fd06a'; x.fillRect(L.door.x / S * k - k * 0.45, L.door.z / S * k - k * 0.45, k * 0.9, k * 0.9); }
+  for (const e of exitsOf()) if (exitSeen(e)) { x.fillStyle = '#2fd06a'; x.fillRect(e.x / S * k - k * 0.45, e.z / S * k - k * 0.45, k * 0.9, k * 0.9); }
   for (const m of game.ex.marks) { x.strokeStyle = '#fff'; x.lineWidth = 1.5; x.beginPath(); const mx = m.x / S * k, mz = m.z / S * k; x.moveTo(mx, mz); x.lineTo(mx - Math.sin(m.yaw) * k * 0.6, mz - Math.cos(m.yaw) * k * 0.6); x.stroke(); }
   for (const it of L.items) {
     if (it.taken && it.type !== 'valve' && it.type !== 'lever') continue;
@@ -1078,7 +1083,7 @@ function useAnom(an) {
   if (an.kind === 'phone') {
     sound.phoneVoice();
     // голос говорит только сторону, куда идти, и то не всегда правду
-    const dx = lvl.door.x - pl.x, dz = lvl.door.z - pl.z, a = angleDiff(pl.yaw, Math.atan2(-dx, -dz));
+    const ne = nearestExit(), dx = ne.x - pl.x, dz = ne.z - pl.z, a = angleDiff(pl.yaw, Math.atan2(-dx, -dz));
     let side = Math.abs(a) < 0.8 ? 'прямо' : Math.abs(a) > 2.3 ? 'назад' : a > 0 ? 'налево' : 'направо';
     if (Math.random() < 0.25) side = pick(['прямо', 'назад', 'налево', 'направо']);
     whisper(`…иди ${side}… не оборачивайся…`, 4200);
@@ -1175,7 +1180,7 @@ async function startLevel(lv, fresh = false, opt = {}) {
   SAVE.max = Math.max(SAVE.max, lv); SAVE.cont = lv; persist();
   if (lv >= 10) unlock('deep');
   sound.setReverb(...(REVERB[th.layout] || REVERB.maze));
-  sound.setBeacon(lvl.door.x, 1.6, lvl.door.z);
+  sound.setBeacon(lvl.door.x, 1.6, lvl.door.z); game.beaconAt = null;
   if (lvl.secret) sound.setBox(lvl.secret.x, 1.4, lvl.secret.z);
   if (lvl.circus) sound.setCircus(lvl.circus.x, 3, lvl.circus.z);
   if (opt.taken) for (const i of opt.taken) markTaken(i, null, true);
@@ -1944,11 +1949,11 @@ if (import.meta.env.DEV || new URLSearchParams(location.search).has('debug')) {
     tp(x, z, yaw) { pl.x = x; pl.z = z; if (yaw !== undefined) pl.yaw = yaw; pl.vx = pl.vz = 0; pl.wake = 1; },
     look(yaw, pitch = 0) { pl.yaw = yaw; pl.pitch = pitch; },
     // встать перед дверью выхода и смотреть на неё
-    toExit(dist = 2.2) {
-      const d = lvl.door;
+    toExit(dist = 2.2, i = 0) {
+      const d = exitsOf()[i] || lvl.door;
       for (const s of [1, -1]) {
         const x = d.x + d.nx * dist * s, z = d.z + d.nz * dist * s;
-        if (!blocked(x, z)) { this.tp(x, z, faceTo(d.x, d.z)); pl.pitch = 0.05; return true; }
+        if (!blocked(x, z)) { this.tp(x, z, Math.atan2(-(d.x - x), -(d.z - z))); pl.pitch = 0.05; return true; }
       }
       return false;
     },

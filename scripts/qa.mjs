@@ -33,6 +33,8 @@ const res = await p.evaluate(async (seeds) => {
     for (let h = 0; h < q.length; h++) { const i = q[h]; for (const k of [1, -1, mw, -mw]) { const j = i + k; if (j >= 0 && j < g.length && d[j] < 0 && walk(g[j])) { d[j] = d[i] + 1; q.push(j); } } }
     const fi = G.door.fy * mw + G.door.fx;
     if (d[fi] < 0) issues.push('вихід недосяжний');
+    for (const e of G.exits || []) if (d[e.fy * mw + e.fx] < 0) issues.push('додатковий вихід недосяжний');
+    if ((G.exits || []).length < 2) issues.push('виходів менше 2: ' + (G.exits || []).length);
     for (const f of G.finds) { const i = f.ty * mw + f.tx; if (g[i] !== 0) issues.push('знахідка в стіні: ' + f.kind); else if (d[i] < 0) issues.push('знахідка недосяжна: ' + f.kind); }
     for (const n of G.notes) if (d[n.ty * mw + n.tx] < 0) issues.push('записка недосяжна');
     t0 = performance.now();
@@ -41,7 +43,7 @@ const res = await p.evaluate(async (seeds) => {
     if (lvl.lockers.length < 10) issues.push('мало шафок: ' + lvl.lockers.length);
     let tris = 0; lvl.root.traverse((o) => { if (o.geometry && o.geometry.index) tris += o.geometry.index.count / 3 * (o.count || 1); });
     lvl.dispose();
-    out.push({ lv, seed, gen: Math.round(tg), build: Math.round(tb), dist: d[fi], finds: G.finds.length, lockers: lvl.lockers.length, ktris: Math.round(tris / 1000), issues });
+    out.push({ lv, seed, gen: Math.round(tg), build: Math.round(tb), dist: d[fi], exits: (G.exits || []).length, finds: G.finds.length, lockers: lvl.lockers.length, ktris: Math.round(tris / 1000), issues });
   }
   return out;
 }, seeds);
@@ -49,7 +51,7 @@ const res = await p.evaluate(async (seeds) => {
 let bad = 0;
 for (const r of res) {
   if (r.issues.length) bad++;
-  console.log(`рівень ${r.lv} сид ${String(r.seed).padStart(5)}  до виходу ${String(r.dist).padStart(3)} кл.  знахідок ${r.finds}  шафок ${r.lockers}  ${r.ktris}k трикутників  генерація ${r.gen} мс  побудова ${r.build} мс  ${r.issues.length ? '❌ ' + r.issues.join('; ') : '✓'}`);
+  console.log(`рівень ${r.lv} сид ${String(r.seed).padStart(5)}  до виходу ${String(r.dist).padStart(3)} кл.  виходів ${r.exits}  знахідок ${r.finds}  шафок ${r.lockers}  ${r.ktris}k трикутників  генерація ${r.gen} мс  побудова ${r.build} мс  ${r.issues.length ? '❌ ' + r.issues.join('; ') : '✓'}`);
 }
 if (errors.length) { bad++; console.log('Помилки сторінки:\n  ' + errors.join('\n  ')); }
 console.log(bad ? `\nQA: проблем — ${bad}` : '\nQA OK');

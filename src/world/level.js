@@ -305,17 +305,42 @@ function genGrid(th, level, seed, o = {}) {
     let wall = false; for (const k of [1, -1, mw, -mw]) if (g[i + k] === 1) wall = true;
     if (wall) { bd = d[i]; bi = i; }
   }
-  let door = -1;
-  for (const k of [1, -1, mw, -mw]) {
-    const j = bi + k; if (g[j] !== 1) continue;
-    const jx = j % mw, jy = (j / mw) | 0;
-    const bx = jx + (k === 1 ? 1 : k === -1 ? -1 : 0), by = jy + (k === mw ? 1 : k === -mw ? -1 : 0);
-    const out = bx < 0 || by < 0 || bx >= mw || by >= mh;
-    if (out || g[by * mw + bx] === 1) { door = j; break; }
-    if (door < 0) door = j;
-  }
+  // стена рядом с клеткой fi, в которой будет дверь (лучше — с толстой стеной за ней)
+  const pickDoor = (fi) => {
+    let door = -1;
+    for (const k of [1, -1, mw, -mw]) {
+      const j = fi + k; if (g[j] !== 1) continue;
+      const jx = j % mw, jy = (j / mw) | 0;
+      const bx = jx + (k === 1 ? 1 : k === -1 ? -1 : 0), by = jy + (k === mw ? 1 : k === -mw ? -1 : 0);
+      const out = bx < 0 || by < 0 || bx >= mw || by >= mh;
+      if (out || g[by * mw + bx] === 1) { door = j; break; }
+      if (door < 0) door = j;
+    }
+    return door;
+  };
+  const door = pickDoor(bi);
   g[door] = 2;
   const D = { tx: door % mw, ty: (door / mw) | 0, fx: bi % mw, fy: (bi / mw) | 0 };
+  // в открытом мире — ещё до двух выходов в других дальних зонах (все ведут на следующий уровень)
+  const exits = [D];
+  if (world && !o.demo) {
+    const zoneOf = (x, y) => zoneAt(world.zones, x, y);
+    const cand = [];
+    for (let i = 0; i < d.length; i++) {
+      if (g[i] !== 0 || d[i] < maxD * 0.5) continue;
+      let wall = false; for (const k of [1, -1, mw, -mw]) if (g[i + k] === 1) wall = true;
+      if (wall) cand.push(i);
+    }
+    for (let i = cand.length - 1; i > 0; i--) { const j = (r() * (i + 1)) | 0; [cand[i], cand[j]] = [cand[j], cand[i]]; }
+    for (const i of cand) {
+      if (exits.length >= 3) break;
+      const x = i % mw, y = (i / mw) | 0, z = zoneOf(x, y);
+      if (z === world.startZone) continue;
+      if (exits.some((e) => zoneOf(e.fx, e.fy) === z || Math.abs(e.fx - x) + Math.abs(e.fy - y) < 30)) continue;
+      const dd = pickDoor(i); if (dd < 0) continue;
+      g[dd] = 2; exits.push({ tx: dd % mw, ty: (dd / mw) | 0, fx: x, fy: y });
+    }
+  }
   let yaw = 0, bestRun = -1;
   for (const [dx, dy] of DIRS) {
     let run = 0; while (walkT(g[(sy + dy * (run + 1)) * mw + sx + dx * (run + 1)]) && run < 12) run++;
@@ -324,7 +349,7 @@ function genGrid(th, level, seed, o = {}) {
   const cands = [];
   for (let i = 0; i < d.length; i++) if (g[i] === 0 && d[i] >= 0) cands.push(i);
   for (let i = cands.length - 1; i > 0; i--) { const j = (r() * (i + 1)) | 0; const t = cands[i]; cands[i] = cands[j]; cands[j] = t; }
-  const used = [[sx, sy], [D.fx, D.fy]];
+  const used = [[sx, sy], ...exits.map((e) => [e.fx, e.fy])];
   for (const f of finds) for (let y = -2; y <= 2; y += 2) for (let x = -2; x <= 2; x += 2) used.push([f.tx + x, f.ty + y]);
   let key = null;
   if (th.needKey && !o.demo) {
@@ -375,7 +400,7 @@ function genGrid(th, level, seed, o = {}) {
       secret = { fx: mw - 1, fy, cx: mw + 1, cy: fy, kind: th.secret };
     }
   }
-  return { g, mw: W2, mh, spawn: { tx: sx, ty: sy, yaw }, door: D, key, notes, water, batt, secret, rooms, used, zones: world ? world.zones : null, finds };
+  return { g, mw: W2, mh, spawn: { tx: sx, ty: sy, yaw }, door: D, key, notes, water, batt, secret, rooms, used, zones: world ? world.zones : null, finds, exits };
 }
 
 // ---------------------------------------------------------------------------
@@ -496,7 +521,11 @@ function buildLevel(th, G, opts = {}) {
   const D = G.door;
   const dnx = D.fx - D.tx, dnz = D.fy - D.ty;
   const dfx = (D.tx + 0.5 + dnx * 0.5) * S, dfz = (D.ty + 0.5 + dnz * 0.5) * S;
-  const sign = { x: dfx + dnx * 0.3, y: 2.33, z: dfz + dnz * 0.3 };
+  // все выходы: позиция двери (на грани клетки), нормаль «в комнату», табличка
+  const EX = (G.exits || [D]).map((e) => {
+    const nx = e.fx - e.tx, nz = e.fy - e.ty, x = (e.tx + 0.5 + nx * 0.5) * S, z = (e.ty + 0.5 + nz * 0.5) * S;
+    return { x, z, nx, nz, sign: { x: x + nx * 0.3, y: 2.33, z: z + nz * 0.3 } };
+  });
 
   const vis = (x0, z0, x1, z1) => {
     const dx = x1 - x0, dz = z1 - z0, len = Math.hypot(dx, dz), steps = Math.ceil(len / 0.3);
@@ -526,8 +555,8 @@ function buildLevel(th, G, opts = {}) {
       const k = pw * ndl * (0.35 + 0.65 * Math.max(0, dy / dd)) * 2.6 / (1 + d2 * 0.4);
       R += col[0] * k; Gc += col[1] * k; B += col[2] * k;
     }
-    if (!opts.demo) {
-      const dx = sign.x - x, dy = sign.y - y, dz = sign.z - z, d2 = dx * dx + dy * dy + dz * dz;
+    if (!opts.demo) for (const E of EX) {
+      const sign = E.sign, dx = sign.x - x, dy = sign.y - y, dz = sign.z - z, d2 = dx * dx + dy * dy + dz * dz;
       if (d2 < 30 && vis(sign.x, sign.z, ox, oz)) { const k = 0.55 / (1 + d2 * 1.0); R += 0.15 * k; Gc += 1.0 * k; B += 0.4 * k; }
     }
     out[0] = R; out[1] = Gc; out[2] = B;
@@ -657,13 +686,16 @@ function buildLevel(th, G, opts = {}) {
     mesh(gD, bakedMat(tex(TX.doorCanvas(th, r), { clampT: true })));
     const signMat = new THREE.MeshBasicMaterial({ map: tex(TX.signCanvas(), { repeat: false }), color: new THREE.Color(1.9, 1.9, 1.9) });
     const side = new THREE.MeshLambertMaterial({ color: 0x1d2a20 });
-    const sg = add(new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.24, 0.06), [side, side, side, side, signMat, side]));
-    sg.position.set(dfx + dnx * 0.03, 2.33, dfz + dnz * 0.03); sg.rotation.y = Math.atan2(dnx, dnz);
-    const tx_ = -dnz, tz_ = dnx;
-    const kp = add(new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.17, 0.04), new THREE.MeshLambertMaterial({ color: 0x24252a })));
-    kp.position.set(dfx + tx_ * 0.66 + dnx * 0.02, 1.15, dfz + tz_ * 0.66 + dnz * 0.02); kp.rotation.y = sg.rotation.y;
     keypadMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(3, 0.2, 0.1) });
-    const kl = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.035, 0.01), keypadMat); kl.position.set(0, 0.05, 0.022); kp.add(kl);
+    const kpM = new THREE.MeshLambertMaterial({ color: 0x24252a });
+    for (const E of EX) {
+      const sg = add(new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.24, 0.06), [side, side, side, side, signMat, side]));
+      sg.position.set(E.x + E.nx * 0.03, 2.33, E.z + E.nz * 0.03); sg.rotation.y = Math.atan2(E.nx, E.nz);
+      const tx_ = -E.nz, tz_ = E.nx;
+      const kp = add(new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.17, 0.04), kpM));
+      kp.position.set(E.x + tx_ * 0.66 + E.nx * 0.02, 1.15, E.z + tz_ * 0.66 + E.nz * 0.02); kp.rotation.y = sg.rotation.y;
+      const kl = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.035, 0.01), keypadMat); kl.position.set(0, 0.05, 0.022); kp.add(kl);
+    }
   }
 
   // --- реквизит
@@ -996,6 +1028,13 @@ function buildLevel(th, G, opts = {}) {
   // --- предметы
   const items = [];
   const glowT = tex(TX.glowCanvas(), { repeat: false });
+  // зелёное свечение над каждым выходом — видно издалека
+  if (!opts.demo) for (const E of EX) {
+    const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowT, color: 0x40ff88, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.55 }));
+    s.position.set(E.sign.x + E.nx * 0.1, 2.33, E.sign.z + E.nz * 0.1); s.scale.set(2.4, 1.4, 1); add(s);
+    const f = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowT, color: 0x30d070, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0.22 }));
+    f.position.set(E.x + E.nx * 0.6, 1.1, E.z + E.nz * 0.6); f.scale.set(3, 2.6, 1); add(f);
+  }
   const glow = (color, size, y, op = 0.5) => {
     const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowT, color, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: op }));
     s.scale.set(size, size, 1); s.position.y = y; return s;
@@ -1186,7 +1225,7 @@ function buildLevel(th, G, opts = {}) {
     root, g, mw, mh, tile, lamps, items, colliders, secret, floorList, lockers, HH, circus, puddles,
     glowT, zones: G.zones, zoneAt: (x, z) => (G.zones ? zoneAt(G.zones, Math.floor(x / S), Math.floor(z / S)) : null),
     spawn: { x: (G.spawn.tx + 0.5) * S, z: (G.spawn.ty + 0.5) * S, yaw: G.spawn.yaw },
-    door: { x: dfx, z: dfz, nx: dnx, nz: dnz },
+    door: { x: dfx, z: dfz, nx: dnx, nz: dnz }, exits: EX.map((E) => ({ x: E.x, z: E.z, nx: E.nx, nz: E.nz })),
     idx: (x, z) => Math.floor(z / S) * mw + Math.floor(x / S),
     bfs: (tx, ty) => bfs(g, mw, mh, tx, ty, walkT),
     groundY: (x, z) => floorY(tile(Math.floor(x / S), Math.floor(z / S))),

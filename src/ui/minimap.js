@@ -57,7 +57,8 @@ export function drawMinimap(m, o) {
   x.fillStyle = 'rgba(255,90,70,0.85)';
   for (const [wx, wz] of m.trail) { x.beginPath(); x.arc((wx / S - cx) * k, (wz / S - cz) * k, Math.max(1.4, k * 0.1), 0, 7); x.fill(); }
   // выход (если видел) и найденные находки
-  if (o.doorSeen) { x.fillStyle = '#35e07a'; x.fillRect((L.door.x / S - cx) * k - k * 0.45, (L.door.z / S - cz) * k - k * 0.45, k * 0.9, k * 0.9); }
+  x.fillStyle = '#35e07a';
+  for (const e of o.exits || []) x.fillRect((e.x / S - cx) * k - k * 0.45, (e.z / S - cz) * k - k * 0.45, k * 0.9, k * 0.9);
   for (const f of o.finds || []) {
     if (!f.found) continue;
     const X = (f.x / S - cx) * k, Z = (f.z / S - cz) * k;
