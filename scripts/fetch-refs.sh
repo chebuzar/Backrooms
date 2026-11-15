@@ -19,6 +19,29 @@ clone N8python/n8ao                  # ambient occlusion: soft contact shadows i
 clone donmccurdy/glTF-Transform      # model/texture optimisation (meshopt, KTX2, resize)
 clone gkjohnson/three-mesh-bvh       # fast raycasts / collisions against meshes
 clone GoogleChrome/modern-web-guidance # modern HTML/CSS/JS guides for menus & UI
+
+# --- graphics ---
+clone Ameobea/three-good-godrays     # volumetric light shafts (postprocessing pass)
+clone gkjohnson/three-gpu-pathtracer # path-traced "ground truth" renders to tune baked lighting
+clone protectwise/troika             # crisp SDF text in 3D (notes, signs) — troika-three-text
+clone patriciogonzalezvivo/lygia     # shader reference (noise, grain, lighting). Prosperity licence: read, don't copy
+# --- performance / phones ---
+clone pmndrs/detect-gpu              # pick quality preset by device GPU
+clone zeux/meshoptimizer             # mesh compression / vertex cache optimisation
+clone BinomialLLC/basis_universal    # KTX2/Basis texture compression (less GPU memory on iPhone)
+clone KhronosGroup/KTX-Software      # toktx CLI used by glTF-Transform for KTX2
+clone BabylonJS/Spector.js           # WebGL frame capture: draw calls, shaders, state
+# --- monster AI ---
+clone Mugen87/yuka                   # game AI: perception, steering, state machines, navmesh
+clone isaac-mason/recast-navigation-js # navmesh pathfinding (Recast/Detour WASM)
+# --- sound / input ---
+clone Tonejs/Tone.js                 # WebAudio synthesis & effects reference
+clone chrisguttandin/standardized-audio-context # Safari/iOS WebAudio quirks
+clone goldfire/howler.js             # audio playback library (allowed list)
+clone yoannmoinet/nipplejs           # virtual joystick (allowed list)
+# --- level generation ---
+clone mxgmn/WaveFunctionCollapse     # procedural layout ideas (C#, reference only)
+
 # three.js examples + manual, pinned to the version the game uses (0.160 = r160)
 if [ ! -d three.js/.git ]; then
   git -c advice.detachedHead=false clone -q --depth 1 --branch r160 --filter=blob:none --sparse \

@@ -74,7 +74,13 @@ npm run shot -- --level 4 --eval "__zk.look(1.57)" # довільний JS пе�
 | `postprocessing` (pmndrs) | horror-ефекти: шум, зерно, глітч, віньєтка | ні (свій шейдер FX + `three/addons` EffectComposer) |
 | `three-mesh-bvh` | колізії, щоб не проходити крізь стіни | ні (колізії по сітці клітинок + прямокутники) |
 
-- **Довідкові репозиторії** (не залежності гри): `bash scripts/fetch-refs.sh` клонує в `../refs/` вихідний код і приклади — `postprocessing`, `n8ao` (AO), `glTF-Transform`, `three-mesh-bvh`, `modern-web-guidance` (поради для меню/UI) і приклади + довідку `three.js` саме версії r160. Контейнер одноразовий — на початку сесії запускати скрипт, якщо `../refs` немає. Сумісність із three 0.160: `postprocessing` лише **6.35–6.36.x** (новіші вимагають three ≥ 0.168), `n8ao` 2.x (потребує postprocessing ≥ 6.30), `three-mesh-bvh` — поточна 0.9.x підходить (three ≥ 0.159).
+- **Довідкові репозиторії** (не залежності гри, ~2 ГБ): `bash scripts/fetch-refs.sh` клонує в `../refs/` вихідний код і приклади. Контейнер одноразовий — на початку сесії запускати скрипт, якщо `../refs` немає. Перш ніж писати ефект/систему — подивитися, як це зроблено там.
+  - Графіка: `three.js` (приклади + довідка саме r160), `postprocessing`, `n8ao` (AO), `three-good-godrays` (промені світла), `three-gpu-pathtracer` (еталонний фото-рендер для налаштування запеченого світла), `troika` (чіткий 3D-текст), `lygia` (шейдери — **лише читати**, ліцензія Prosperity, код не копіювати).
+  - Продуктивність/телефони: `detect-gpu` (пресет якості за GPU), `glTF-Transform`, `meshoptimizer`, `basis_universal` + `KTX-Software` (стискання текстур у KTX2), `Spector.js` (аналіз кадру: draw calls, шейдери).
+  - Монстр: `yuka` (ШІ: сприйняття, стани, рух), `recast-navigation-js` (навмеш, пошук шляху), `three-mesh-bvh` (колізії/raycast).
+  - Звук і керування: `Tone.js` (синтез, ефекти), `standardized-audio-context` (особливості WebAudio в Safari), `howler.js`, `nipplejs`.
+  - Інше: `modern-web-guidance` (поради Chrome для меню/UI), `WaveFunctionCollapse` (ідеї генерації рівнів, C#).
+  - Сумісність із three 0.160: `postprocessing` лише **6.35–6.36.x** (новіші вимагають three ≥ 0.168); `n8ao` 2.x і `three-good-godrays` працюють поверх нього (підбирати версію під postprocessing 6.36); `three-mesh-bvh` 0.9.x (three ≥ 0.159); `troika-three-text`, `recast-navigation` — будь-яка three; `three-gpu-pathtracer` новий потребує three ≥ 0.187 — лише як окремий інструмент, не в грі. Відкинуті: `realism-effects` (покинутий з 2024, важкий), `resonance-audio` (архів), `rapier.js` (переїхав; колізії вистачає своїх + BVH).
 - Перед встановленням бібліотеки — коротко пояснити власнику, навіщо вона потрібна. Встановлювати через npm лише ту, що потрібна зараз.
 - Гра має добре працювати в **Safari на iPad та iPhone**.
 - На iPhone/iPad **звук вмикається після першого дотику** до екрана (AudioContext створюється/відновлюється в обробнику жесту).
