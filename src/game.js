@@ -9,7 +9,7 @@ import { monsterFor, MONSTERS as MON } from './data/game-data.js';
 import { theme, THEMES, DIFF, NOTES, ACH, PROLOGUE, ENDING, WHISPERS, LAST, notesFor, SECRETS, QUICK } from './data/game-data.js';
 import { Net, makeCode } from './net/net.js';
 import { buildExtras, updateExtras, addMark, taskFor, TASK_GOAL, ANOMS, ANOM_KEYS } from './world/extras.js';
-import { genGrid, buildLevel, S, BAKE, solidMove } from './world/level.js';
+import { genGrid, buildLevel, S, BAKE, AMBK, solidMove } from './world/level.js';
 import { Entity, makeEntityMesh, disposeMesh } from './world/entity.js';
 import { Sound } from './audio/sound.js';
 import { setTexScale } from './render/textures.js';
@@ -17,6 +17,7 @@ import { t as tr } from './i18n/index.js';
 import { FIND_KINDS, FIND_IDS, buildFinds, updateFinds, findPoint } from './world/finds.js';
 import { makeWrist, poseWrist, drawRadar } from './world/wrist.js';
 import { createMinimap, drawMinimap, trackTrail, resetMinimap } from './ui/minimap.js';
+import { makeDust, updateDust } from './render/dust.js';
 
 const $ = (id) => document.getElementById(id);
 const isTouch = (window.matchMedia && matchMedia('(pointer: coarse)').matches) || ('ontouchstart' in window);
@@ -54,21 +55,26 @@ flash.position.set(0.15, -0.1, 0.45);
 const fTarget = new THREE.Object3D(); fTarget.position.set(0, -0.15, -5);
 camera.add(flash); camera.add(fTarget); flash.target = fTarget;
 const wrist = makeWrist(); camera.add(wrist.root);
+let dust = null;
 
+// Настройки «картинки» в одном месте (подбираются по скриншотам; в отладке — __zk.LOOK).
+// h — внутренняя высота кадра в пикселях: стиль старой камеры, крупный пиксель, заодно быстрее на телефонах.
+const LOOK = { amb0: 0.25, ambK: 1.3, wallAmb: 0.22, bake: 1.0, h: { low: 300, med: 400, high: 480 }, bloom: [0.55, 0.5, 0.88], exposure: 1.05 };
+renderer.toneMappingExposure = LOOK.exposure;
 const composerRT = new THREE.WebGLRenderTarget(16, 16, { type: THREE.HalfFloatType, samples: 4 });
 const composer = new EffectComposer(renderer, composerRT);
 composer.addPass(new RenderPass(scene, camera));
-const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.7, 0.6, 0.92);
+const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), LOOK.bloom[0], LOOK.bloom[1], LOOK.bloom[2]);
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
 const FX = {
   uniforms: {
-    tDiffuse: { value: null }, uTime: { value: 0 }, uGrain: { value: 0.08 }, uVig: { value: 0.3 }, uAb: { value: 0.15 },
+    tDiffuse: { value: null }, uRes: { value: new THREE.Vector2(640, 360) }, uTime: { value: 0 }, uGrain: { value: 0.08 }, uVig: { value: 0.3 }, uAb: { value: 0.15 },
     uDist: { value: 0 }, uRed: { value: 0 }, uFade: { value: 0 }, uWhite: { value: 0 }, uSat: { value: 1 }, uNV: { value: 0 }
   },
   vertexShader: 'varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
   fragmentShader: `
-    varying vec2 vUv; uniform sampler2D tDiffuse;
+    varying vec2 vUv; uniform sampler2D tDiffuse; uniform vec2 uRes;
     uniform float uTime,uGrain,uVig,uAb,uDist,uRed,uFade,uWhite,uSat,uNV;
     float rnd(vec2 c){ return fract(sin(dot(c,vec2(12.9898,78.233)))*43758.5453); }
     void main(){
@@ -76,10 +82,22 @@ const FX = {
       float band=step(0.993,rnd(vec2(floor(uv.y*90.0),floor(uTime*18.0))));
       uv.x+=(band*0.025+sin(uv.y*38.0+uTime*7.0)*0.003)*uDist;
       uv+=c*dot(c,c)*0.08*uDist;
+      // полоса «трекинга» видеокассеты медленно ползёт по кадру
+      float ty=fract(uTime*0.045); float trk=smoothstep(0.012,0.0,abs(uv.y-ty));
+      uv.x+=trk*0.004*sin(uv.y*900.0+uTime*40.0);
       vec2 off=c*uAb*0.008;
-      vec3 col=vec3(texture2D(tDiffuse,uv+off).r,texture2D(tDiffuse,uv).g,texture2D(tDiffuse,uv-off).b);
+      // цвет «плывёт» вправо относительно яркости, как на VHS
+      vec2 cb=vec2(1.6/uRes.x,0.0);
+      vec3 col=vec3(texture2D(tDiffuse,uv+off+cb).r,texture2D(tDiffuse,uv).g,texture2D(tDiffuse,uv-off-cb*0.6).b);
+      vec3 bl=(texture2D(tDiffuse,uv+cb*2.0).rgb+texture2D(tDiffuse,uv-cb*2.0).rgb)*0.5;
+      float ly=dot(col,vec3(0.299,0.587,0.114)); col=mix(col,vec3(ly)+(bl-vec3(dot(bl,vec3(0.299,0.587,0.114))))*1.0,0.35);
+      // цветокор: мягкая S-кривая, тени в холодную зелень, света тёплые
+      col=clamp(col,0.0,1.0); col=mix(col,col*col*(3.0-2.0*col),0.35);
+      float lum=dot(col,vec3(0.299,0.587,0.114));
+      col+=vec3(-0.012,0.006,0.012)*(1.0-smoothstep(0.0,0.45,lum))+vec3(0.025,0.012,-0.02)*smoothstep(0.55,1.0,lum);
+      col+=trk*(rnd(vec2(uv.x*400.0,uTime))-0.3)*0.12;
       float l=dot(col,vec3(0.299,0.587,0.114)); col=mix(vec3(l),col,uSat);
-      col*=0.988+0.012*sin(vUv.y*800.0+uTime*3.0);
+      col*=0.965+0.035*sin(vUv.y*uRes.y*3.14159);
       col+=(rnd(vUv*vec2(731.0,519.0)+fract(uTime*7.3))-0.5)*uGrain;
       float v=smoothstep(0.9,0.25,length(c)*(1.0+uVig)); col*=mix(1.0,v,0.9);
       col=mix(col,col*vec3(1.35,0.4,0.35)+vec3(0.06,0.0,0.0),uRed*clamp(0.3+length(c)*1.5,0.0,1.0));
@@ -99,7 +117,8 @@ function applyQuality() {
   let q = SAVE.set.q; if (q === 'auto') q = isTouch ? 'med' : 'high';
   quality = q;
   const dpr = window.devicePixelRatio || 1;
-  basePR = q === 'low' ? Math.min(dpr, 1) * 0.6 : q === 'med' ? Math.min(dpr, 2) * 0.75 : Math.min(dpr, 2);
+  // фиксированная внутренняя высота кадра → одинаковый «плёночный» пиксель на любом экране
+  basePR = Math.min(dpr, Math.max(0.25, LOOK.h[q] / Math.max(240, innerHeight)));
   setTexScale(q === 'low' ? 1 : 2);
   const samples = q === 'low' ? 0 : q === 'med' ? 2 : 4;
   for (const rt of [composer.renderTarget1, composer.renderTarget2]) if (rt.samples !== samples) { rt.samples = samples; rt.dispose(); }
@@ -119,7 +138,9 @@ function autoRes(dt) {
 }
 function resize() {
   const w = innerWidth, h = innerHeight;
+  if (quality && LOOK.h[quality]) { const want = Math.min(window.devicePixelRatio || 1, Math.max(0.25, LOOK.h[quality] / Math.max(240, h))); if (Math.abs(want - basePR) > 0.01) { basePR = want; curPR = Math.min(curPR, basePR); if (renderer.getPixelRatio() !== curPR) { renderer.setPixelRatio(curPR); composer.setPixelRatio(curPR); } } }
   renderer.setSize(w, h, false); composer.setSize(w, h);
+  if (typeof fxPass !== 'undefined') { const pr = renderer.getPixelRatio(); fxPass.uniforms.uRes.value.set(w * pr, h * pr); }
   camera.aspect = w / h; camera.updateProjectionMatrix();
 }
 addEventListener('resize', resize);
@@ -188,8 +209,8 @@ function lights(dt, allowBlack) {
   if (game.dipT > 0) { game.dipT -= dt; if (!game.black) p *= game.dip; }
   game.power = p;
   const P = p * th.power;
-  BAKE.value = Math.PI * P;
-  amb.intensity = 0.25 + 1.3 * P + (pl.nv ? 2.2 : 0);
+  BAKE.value = Math.PI * P * LOOK.bake; AMBK.value = LOOK.wallAmb;
+  amb.intensity = LOOK.amb0 + LOOK.ambK * P + (pl.nv ? 2.2 : 0);
   return P;
 }
 
@@ -634,6 +655,8 @@ function updatePlay(dt) {
   updateInteract();
   applyCamera(dt);
   updateWristMap(dt);
+  if (!dust && lvl.glowT) { dust = makeDust(lvl.glowT); scene.add(dust.pts); }
+  if (dust) { dust.m.map = lvl.glowT; updateDust(dust, camera.position, tAll, game.black ? 0.05 : P * (pl.light ? 1.2 : 1), (lvl.HH || 2.7) - 0.1); }
   // эффекты
   const ls = clamp((60 - pl.san) / 60, 0, 1);
   setFX({
@@ -1847,7 +1870,7 @@ function loop(now) {
 if (import.meta.env.DEV || new URLSearchParams(location.search).has('debug')) {
   const faceTo = (x, z) => Math.atan2(-(x - pl.x), -(z - pl.z));
   window.__zk = {
-    game, pl, SAVE, renderer, scene, camera, sound, THREE, wrist,
+    game, pl, SAVE, renderer, scene, camera, sound, THREE, wrist, LOOK, bloom, amb, U, applyQuality,
     get lvl() { return lvl; },
     get ent() { return ent; },
     get ready() { return game.mode === 'play' && !busy; },

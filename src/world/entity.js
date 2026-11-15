@@ -40,6 +40,107 @@ function skinTexture(L) {
   return t;
 }
 
+// ---------- внешность по виду монстра: свой силуэт и детали поверх общего скелета ----------
+function grinFaceTex() {
+  const c = canvas(256, 256), x = c.getContext('2d');
+  x.fillStyle = '#f2cc3a'; x.fillRect(0, 0, 256, 256);
+  for (let i = 0; i < 900; i++) { x.fillStyle = `rgba(${200 + Math.random() * 55},${150 + Math.random() * 60},0,0.25)`; x.fillRect(Math.random() * 256, Math.random() * 256, 3, 1); }
+  x.lineCap = 'round'; x.lineJoin = 'round';
+  x.fillStyle = '#111'; for (const ex of [88, 168]) { x.beginPath(); x.ellipse(ex, 92, 13, 20, 0, 0, 7); x.fill(); }
+  x.fillStyle = '#fff'; for (const ex of [92, 172]) { x.beginPath(); x.arc(ex, 86, 4, 0, 7); x.fill(); }
+  x.fillStyle = '#1a0606'; x.beginPath(); x.moveTo(40, 132); x.quadraticCurveTo(128, 250, 216, 132); x.quadraticCurveTo(128, 182, 40, 132); x.fill();
+  x.fillStyle = '#efe6cf';
+  for (let k = 0; k < 13; k++) { const t = k / 12, px = 52 + t * 152, py = 138 + Math.sin(t * Math.PI) * 34; x.beginPath(); x.moveTo(px - 6, py); x.lineTo(px + 6, py); x.lineTo(px, py + 15); x.fill(); }
+  x.strokeStyle = 'rgba(30,10,0,0.85)'; x.lineWidth = 6; x.beginPath(); x.moveTo(40, 132); x.quadraticCurveTo(128, 250, 216, 132); x.stroke();
+  x.strokeStyle = 'rgba(120,20,20,0.6)'; x.lineWidth = 3; for (let k = 0; k < 6; k++) { const px = 70 + k * 24; x.beginPath(); x.moveTo(px, 170); x.lineTo(px + (Math.random() - 0.5) * 6, 200 + Math.random() * 30); x.stroke(); }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+function staticFaceTex() {
+  const c = canvas(128, 96), x = c.getContext('2d'), d = x.createImageData(128, 96);
+  for (let i = 0; i < 128 * 96; i++) { const v = 40 + Math.random() * 120; d.data[i * 4] = v * 0.8; d.data[i * 4 + 1] = v; d.data[i * 4 + 2] = v * 0.9; d.data[i * 4 + 3] = 255; }
+  x.putImageData(d, 0, 0);
+  x.fillStyle = 'rgba(0,0,0,0.8)'; for (const ex of [44, 84]) { x.beginPath(); x.ellipse(ex, 38, 9, 13, 0, 0, 7); x.fill(); }
+  x.beginPath(); x.ellipse(64, 70, 18, 7, 0, 0, 7); x.fill();
+  for (let y = 0; y < 96; y += 3) { x.fillStyle = 'rgba(0,0,0,0.25)'; x.fillRect(0, y, 128, 1); }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+function decorate(L, P) {
+  const { head, chest, spine, hips, jaw, eyes, mat, dark, glow, tooth, mats, wrists } = P;
+  const M = (g, m) => new THREE.Mesh(g, m);
+  const std = (o) => { const m = new THREE.MeshStandardMaterial(o); mats.push(m); return m; };
+  const clearFace = () => { for (const ch of [...head.children]) if (ch !== jaw) head.remove(ch); for (const ch of [...jaw.children]) jaw.remove(ch); eyes.length = 0; };
+  const k = L.kind;
+  if (k === 'watcher') {
+    // вытянутая голова, огромные белые глаза, длинная тёмная пасть
+    head.scale.set(1, 1.45, 1);
+    for (const s of [-1, 1]) { const e = M(new THREE.SphereGeometry(0.036, 14, 10), glow); e.scale.set(1.2, 0.9, 0.4); e.position.set(s * 0.055, 0.215, 0.118); head.add(e); }
+    const maw = M(new THREE.SphereGeometry(0.05, 14, 10), dark); maw.scale.set(0.8, 1.9, 0.5); maw.position.set(0, 0.06, 0.1); jaw.add(maw);
+  } else if (k === 'blind') {
+    // без глаз, голова раскрыта вертикальной пастью, большие уши
+    const slit = M(new THREE.BoxGeometry(0.045, 0.22, 0.05), dark); slit.position.set(0, 0.17, 0.11); head.add(slit);
+    for (let q = 0; q < 7; q++) for (const s of [-1, 1]) { const tt = M(new THREE.ConeGeometry(0.008, 0.035, 5), tooth); tt.rotation.z = s * Math.PI / 2; tt.position.set(s * 0.016, 0.08 + q * 0.03, 0.13); head.add(tt); }
+    for (const s of [-1, 1]) { const ear = M(new THREE.ConeGeometry(0.06, 0.2, 8), mat); ear.scale.z = 0.3; ear.rotation.set(0, s * 0.6, s * -1.1); ear.position.set(s * 0.15, 0.24, -0.02); head.add(ear); }
+  } else if (k === 'crawler') {
+    // вторая пара рук на груди, фары-глаза
+    for (const s of [-1, 1]) {
+      const a = new THREE.Group(); a.position.set(s * 0.16, -0.25, 0.04); a.rotation.set(-0.9, 0, s * 1.1); chest.add(a);
+      const g1 = new THREE.CylinderGeometry(0.025, 0.018, 0.55, 6); g1.translate(0, -0.275, 0); a.add(M(g1, mat));
+      const g2 = new THREE.CylinderGeometry(0.018, 0.008, 0.45, 6); g2.translate(0, -0.225, 0); const f = M(g2, mat); f.position.y = -0.55; f.rotation.x = 1.2; a.add(f);
+    }
+    for (const s of [-1, 1]) { const e = M(new THREE.SphereGeometry(0.03, 12, 8), glow); e.scale.z = 0.4; e.position.set(s * 0.06, 0.2, 0.125); head.add(e); }
+  } else if (k === 'grinner') {
+    // огромная круглая голова-смайлик, нарисованная мелками
+    clearFace();
+    const face = std({ map: grinFaceTex(), roughness: 0.9 });
+    const ball = M(new THREE.SphereGeometry(0.3, 28, 20), face); ball.position.y = 0.2; ball.rotation.y = -Math.PI / 2; head.add(ball);
+  } else if (k === 'drowned') {
+    // мокрые чёрные волосы свисают на лицо до груди
+    const hair = std({ color: 0x0a0d0a, roughness: 0.25, metalness: 0.1 });
+    for (let q = 0; q < 26; q++) {
+      const a = (q / 26) * Math.PI * 1.6 - Math.PI * 0.8, len = 0.45 + Math.random() * 0.35;
+      const g = new THREE.CylinderGeometry(0.008, 0.003, len, 4); g.translate(0, -len / 2, 0);
+      const h = M(g, hair); h.position.set(Math.sin(a) * 0.12, 0.33, Math.cos(a) * 0.12); h.rotation.x = Math.cos(a) * 0.12; head.add(h);
+    }
+    const cap = M(new THREE.SphereGeometry(0.145, 18, 12, 0, Math.PI * 2, 0, Math.PI * 0.55), hair); cap.scale.set(0.95, 1.3, 1.05); cap.position.y = 0.19; head.add(cap);
+  } else if (k === 'swimmer') {
+    // купальная шапочка, очки для плавания
+    const capM = std({ color: 0xb8262e, roughness: 0.35 });
+    const cap = M(new THREE.SphereGeometry(0.15, 20, 12, 0, Math.PI * 2, 0, Math.PI * 0.5), capM); cap.scale.set(0.95, 1.3, 1.08); cap.position.y = 0.2; head.add(cap);
+    const lens = std({ color: 0x050a10, roughness: 0.05, metalness: 0.6 });
+    for (const s of [-1, 1]) { const g = M(new THREE.CylinderGeometry(0.034, 0.034, 0.02, 14), lens); g.rotation.x = Math.PI / 2; g.position.set(s * 0.052, 0.205, 0.122); head.add(g); }
+    const strap = M(new THREE.TorusGeometry(0.135, 0.008, 6, 24), lens); strap.rotation.x = Math.PI / 2; strap.scale.set(0.95, 1.1, 1); strap.position.y = 0.205; head.add(strap);
+  } else if (k === 'puppet') {
+    // клоунский воротник, колпак и нос
+    const ruffM = std({ color: 0xf1ece0, roughness: 0.8 });
+    for (let q = 0; q < 14; q++) { const a = q / 14 * Math.PI * 2, r = M(new THREE.SphereGeometry(0.06, 8, 6), ruffM); r.scale.set(1, 0.45, 1); r.position.set(Math.cos(a) * 0.13, 0.04, Math.sin(a) * 0.1); chest.add(r); }
+    const hc = canvas(64, 64), hx = hc.getContext('2d'); for (let i = 0; i < 8; i++) { hx.fillStyle = i % 2 ? '#d22' : '#fff'; hx.fillRect(i * 8, 0, 8, 64); }
+    const ht = new THREE.CanvasTexture(hc); ht.colorSpace = THREE.SRGBColorSpace;
+    const hat = M(new THREE.ConeGeometry(0.09, 0.32, 16), std({ map: ht, roughness: 0.7 })); hat.position.set(0.03, 0.47, 0); hat.rotation.z = -0.2; head.add(hat);
+    const nose = M(new THREE.SphereGeometry(0.032, 12, 10), std({ color: 0xd01818, roughness: 0.3 })); nose.position.set(0, 0.17, 0.135); head.add(nose);
+  } else if (k === 'mimic') {
+    // офисный двойник: вместо головы старый монитор с лицом из помех
+    clearFace();
+    const body = std({ color: 0x9e9a8c, roughness: 0.7 });
+    const box = M(new THREE.BoxGeometry(0.36, 0.3, 0.32), body); box.position.set(0, 0.18, -0.02); head.add(box);
+    const scr = M(new THREE.PlaneGeometry(0.28, 0.21), new THREE.MeshBasicMaterial({ map: staticFaceTex(), color: 0xb8c8b8 })); mats.push(scr.material);
+    scr.position.set(0, 0.19, 0.141); head.add(scr);
+    const tie = M(new THREE.BoxGeometry(0.05, 0.3, 0.01), std({ color: 0x6a1010 })); tie.position.set(0, -0.2, 0.12); chest.add(tie);
+  } else if (k === 'stalker') {
+    // рога и шипы на спине, красные глаза, когти
+    glow.color.setRGB(7, 0.6, 0.3);
+    const bone = std({ color: 0xc9bfa4, roughness: 0.6 });
+    for (const s of [-1, 1]) for (let q = 0; q < 3; q++) { const c = M(new THREE.ConeGeometry(0.02, 0.22 - q * 0.04, 6), bone); c.position.set(s * (0.07 + q * 0.03), 0.3 + q * 0.02, -0.02 - q * 0.04); c.rotation.set(-0.5 - q * 0.2, 0, s * (0.5 + q * 0.25)); head.add(c); }
+    for (let q = 0; q < 6; q++) { const c = M(new THREE.ConeGeometry(0.025, 0.14, 6), bone); c.position.set(0, 0.15 + q * 0.12, -0.15); c.rotation.x = -1.0; spine.add(c); }
+    for (const w of wrists) for (let f = 0; f < 4; f++) { const c = M(new THREE.ConeGeometry(0.009, 0.08, 5), bone); c.position.set((f - 1.5) * 0.016, -0.36, 0.02); c.rotation.x = Math.PI + 0.3; w.add(c); }
+  } else if (k === 'shadow') {
+    // рваный саван из темноты
+    const shroud = std({ color: 0x020202, roughness: 1, transparent: true, opacity: 0.85, side: THREE.DoubleSide });
+    for (let q = 0; q < 10; q++) { const a = q / 10 * Math.PI * 2, len = 0.6 + Math.random() * 0.6; const g = new THREE.PlaneGeometry(0.16, len); g.translate(0, -len / 2, 0); const pl = M(g, shroud); pl.position.set(Math.cos(a) * 0.18, 0.05, Math.sin(a) * 0.12); pl.rotation.set(0.15, a, 0); chest.add(pl); }
+    glow.color.setRGB(3, 4.5, 7);
+  }
+  if (hips && L.kind) hips.userData.kind = L.kind;
+}
+
 function makeEntityMesh(look = {}) {
   const L = Object.assign({ skin: [150, 138, 128], height: 1, thin: 1, eyes: 'glow', mouth: 'jaw', posture: 'hunch' }, look);
   const group = new THREE.Group();
@@ -140,6 +241,7 @@ function makeEntityMesh(look = {}) {
       const ln = new THREE.Line(g, lm); ln.userData.string = true; w.add(ln);
     }
   }
+  decorate(L, { head, chest, spine, hips, jaw, eyes, mat, dark, glow, tooth, mats, wrists });
   // склеиваем неподвижные части в один меш на материал: ~70 → ~25 вызовов отрисовки (важно для iPad)
   const keep = new Set([group, body, hips, spine, chest, head, jaw, ...arms.flatMap((A) => [A.sh, A.el]), ...legs.flatMap((G) => [G.hp, G.kn])]);
   bake(group, keep);

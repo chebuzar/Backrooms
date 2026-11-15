@@ -207,11 +207,32 @@ class Sound {
     else if (kind === 'drowned') { for (let k = 0; k < 8; k++) this.tone(180 + Math.random() * 260, 0.07, 'sine', 0.16 * v, 90, p, k * 0.09); this.noise(0.8, 'lowpass', 400, 2, 0.12, p, 0.2); }
     else if (kind === 'swimmer') { this.noise(0.5, 'bandpass', 900, 1, 0.35 * v, p, 0.02); this.noise(0.3, 'bandpass', 2400, 1.5, 0.12, p, 0.02, 0.2); }
     else if (kind === 'puppet') { for (let k = 0; k < 5; k++) this.tone(520 - k * 45, 0.16, 'square', 0.05 * v, 400 - k * 40, p, k * 0.19); this.tone(140, 0.6, 'triangle', 0.08, 220, p, 0.1); }
-    else if (kind === 'mimic') { this.noise(1.2, 'bandpass', 2600, 5, 0.12, p, 0.5); }
-    else if (kind === 'stalker') { this.tone(48, 1.3, 'sawtooth', 0.3 * v, 38, p); this.noise(1.1, 'lowpass', 260, 3, 0.22 * v, p, 0.2); }
+    else if (kind === 'mimic') { this.mutter(p, v); }
+    else if (kind === 'stalker') { this.growl(p, 1.6, 42, 0.5 * v); this.noise(1.1, 'lowpass', 260, 3, 0.22 * v, p, 0.2); }
+    else if (kind === 'watcher') { this.growl(p, 2.2, 58, 0.32 * v); this.noise(1.6, 'bandpass', 420, 1.5, 0.12 * v, p, 0.5, 0.2); }
     else if (kind === 'shadow') { this.noise(1.8, 'bandpass', 1800, 9, 0.14 * v, p, 0.7); this.tone(3300, 1.6, 'sine', 0.012, 2900, p, 0.3); }
     else if (kind === 'crawler') { for (let k = 0; k < 7; k++) this.noise(0.05, 'bandpass', 1200 + Math.random() * 900, 4, 0.3 * v, p, 0.003, k * 0.07); }
     else { this.tone(70, 1.2, 'sawtooth', 0.14 * v, 44, p); this.noise(1.0, 'bandpass', 520, 1.2, 0.18 * v, p, 0.3); }
+  }
+  // хриплый перегруженный рык: пачка пил через перегруз, высота ползёт вниз
+  growl(dest, dur, f0, vol) {
+    const c = this.ctx, t = c.currentTime, sh = this.shaper(30), bp = this.filt('bandpass', 380, 0.8), g = this.g(0.0001, dest);
+    sh.connect(bp); bp.connect(g);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.25); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    const lfo = c.createOscillator(); lfo.frequency.value = 9 + Math.random() * 6; const lg = this.g(vol * 0.6, null); lfo.connect(lg); lg.connect(g.gain); lfo.start(t); lfo.stop(t + dur);
+    for (const m of [1, 1.03, 1.51, 2.02]) { const o = c.createOscillator(); o.type = 'sawtooth'; o.frequency.setValueAtTime(f0 * m * 1.15, t); o.frequency.exponentialRampToValueAtTime(f0 * m * 0.8, t + dur); o.connect(this.g(0.25, sh)); o.start(t); o.stop(t + dur + 0.05); }
+  }
+  // неразборчивое бормотание «человека»: гласные из фильтров
+  mutter(dest, v = 1) {
+    const c = this.ctx, t0 = c.currentTime, n = 5 + ((Math.random() * 4) | 0);
+    for (let k = 0; k < n; k++) {
+      const t = t0 + k * (0.16 + Math.random() * 0.1), d = 0.12 + Math.random() * 0.14;
+      const o = c.createOscillator(); o.type = 'sawtooth'; o.frequency.setValueAtTime(105 + Math.random() * 25, t);
+      const f1 = this.filt('bandpass', 400 + Math.random() * 500, 6), f2 = this.filt('bandpass', 1100 + Math.random() * 1300, 8), g = this.g(0.0001, dest);
+      o.connect(f1); o.connect(f2); f1.connect(g); f2.connect(g);
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.5 * v, t + 0.03); g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+      o.start(t); o.stop(t + d + 0.05);
+    }
   }
   // ---------- инструменты и задания ----------
   scan() { this.tone(900, 0.5, 'sine', 0.12, 1800); this.tone(1800, 0.9, 'sine', 0.05, 900, null, 0.25); this.noise(0.6, 'bandpass', 2500, 6, 0.05, null, 0.01, 0.1); }

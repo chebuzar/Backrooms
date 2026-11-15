@@ -189,25 +189,25 @@ const QUICK = ['Сюда!', 'Беги!', 'Оно рядом!', 'Нашёл кл�
 // Монстры: у каждого уровня свой. look — внешность, ai — особенность поведения.
 const MONSTERS = {
   watcher: { name: 'Наблюдатель', ic: '👁', trait: 'Пока ты смотришь на него, он стоит. Отвернёшься — подойдёт.',
-    look: { skin: [150, 138, 128], eyes: 'glow', mouth: 'jaw', posture: 'hunch' }, ai: { stare: 0.12 } },
+    look: { kind: 'watcher', skin: [58, 50, 44], eyes: 'blank', mouth: 'none', posture: 'hunch', height: 1.18, thin: 0.85 }, ai: { stare: 0.12 } },
   blind: { name: 'Слепой', ic: '🦻', trait: 'Он не видит, но слышит каждый шаг. Замри — и он пройдёт мимо.',
-    look: { skin: [176, 160, 150], eyes: 'none', mouth: 'jaw', posture: 'hunch', height: 1.05 }, ai: { blind: true, hear: 2.6, stare: 1 } },
+    look: { kind: 'blind', skin: [140, 138, 132], eyes: 'none', mouth: 'jaw', posture: 'hunch', height: 1.05 }, ai: { blind: true, hear: 2.6, stare: 1 } },
   crawler: { name: 'Ползун', ic: '🕷', trait: 'Ползает на четвереньках и несётся по прямой. Сворачивай за углы.',
-    look: { skin: [120, 112, 106], eyes: 'glow', mouth: 'grin', posture: 'crawl' }, ai: { straight: 1.7, turn: 0.45, stare: 0.6 } },
+    look: { kind: 'crawler', skin: [120, 112, 106], eyes: 'glow', mouth: 'grin', posture: 'crawl' }, ai: { straight: 1.7, turn: 0.45, stare: 0.6 } },
   grinner: { name: 'Улыбака', ic: '😁', trait: 'Не ходит, а перескакивает ближе, стоит тебе отвернуться. Не своди с него глаз.',
-    look: { skin: [226, 210, 160], eyes: 'hollow', mouth: 'grin', posture: 'stand', height: 1.08 }, ai: { blink: true, stare: 0 } },
+    look: { kind: 'grinner', skin: [40, 36, 40], eyes: 'blank', mouth: 'none', posture: 'stand', height: 1.12, thin: 0.8 }, ai: { blink: true, stare: 0 } },
   drowned: { name: 'Утопленник', ic: '💧', trait: 'Медленный и мокрый. Рядом с ним рассудок тает втрое быстрее.',
-    look: { skin: [104, 128, 116], wet: true, eyes: 'hollow', mouth: 'jaw', posture: 'hunch' }, ai: { speed: 0.75, drain: 3, stare: 0.4 } },
+    look: { kind: 'drowned', skin: [104, 128, 116], wet: true, eyes: 'hollow', mouth: 'jaw', posture: 'hunch' }, ai: { speed: 0.75, drain: 3, stare: 0.4 } },
   swimmer: { name: 'Пловец', ic: '🌊', trait: 'В воде вдвое быстрее, на сухом полу медленный. Держись подальше от бассейнов.',
-    look: { skin: [184, 198, 204], wet: true, eyes: 'glow', mouth: 'jaw', posture: 'hunch', thin: 0.85 }, ai: { water: 2.1, dry: 0.6, stare: 0.5 } },
+    look: { kind: 'swimmer', skin: [184, 198, 204], wet: true, eyes: 'glow', mouth: 'jaw', posture: 'hunch', thin: 0.85 }, ai: { water: 2.1, dry: 0.6, stare: 0.5 } },
   puppet: { name: 'Марионетка', ic: '🎭', trait: 'Пока играет шарманка, она стоит. Музыка стихла — беги.',
-    look: { skin: [232, 222, 206], puppet: true, eyes: 'painted', mouth: 'painted', posture: 'stand' }, ai: { music: true, stare: 1 } },
+    look: { kind: 'puppet', skin: [232, 222, 206], puppet: true, eyes: 'painted', mouth: 'painted', posture: 'stand' }, ai: { music: true, stare: 1 } },
   mimic: { name: 'Двойник', ic: '👣', trait: 'Повторяет твои шаги. Ты стоишь, а шаги всё ещё слышны? Он рядом.',
-    look: { skin: [96, 96, 102], eyes: 'blank', mouth: 'none', posture: 'stand', suit: true }, ai: { mimic: true, stare: 0.5 } },
+    look: { kind: 'mimic', skin: [70, 72, 80], eyes: 'blank', mouth: 'none', posture: 'stand', suit: true }, ai: { mimic: true, stare: 0.5 } },
   stalker: { name: 'Охотник', ic: '🔦', trait: 'Очень быстрый и видит издалека, но боится света: луч фонарика заставляет его отступить.',
-    look: { skin: [92, 78, 72], height: 1.22, eyes: 'many', mouth: 'jaw', posture: 'hunch' }, ai: { fast: 1.25, fear: true, stare: 1 } },
+    look: { kind: 'stalker', skin: [92, 78, 72], height: 1.22, eyes: 'many', mouth: 'jaw', posture: 'hunch' }, ai: { fast: 1.25, fear: true, stare: 1 } },
   shadow: { name: 'Тень', ic: '🌑', trait: 'Живёт в темноте. На свету медленная и почти невидимая, в темноте молниеносная.',
-    look: { shadow: true, eyes: 'glow', mouth: 'none', posture: 'stand', height: 1.1 }, ai: { shadow: true, stare: 0.5 } }
+    look: { kind: 'shadow', shadow: true, eyes: 'glow', mouth: 'none', posture: 'stand', height: 1.1 }, ai: { shadow: true, stare: 0.5 } }
 };
 const MONSTER_BY_LEVEL = ['watcher', 'blind', 'crawler', 'grinner', 'drowned', 'swimmer', 'puppet', 'mimic', 'stalker', 'shadow'];
 const monsterFor = (lv) => MONSTERS[MONSTER_BY_LEVEL[lv % MONSTER_BY_LEVEL.length]];

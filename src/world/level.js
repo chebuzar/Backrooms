@@ -8,7 +8,8 @@ import * as TX from '../render/textures.js';
 const S = 2;      // размер клетки, м
 const H = 2.7;    // высота потолка, м
 const BAKE = { value: Math.PI };       // общая яркость ламп (мигает)
-const ROOMBAKE = { value: Math.PI };   // свет тайной комнаты (не гаснет)
+const ROOMBAKE = { value: Math.PI };
+const AMBK = { value: 0.3 };       // доля общего «рассеянного» света на запечённых стенах (меньше — контрастнее)   // свет тайной комнаты (не гаснет)
 const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 const solidMove = (t) => t === 1 || t === 2 || t === 5;
 const solidSight = (t) => t === 1 || t === 2 || t === 3 || t === 5;
@@ -414,13 +415,13 @@ GB.prototype.geoms = function () { const g = this.geom(); return g ? [g] : []; }
 function bakedMat(map, uni = BAKE, extra = {}) {
   const m = new THREE.MeshLambertMaterial(Object.assign({ map }, extra));
   m.onBeforeCompile = (sh) => {
-    sh.uniforms.uBake = uni;
+    sh.uniforms.uBake = uni; sh.uniforms.uAmbK = AMBK;
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nattribute vec3 bake;\nvarying vec3 vBake;')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\n\tvBake = bake;');
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', '#include <common>\nvarying vec3 vBake;\nuniform float uBake;')
-      .replace('#include <lights_fragment_maps>', '#include <lights_fragment_maps>\n\tirradiance += vBake * uBake;');
+      .replace('#include <common>', '#include <common>\nvarying vec3 vBake;\nuniform float uBake;\nuniform float uAmbK;')
+      .replace('#include <lights_fragment_maps>', '#include <lights_fragment_maps>\n\tirradiance = irradiance * uAmbK + vBake * uBake;');
   };
   m.customProgramCacheKey = () => 'zk-baked';
   return m;
@@ -1148,4 +1149,4 @@ function buildLevel(th, G, opts = {}) {
   };
 }
 
-export { S, H, BAKE, ROOMBAKE, solidMove, solidSight, PD, genGrid, buildLevel };
+export { S, H, BAKE, ROOMBAKE, AMBK, solidMove, solidSight, PD, genGrid, buildLevel };

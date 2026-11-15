@@ -19,6 +19,7 @@ const PRESETS = {
   steps: [3, `amb(); for (let i = 0; i < 5; i++) at(0.3 + i * 0.45, () => s.step('carpet'));`],
   hall: [5, `s.setReverb(3.6, 0.5); amb(); for (let i = 0; i < 4; i++) at(0.3 + i * 0.45, () => s.step('concrete')); at(2.4, () => s.slam(3, -6));`],
   ambience: [6, `amb();`],
+  voices: [12, `amb(); ['watcher','blind','crawler','grinner','drowned','swimmer','puppet','mimic','stalker','shadow'].forEach((k, i) => at(0.3 + i * 1.15, () => s.voice(k, 2, -3, true)));`],
   'steps-dry': [3, `for (let i = 0; i < 5; i++) at(0.3 + i * 0.45, () => s.step('carpet'));`],
   'concrete-dry': [3, `for (let i = 0; i < 5; i++) at(0.3 + i * 0.45, () => s.step('concrete'));`]
 };
