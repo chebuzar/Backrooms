@@ -921,7 +921,9 @@ function buildLevel(th, G, opts = {}) {
 
   // --- шкафчики
   const lockers = [];
-  if (!opts.demo && th.lockers) {
+  // в открытом мире шкафчиков много: несколько на каждую зону, иначе от монстра негде спрятаться
+  const nLock = G.zones ? 22 + (th.lockers || 0) * 3 : th.lockers, lockGap = G.zones ? 8 : 6;
+  if (!opts.demo && nLock) {
     const lockT = tex(TX.lockerCanvas(r), { repeat: false });
     const lm = new THREE.MeshLambertMaterial({ color: 0x4b574f }), lf = new THREE.MeshLambertMaterial({ map: lockT });
     const cands = [];
@@ -933,8 +935,8 @@ function buildLevel(th, G, opts = {}) {
     }
     for (let i = cands.length - 1; i > 0; i--) { const j = (r() * (i + 1)) | 0; const t = cands[i]; cands[i] = cands[j]; cands[j] = t; }
     for (const [tx, ty, [a, b]] of cands) {
-      if (lockers.length >= th.lockers) break;
-      if (lockers.some((l) => Math.abs(l.tx - tx) + Math.abs(l.ty - ty) < 6)) continue;
+      if (lockers.length >= nLock) break;
+      if (lockers.some((l) => Math.abs(l.tx - tx) + Math.abs(l.ty - ty) < lockGap)) continue;
       const x = (tx + 0.5) * S + a * (S / 2 - 0.3), z = (ty + 0.5) * S + b * (S / 2 - 0.3);
       const grp = new THREE.Group(); grp.position.set(x, 0, z); grp.rotation.y = Math.atan2(-a, -b);
       const body = new THREE.Mesh(new THREE.BoxGeometry(0.64, 1.95, 0.56), [lm, lm, lm, lm, lf, lm]); body.position.y = 0.975; grp.add(body);

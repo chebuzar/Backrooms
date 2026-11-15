@@ -200,6 +200,8 @@ class Entity {
     this.field = null; this.fieldT = 0; this.wp = null; this.mem = 0; this.unseen = 0; this.dist = 99;
     this.tw = 0; this.twT = 1; this.frozen = false; this.t = 0;
     this.turnT = 0; this.lastDir = 0; this.blinkT = 3; this.fleeT = 0; this.lit = false;
+    // память: где видел игрока в последний раз; сколько ещё обыскивать то место
+    this.lastX = 0; this.lastZ = 0; this.searchT = 0; this.stunT = 0;
     mesh.group.visible = false;
   }
   get active() { return this.state !== 'dormant'; }
@@ -221,15 +223,24 @@ class Entity {
   place(i) { const L = this.lvl; this.x = (i % L.mw + 0.5) * S; this.z = (((i / L.mw) | 0) + 0.5) * S; this.wp = null; }
   setTarget(tx, ty) { this.field = this.lvl.bfs(tx, ty); this.wp = null; }
   pickRoam(px, pz) {
-    const L = this.lvl, near = Math.random() < 0.45;
+    const L = this.lvl, near = Math.random() < 0.25;
     for (let k = 0; k < 50; k++) {
       const i = L.floorList[(Math.random() * L.floorList.length) | 0];
       const x = (i % L.mw + 0.5) * S, z = (((i / L.mw) | 0) + 0.5) * S;
       const dE = Math.hypot(x - this.x, z - this.z), dP = Math.hypot(x - px, z - pz);
-      if (near ? (dP > 6 && dP < 15) : (dE > 12 && dE < 44)) { this.setTarget(i % L.mw, (i / L.mw) | 0); return; }
+      if (near ? (dP > 10 && dP < 26) : (dE > 12 && dE < 44)) { this.setTarget(i % L.mw, (i / L.mw) | 0); return; }
     }
     const i = L.floorList[(Math.random() * L.floorList.length) | 0];
     this.setTarget(i % L.mw, (i / L.mw) | 0);
+  }
+  // обыск: случайная клетка в радиусе ~5 клеток от места, где видел игрока
+  searchNear() {
+    const L = this.lvl, cx = Math.floor(this.lastX / S), cz = Math.floor(this.lastZ / S);
+    for (let k = 0; k < 30; k++) {
+      const tx = cx + ((Math.random() * 11) | 0) - 5, tz = cz + ((Math.random() * 11) | 0) - 5;
+      const t = L.tile(tx, tz); if (t === 0 || t === 6) { this.setTarget(tx, tz); return; }
+    }
+    this.state = 'roam'; this.pickRoam(this.lastX, this.lastZ);
   }
   relocate(px, pz, yaw) {
     const L = this.lvl, f = L.bfs(Math.floor(px / S), Math.floor(pz / S));
@@ -239,7 +250,7 @@ class Entity {
       const x = (i % L.mw + 0.5) * S, z = (((i / L.mw) | 0) + 0.5) * S;
       if ((x - px) * fx + (z - pz) * fz < 0 && !L.los(px, pz, x, z)) c.push(i);
     }
-    if (c.length) { this.place(c[(Math.random() * c.length) | 0]); this.state = 'hunt'; this.setTarget(Math.floor(px / S), Math.floor(pz / S)); }
+    if (c.length) { this.place(c[(Math.random() * c.length) | 0]); this.state = 'roam'; this.searchT = 0; this.pickRoam(px, pz); }
   }
   // мгновенно поставить в точку (засада)
   appear(x, z, faceX, faceZ) {
@@ -292,14 +303,25 @@ class Entity {
     const ptx = Math.floor(tgt.x / S), ptz = Math.floor(tgt.z / S);
     if (seen) {
       if (this.state !== 'chase') this.hooks.spot && this.hooks.spot();
-      this.state = 'chase'; this.mem = 4.5; this.unseen = 0;
+      this.state = 'chase'; this.mem = 2.2; this.unseen = 0;
+      this.lastX = seen.x; this.lastZ = seen.z;
     } else {
       this.unseen += dt;
-      if (this.state === 'chase') { this.mem -= dt; if (this.mem <= 0 || !best) { this.state = 'hunt'; this.setTarget(ptx, ptz); } }
-      if (heard && this.state !== 'chase' && (this.state !== 'hunt' || Math.random() < dt * 1.5)) { this.state = 'hunt'; this.setTarget(Math.floor(heard.p.x / S), Math.floor(heard.p.z / S)); }
+      // потерял из виду: ещё ~2 с «чует», куда ты свернул, потом идёт туда, где видел в последний раз, и обыскивает
+      if (this.state === 'chase') {
+        this.mem -= dt;
+        if (this.mem > 0 && best) { this.lastX = best.x; this.lastZ = best.z; }
+        else { this.state = 'hunt'; this.searchT = 12; this.setTarget(Math.floor(this.lastX / S), Math.floor(this.lastZ / S)); }
+      }
+      if (heard && this.state !== 'chase' && (this.state !== 'hunt' || Math.random() < dt * 1.5)) {
+        this.state = 'hunt'; this.searchT = Math.max(this.searchT, 8);
+        this.lastX = heard.p.x; this.lastZ = heard.p.z; this.setTarget(Math.floor(heard.p.x / S), Math.floor(heard.p.z / S));
+      }
+      if (this.state === 'hunt') { this.searchT -= dt; if (this.searchT <= 0) { this.state = 'roam'; this.pickRoam(me.x, me.z); } }
     }
-    if (o.force && !seen && best) { if (this.state !== 'chase') { this.state = 'chase'; this.field = null; } this.mem = 4.5; this.unseen = 0; }
-    if (!seen && this.unseen > 14 && bestD > 34 && best) { this.relocate(best.x, best.z, best.yaw); this.unseen = 0; }
+    if (o.force && !seen && best) { if (this.state !== 'chase') { this.state = 'chase'; this.field = null; } this.mem = 2.2; this.unseen = 0; }
+    // давно не встречались: переносится поближе, но просто бродит, а не идёт к игроку
+    if (!seen && this.state === 'roam' && this.unseen > 40 && bestD > 40 && best) { this.relocate(best.x, best.z, best.yaw); this.unseen = 0; }
     // скорость по типу
     let sp = this.state === 'chase' ? 3.25 : this.state === 'hunt' ? 2.4 : 1.35;
     sp *= o.mul * (ai.speed || 1) * (ai.fast || 1);
@@ -349,7 +371,10 @@ class Entity {
       }
     } else {
       const ci = L.idx(this.x, this.z);
-      if (!this.field || this.field[ci] === 0) { this.state = this.state === 'chase' ? 'hunt' : 'roam'; this.pickRoam(me.x, me.z); }
+      if (!this.field || this.field[ci] === 0) {
+        if (this.state === 'hunt' && this.searchT > 0) this.searchNear();
+        else { this.state = 'roam'; this.pickRoam(me.x, me.z); }
+      }
       else if (this.field[ci] < 0) { this.relocate(me.x, me.z, me.yaw); }
       [tx, tz] = this.next();
     }
