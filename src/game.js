@@ -2088,7 +2088,18 @@ function loop(now) {
 const PERF = new URLSearchParams(location.search).has('perf');
 let perfEl = null; const PS = { n: 0, t: 0, upd: 0, ren: 0, max: 0, spikes: [], acc: 0 };
 function perfFrame(frame, upd, ren) {
-  if (!perfEl) { perfEl = document.createElement('pre'); perfEl.style.cssText = 'position:fixed;left:6px;bottom:6px;z-index:99;margin:0;padding:6px 8px;background:rgba(0,0,0,.72);color:#9f9;font:11px/1.35 monospace;pointer-events:none;white-space:pre'; document.body.appendChild(perfEl); }
+  if (!perfEl) {
+    const box = document.createElement('div'); box.style.cssText = 'position:fixed;left:6px;bottom:6px;z-index:99;display:flex;flex-direction:column;gap:4px;align-items:flex-start';
+    // кнопки ТОЛЬКО для замера: временно выключают эффект, чтобы увидеть его цену на этом устройстве (обычной игры не касаются)
+    const row = document.createElement('div'); row.style.cssText = 'display:flex;gap:4px;flex-wrap:wrap';
+    const btn = (label, fn) => { const b = document.createElement('button'); b.type = 'button'; b.textContent = label; b.style.cssText = 'font:12px monospace;padding:6px 8px;background:#123;color:#9f9;border:1px solid #9f9;border-radius:4px'; b.onclick = (e) => { e.stopPropagation(); fn(b); PS.spikes.length = 0; }; row.appendChild(b); };
+    btn('тени: вкл', (b) => { const on = composer.passes[0] === aoPass; setAO(on ? 0 : prof.ao, aoPass.beautyRenderTarget.samples || 4); b.textContent = 'тени: ' + (on ? 'выкл' : 'вкл'); });
+    btn('MSAA: 4', (b) => { const rt = aoPass.beautyRenderTarget, n = { 4: 2, 2: 0, 0: 4 }[rt.samples] ?? 4; rt.samples = n; rt.dispose(); if (composer.passes[0] !== aoPass) for (const t of [composer.renderTarget1, composer.renderTarget2]) { t.samples = n; t.dispose(); } b.textContent = 'MSAA: ' + n; });
+    btn('свечение: вкл', (b) => { bloom.enabled = !bloom.enabled; b.textContent = 'свечение: ' + (bloom.enabled ? 'вкл' : 'выкл'); });
+    btn('плёнка: вкл', (b) => { fxPass.enabled = !fxPass.enabled; outPass.enabled = !fxPass.enabled; b.textContent = 'плёнка: ' + (fxPass.enabled ? 'вкл' : 'выкл'); });
+    perfEl = document.createElement('pre'); perfEl.style.cssText = 'margin:0;padding:6px 8px;background:rgba(0,0,0,.72);color:#9f9;font:11px/1.35 monospace;pointer-events:none;white-space:pre';
+    box.appendChild(row); box.appendChild(perfEl); document.body.appendChild(box);
+  }
   PS.n++; PS.t += frame; PS.upd += upd; PS.ren += ren; PS.max = Math.max(PS.max, frame); PS.acc += frame;
   if (frame > 50) { PS.spikes.unshift(`${frame.toFixed(0)}мс: ${game.mode}${ent && ent.active ? ' монстр' : ''}${upd > ren ? ' логика ' + upd.toFixed(0) : ' рендер ' + ren.toFixed(0)}`); PS.spikes.length = Math.min(PS.spikes.length, 5); }
   if (PS.acc < 500) return;
