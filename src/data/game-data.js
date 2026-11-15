@@ -4,6 +4,7 @@
 
 const THEMES = [
   {
+    pbr: { wall: { id: 'Wallpaper001C', tint: 0xe4cf78, rep: 1, soft: 0.45 }, floor: { id: 'Carpet011', tint: 0xc9b67a, rep: 1.5 }, ceil: { id: 'OfficeCeiling001', tint: 0xf2ecd8, rep: 1 } },
     id: 0, name: 'Жёлтые комнаты', tip: 'Найди дверь с зелёной табличкой «ВЫХОД».',
     layout: 'maze', n: 10, open: 0.34, rooms: 4, h: 2.7, secret: 'love', grime: 0.3,
     wall: 'wallpaper', floor: 'carpet', ceil: 'tiles',
@@ -13,6 +14,7 @@ const THEMES = [
     water: 4, batt: 2, props: null, spawn: 45, entSpeed: 1.0, step: 'carpet'
   },
   {
+    pbr: { wall: { id: 'Concrete034', tint: 0xe2e0d6, rep: 1 }, floor: { id: 'Concrete046', tint: 0xd0cec4, rep: 1 }, ceil: { id: 'Concrete034', tint: 0xc4c2ba, rep: 1 } },
     id: 1, name: 'Гудящие коридоры', tip: 'Свет еле держится. В шкафчиках можно спрятаться.',
     layout: 'maze', n: 11, open: 0.14, rooms: 2, h: 2.7,
     wall: 'concrete', floor: 'concrete', ceil: 'concrete',
@@ -22,11 +24,12 @@ const THEMES = [
     water: 4, batt: 3, props: 'pipes', spawn: 38, entSpeed: 1.05, step: 'concrete'
   },
   {
+    pbr: { wall: { id: 'Concrete031', tint: 0xf0f0ea, rep: 1 }, floor: { id: 'Asphalt031', tint: 0xc4c4c0, rep: 1 }, ceil: { id: 'Concrete034', tint: 0xc0c0ba, rep: 1 } },
     id: 2, name: 'Парковка', tip: 'Пустые машины. Пустые места. Кто-то оставил радио включённым.',
     layout: 'parking', n: 11, h: 2.6,
     wall: 'concrete', floor: 'parking', ceil: 'concrete',
     wallCol: [140, 140, 136], floorCol: [92, 92, 90], ceilCol: [110, 110, 106],
-    fog: 0x0c0d0e, fogD: 0.075, lampCol: [0.82, 0.92, 1.0], lampI: 1.1,
+    fog: 0x0c0d0e, fogD: 0.065, lampCol: [0.82, 0.92, 1.0], lampI: 1.5,
     dead: 0.3, power: 0.85, black: 1.2, needKey: true, lockers: 2,
     water: 4, batt: 3, props: 'cars', spawn: 32, entSpeed: 1.1, step: 'concrete'
   },
@@ -40,6 +43,7 @@ const THEMES = [
     water: 4, batt: 2, props: 'smiles', spawn: 30, entSpeed: 1.1, step: 'foam'
   },
   {
+    pbr: { wall: { id: 'Wallpaper001C', tint: 0xb8c486, rep: 1, soft: 0.7 }, floor: { id: 'Carpet016', tint: 0x6e7848, rep: 1.5 }, ceil: { id: 'OfficeCeiling001', tint: 0xc8caa8, rep: 1 } },
     id: 4, name: 'Сырые залы', tip: 'Пей воду, когда в голове шумит громче ламп.',
     layout: 'halls', n: 12, pillars: 0.28, h: 3.0,
     wall: 'damp', floor: 'wetcarpet', ceil: 'tiles',
@@ -49,11 +53,12 @@ const THEMES = [
     water: 5, batt: 3, props: 'puddles', spawn: 28, entSpeed: 1.14, step: 'wet'
   },
   {
+    pbr: { wall: { id: 'Tiles107', tint: 0xc4cece, rep: 1 }, floor: { id: 'Tiles107', tint: 0xbcc6c6, rep: 1 }, ceil: { id: 'Tiles107', tint: 0xc8d0d0, rep: 1 }, pool: { id: 'Tiles132A', tint: 0xffffff, rep: 1 } },
     id: 5, name: 'Бассейны', tip: 'Здесь светло и тихо. Вода замедляет шаг и громко плещет.',
     layout: 'pool', n: 11, pillars: 0.14, h: 3.2,
     wall: 'tiles', floor: 'pooltiles', ceil: 'tiles',
     wallCol: [226, 234, 236], floorCol: [214, 224, 226], ceilCol: [232, 238, 240],
-    fog: 0x8fb7bd, fogD: 0.055, lampCol: [0.95, 1.0, 1.0], lampI: 1.2,
+    fog: 0x5f8086, fogD: 0.034, lampCol: [0.95, 1.0, 1.0], lampI: 1.2,
     dead: 0.05, power: 1.05, black: 0.6, needKey: true, lockers: 0,
     water: 3, batt: 2, props: 'pool', spawn: 30, entSpeed: 1.15, step: 'tile'
   },
@@ -67,6 +72,7 @@ const THEMES = [
     water: 4, batt: 3, props: 'circus', spawn: 26, entSpeed: 1.17, step: 'tile'
   },
   {
+    pbr: { wall: { id: 'Wallpaper001A', tint: 0xdcd9cc, rep: 1 }, floor: { id: 'Carpet012', tint: 0xa8b4d0, rep: 1.5 }, ceil: { id: 'OfficeCeiling001', tint: 0xf2f2ee, rep: 1 } },
     id: 7, name: 'Тихий офис', tip: 'Не бегай. Шаги здесь слышно далеко.',
     layout: 'rooms', n: 12, h: 2.7,
     wall: 'office', floor: 'office', ceil: 'tiles',
@@ -76,6 +82,7 @@ const THEMES = [
     water: 4, batt: 3, props: 'office', spawn: 22, entSpeed: 1.2, step: 'carpet'
   },
   {
+    pbr: { wall: { id: 'Concrete031', tint: 0xdedad0, rep: 1 }, floor: { id: 'Concrete046', tint: 0xd2d0c6, rep: 1 }, ceil: { id: 'Concrete034', tint: 0x8a8a86, rep: 1 } },
     id: 8, name: 'Склад', tip: 'Стеллажи до потолка. Слушай сердце, прежде чем свернуть.',
     layout: 'shelves', n: 12, h: 5.2,
     wall: 'concrete', floor: 'concrete', ceil: 'concrete',
@@ -85,6 +92,7 @@ const THEMES = [
     water: 4, batt: 4, props: 'shelves', spawn: 20, entSpeed: 1.24, step: 'concrete'
   },
   {
+    pbr: { wall: { id: 'Wallpaper001C', tint: 0xa8784c, rep: 1, soft: 0.6 }, floor: { id: 'Carpet016', tint: 0x6a4030, rep: 1.5 }, ceil: { id: 'OfficeCeiling001', tint: 0x9a8a78, rep: 1 } },
     id: 9, name: 'Мёртвый свет', tip: 'Береги фонарик. Темнота здесь живая.',
     layout: 'maze', n: 13, open: 0.3, rooms: 4, h: 2.7,
     wall: 'dark', floor: 'carpet', ceil: 'tiles',

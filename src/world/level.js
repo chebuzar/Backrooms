@@ -427,6 +427,30 @@ function bakedMat(map, uni = BAKE, extra = {}) {
   return m;
 }
 
+// Фото-материал (CC0): цвет + нормали + шероховатость, свет — тот же запечённый в вершины.
+// Рельеф проявляется за счёт сравнения нормали из карты с геометрической: впадины темнее, «верх» светлее.
+function pbrMat(s, uni = BAKE) {
+  for (const tx of [s.c, s.n, s.r]) if (tx) tx.repeat.set(s.rep || 1, s.rep || 1);
+  const m = new THREE.MeshStandardMaterial({ map: s.c, normalMap: s.n || null, roughnessMap: s.r || null, roughness: 1, metalness: 0, color: s.tint ?? 0xffffff });
+  m.onBeforeCompile = (sh) => {
+    sh.uniforms.uBake = uni; sh.uniforms.uAmbK = AMBK; sh.uniforms.uTexK = { value: s.soft ?? 1 };
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nattribute vec3 bake;\nvarying vec3 vBake;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\n\tvBake = bake;');
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vBake;\nuniform float uBake;\nuniform float uAmbK;\nuniform float uTexK;')
+      // soft < 1: пятна и узор текстуры спокойнее (смешиваем с ровным цветом)
+      .replace('#include <map_fragment>', '#include <map_fragment>\n\tdiffuseColor.rgb = mix(diffuse * 0.8, diffuseColor.rgb, uTexK);')
+      .replace('#include <lights_fragment_maps>', `#include <lights_fragment_maps>
+\tirradiance = irradiance * uAmbK + vBake * uBake;
+\t{ vec3 gN = normalize(vNormal); float rel = clamp(dot(normal, gN), 0.0, 1.0);
+\t  vec3 upV = normalize((viewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz);
+\t  irradiance *= (0.55 + 0.45 * rel * rel) * max(0.3, 1.0 + 1.1 * dot(normal - gN, upV)); }`);
+  };
+  m.customProgramCacheKey = () => 'zk-pbr';
+  return m;
+}
+
 const floorListCount = (g) => { let n = 0; for (let i = 0; i < g.length; i++) if (g[i] === 0) n++; return n; };
 const box = (w, h, d, x, y, z, ry = 0) => { const b = new THREE.BoxGeometry(w, h, d); if (ry) b.rotateY(ry); b.translate(x, y, z); return b; };
 
@@ -524,6 +548,8 @@ function buildLevel(th, G, opts = {}) {
   const FU = [0, 0.14, 0.5, 0.86, 1];
   const WU = [0, 0.5, 1];
   const tallRepeat = th.wall === 'concrete' || th.wall === 'tiles';
+  const P = opts.pbr || {};
+  const gSk = new CGB(), skirt = !!(P.wall && /^Wallpaper/.test(P.wall.id));
   const gW = new CGB(), gF = new CGB(), gC = new CGB(), gD = new GB(), gRW = new GB(), gRF = new GB(), gRC = new GB(), gP = new CGB(), gPS = new CGB();
   const floorBake = (x, y, z, n, o) => { lightAt(x, y, z, 0, 1, 0, o); mul(o, aoXZ(x, z, -9, -9)); };
   const ceilBake = (x, y, z, n, o) => { lightAt(x, y, z, 0, -1, 0, o); mul(o, 0.72 + 0.28 * aoXZ(x, z, -9, -9)); };
@@ -561,7 +587,12 @@ function buildLevel(th, G, opts = {}) {
       const hgt = HH - fy;
       const vs = [0, 0.05, 0.16, 0.42, 0.72, 0.92, 1];
       const b = room ? gRW : nt === 2 ? gD : gW;
-      const uvf = (b === gW && tallRepeat) ? (fu, fv) => [fu, fv * hgt / H] : (fu, fv) => [fu, fv];
+      const uvf = (b === gW && P.wall) ? (fu, fv) => [fu, fv * hgt / S] : (b === gW && tallRepeat) ? (fu, fv) => [fu, fv * hgt / H] : (fu, fv) => [fu, fv];
+      if (b === gW && skirt) {
+        // плинтус: тонкая тёмная полоса внизу стены
+        const so = [o[0] + n[0] * 0.014, fy, o[2] + n[2] * 0.014];
+        gSk.grid(so, u, [0, 0.13, 0], n, WU, [0, 1], (fu, fv) => [fu * 2, fv * 0.12], wallBake(tx + dx, ty + dy, fy));
+      }
       b.grid(o, u, [0, hgt, 0], n, WU, vs, uvf, room
         ? (x, y, z, nn, out) => { roomLight(x, y, z, out); mul(out, aoXZ(x + nn[0] * 0.02, z + nn[2] * 0.02, tx + dx, ty + dy) * (0.6 + 0.4 * smooth(y / 0.5))); }
         : wallBake(tx + dx, ty + dy, fy));
@@ -570,11 +601,12 @@ function buildLevel(th, G, opts = {}) {
   const wallT = tex(TX.wallCanvas(th, r), { clampT: !tallRepeat });
   const floorT = tex(TX.floorCanvas(th, r));
   const ceilT = tex(TX.ceilCanvas(th, r));
-  const mWall = bakedMat(wallT, BAKE, { bumpMap: wallT, bumpScale: 1.2 });
-  const mFloor = bakedMat(floorT, BAKE, { bumpMap: floorT, bumpScale: 1.5 });
-  const mCeil = bakedMat(ceilT);
+  const mWall = P.wall ? pbrMat(P.wall) : bakedMat(wallT, BAKE, { bumpMap: wallT, bumpScale: 1.2 });
+  const mFloor = P.floor ? pbrMat(P.floor) : bakedMat(floorT, BAKE, { bumpMap: floorT, bumpScale: 1.5 });
+  const mCeil = P.ceil ? pbrMat(P.ceil) : bakedMat(ceilT);
   const mesh = (gb, m) => { for (const geo of gb.geoms()) add(new THREE.Mesh(geo, m)); };
   mesh(gW, mWall); mesh(gF, mFloor); mesh(gC, mCeil);
+  if (skirt) mesh(gSk, bakedMat(null, BAKE, { color: 0x3e2e1e }));
 
   // --- лампы на потолке
   const lampT = tex(TX.lampCanvas(), { repeat: false });
@@ -748,7 +780,8 @@ function buildLevel(th, G, opts = {}) {
   if (gP.vc) {
     const pit = th.props === 'smiles';
     const pt = tex(pit ? TX.padCanvas(r) : TX.poolBottomCanvas(r));
-    mesh(gP, bakedMat(pt)); mesh(gPS, bakedMat(pit ? pt : floorT));
+    if (P.pool && !pit) { const pm = pbrMat(P.pool); mesh(gP, pm); mesh(gPS, pm); }
+    else { mesh(gP, bakedMat(pt)); mesh(gPS, bakedMat(pit ? pt : floorT)); }
   }
   if (th.props !== 'smiles') {
     const wg = [];

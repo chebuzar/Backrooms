@@ -18,6 +18,7 @@ import { FIND_KINDS, FIND_IDS, buildFinds, updateFinds, findPoint } from './worl
 import { makeWrist, poseWrist, drawRadar } from './world/wrist.js';
 import { createMinimap, drawMinimap, trackTrail, resetMinimap } from './ui/minimap.js';
 import { makeDust, updateDust } from './render/dust.js';
+import { themeTex, setAniso, setTexHi } from './render/assets.js';
 
 const $ = (id) => document.getElementById(id);
 const isTouch = (window.matchMedia && matchMedia('(pointer: coarse)').matches) || ('ontouchstart' in window);
@@ -59,7 +60,7 @@ let dust = null;
 
 // Настройки «картинки» в одном месте (подбираются по скриншотам; в отладке — __zk.LOOK).
 // h — внутренняя высота кадра в пикселях: стиль старой камеры, крупный пиксель, заодно быстрее на телефонах.
-const LOOK = { amb0: 0.25, ambK: 1.3, wallAmb: 0.22, bake: 1.0, h: { low: 300, med: 400, high: 480 }, bloom: [0.55, 0.5, 0.88], exposure: 1.05 };
+const LOOK = { vhsPixel: false, vhs: 0.25, dyn: { n: 3, I: 2.2, dist: 9 }, amb0: 0.25, ambK: 1.3, wallAmb: 0.22, bake: 1.0, h: { low: 300, med: 400, high: 480 }, bloom: [0.55, 0.5, 0.88], exposure: 1.05 };
 renderer.toneMappingExposure = LOOK.exposure;
 const composerRT = new THREE.WebGLRenderTarget(16, 16, { type: THREE.HalfFloatType, samples: 4 });
 const composer = new EffectComposer(renderer, composerRT);
@@ -69,12 +70,12 @@ composer.addPass(bloom);
 composer.addPass(new OutputPass());
 const FX = {
   uniforms: {
-    tDiffuse: { value: null }, uRes: { value: new THREE.Vector2(640, 360) }, uTime: { value: 0 }, uGrain: { value: 0.08 }, uVig: { value: 0.3 }, uAb: { value: 0.15 },
+    tDiffuse: { value: null }, uRes: { value: new THREE.Vector2(640, 360) }, uVhs: { value: 0.25 }, uTime: { value: 0 }, uGrain: { value: 0.08 }, uVig: { value: 0.3 }, uAb: { value: 0.15 },
     uDist: { value: 0 }, uRed: { value: 0 }, uFade: { value: 0 }, uWhite: { value: 0 }, uSat: { value: 1 }, uNV: { value: 0 }
   },
   vertexShader: 'varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
   fragmentShader: `
-    varying vec2 vUv; uniform sampler2D tDiffuse; uniform vec2 uRes;
+    varying vec2 vUv; uniform sampler2D tDiffuse; uniform vec2 uRes; uniform float uVhs;
     uniform float uTime,uGrain,uVig,uAb,uDist,uRed,uFade,uWhite,uSat,uNV;
     float rnd(vec2 c){ return fract(sin(dot(c,vec2(12.9898,78.233)))*43758.5453); }
     void main(){
@@ -84,20 +85,20 @@ const FX = {
       uv+=c*dot(c,c)*0.08*uDist;
       // полоса «трекинга» видеокассеты медленно ползёт по кадру
       float ty=fract(uTime*0.045); float trk=smoothstep(0.012,0.0,abs(uv.y-ty));
-      uv.x+=trk*0.004*sin(uv.y*900.0+uTime*40.0);
+      trk*=uVhs; uv.x+=trk*0.004*sin(uv.y*900.0+uTime*40.0);
       vec2 off=c*uAb*0.008;
       // цвет «плывёт» вправо относительно яркости, как на VHS
-      vec2 cb=vec2(1.6/uRes.x,0.0);
+      vec2 cb=vec2(1.6/uRes.x,0.0)*uVhs*(uRes.y/480.0);
       vec3 col=vec3(texture2D(tDiffuse,uv+off+cb).r,texture2D(tDiffuse,uv).g,texture2D(tDiffuse,uv-off-cb*0.6).b);
       vec3 bl=(texture2D(tDiffuse,uv+cb*2.0).rgb+texture2D(tDiffuse,uv-cb*2.0).rgb)*0.5;
-      float ly=dot(col,vec3(0.299,0.587,0.114)); col=mix(col,vec3(ly)+(bl-vec3(dot(bl,vec3(0.299,0.587,0.114))))*1.0,0.35);
+      float ly=dot(col,vec3(0.299,0.587,0.114)); col=mix(col,vec3(ly)+(bl-vec3(dot(bl,vec3(0.299,0.587,0.114))))*1.0,0.35*uVhs);
       // цветокор: мягкая S-кривая, тени в холодную зелень, света тёплые
       col=clamp(col,0.0,1.0); col=mix(col,col*col*(3.0-2.0*col),0.35);
       float lum=dot(col,vec3(0.299,0.587,0.114));
       col+=vec3(-0.012,0.006,0.012)*(1.0-smoothstep(0.0,0.45,lum))+vec3(0.025,0.012,-0.02)*smoothstep(0.55,1.0,lum);
       col+=trk*(rnd(vec2(uv.x*400.0,uTime))-0.3)*0.12;
       float l=dot(col,vec3(0.299,0.587,0.114)); col=mix(vec3(l),col,uSat);
-      col*=0.965+0.035*sin(vUv.y*uRes.y*3.14159);
+      col*=1.0-0.035*uVhs+0.035*uVhs*sin(vUv.y*uRes.y*3.14159);
       col+=(rnd(vUv*vec2(731.0,519.0)+fract(uTime*7.3))-0.5)*uGrain;
       float v=smoothstep(0.9,0.25,length(c)*(1.0+uVig)); col*=mix(1.0,v,0.9);
       col=mix(col,col*vec3(1.35,0.4,0.35)+vec3(0.06,0.0,0.0),uRed*clamp(0.3+length(c)*1.5,0.0,1.0));
@@ -111,14 +112,44 @@ const FX = {
 const fxPass = new ShaderPass(FX);
 composer.addPass(fxPass);
 const U = fxPass.uniforms;
+U.uVhs.value = LOOK.vhs;
+// Живой свет ближайших ламп: даёт блики и рельеф на фото-текстурах. Основной свет по-прежнему запечён.
+const lampLights = [];
+for (let i = 0; i < LOOK.dyn.n; i++) { const L = new THREE.PointLight(0xfff0d0, 0, LOOK.dyn.dist, 2); scene.add(L); lampLights.push(L); }
+let lampPickT = 0;
+function updateLampLights(dt, P) {
+  const hi = quality === 'high' ? LOOK.dyn.n : quality === 'med' ? Math.min(2, LOOK.dyn.n) : 0;
+  lampPickT -= dt;
+  if (lampPickT <= 0 && lvl) {
+    lampPickT = 0.25;
+    const cx = camera.position.x, cz = camera.position.z, best = [];
+    for (const l of lvl.lamps) {
+      if (l.dead || l.on5) continue;
+      const d = (l.x - cx) ** 2 + (l.z - cz) ** 2; if (d > 200) continue;
+      best.push([d, l]);
+    }
+    best.sort((a, b) => a[0] - b[0]);
+    const col = game.th.lampCol || [1, 0.95, 0.85];
+    lampLights.forEach((L, i) => {
+      const b = best[i];
+      L.userData.on = !!b && i < hi;
+      if (b) { L.position.set(b[1].x, (lvl.HH || 2.7) - 0.25, b[1].z); L.color.setRGB(col[0], col[1], col[2]); L.userData.emerg = b[1].emerg; }
+    });
+  }
+  for (const L of lampLights) L.intensity = L.userData.on ? LOOK.dyn.I * P * (L.userData.emerg ? 0.4 : 1) * (game.th.lampI || 1) : 0;
+}
 
 let quality = 'med', basePR = 1, curPR = 1;
 function applyQuality() {
-  let q = SAVE.set.q; if (q === 'auto') q = isTouch ? 'med' : 'high';
+  // «Авто»: компьютер и планшет (iPad) — высокая, телефон — средняя
+  let q = SAVE.set.q; if (q === 'auto') q = isTouch && Math.min(screen.width, screen.height) < 700 ? 'med' : 'high';
   quality = q;
   const dpr = window.devicePixelRatio || 1;
-  // фиксированная внутренняя высота кадра → одинаковый «плёночный» пиксель на любом экране
-  basePR = Math.min(dpr, Math.max(0.25, LOOK.h[q] / Math.max(240, innerHeight)));
+  // Full HD: высота кадра не меньше 1080 px на «Высокой» (на Retina/iPad — родное разрешение до 2×)
+  const h = Math.max(240, innerHeight);
+  basePR = q === 'low' ? Math.min(dpr, 1) * 0.75 : q === 'med' ? Math.min(2, Math.max(dpr * 0.85, 900 / h)) : Math.min(2, Math.max(dpr, 1080 / h));
+  setTexHi(q !== 'low');
+  if (LOOK.vhsPixel) basePR = Math.min(dpr, Math.max(0.25, LOOK.h[q] / Math.max(240, innerHeight)));
   setTexScale(q === 'low' ? 1 : 2);
   const samples = q === 'low' ? 0 : q === 'med' ? 2 : 4;
   for (const rt of [composer.renderTarget1, composer.renderTarget2]) if (rt.samples !== samples) { rt.samples = samples; rt.dispose(); }
@@ -133,19 +164,23 @@ function autoRes(dt) {
   perf.t += dt; perf.n++;
   if (perf.t < 2.5) return;
   const fps = perf.n / perf.t; perf.t = 0; perf.n = 0;
-  if (fps < 40 && curPR > basePR * 0.5) { curPR = Math.max(basePR * 0.5, curPR * 0.85); setPR(curPR); }
+  const floor = quality === 'high' ? Math.min(basePR, 1080 / Math.max(240, innerHeight)) * (fps < 30 ? 0.75 : 1) : basePR * 0.5;
+  if (fps < 45 && curPR > floor) { curPR = Math.max(floor, curPR * 0.88); setPR(curPR); }
   else if (fps > 56 && curPR < basePR) { curPR = Math.min(basePR, curPR * 1.12); setPR(curPR); }
 }
 function resize() {
   const w = innerWidth, h = innerHeight;
-  if (quality && LOOK.h[quality]) { const want = Math.min(window.devicePixelRatio || 1, Math.max(0.25, LOOK.h[quality] / Math.max(240, h))); if (Math.abs(want - basePR) > 0.01) { basePR = want; curPR = Math.min(curPR, basePR); if (renderer.getPixelRatio() !== curPR) { renderer.setPixelRatio(curPR); composer.setPixelRatio(curPR); } } }
+  if (LOOK.vhsPixel && quality && LOOK.h[quality]) { const want = Math.min(window.devicePixelRatio || 1, Math.max(0.25, LOOK.h[quality] / Math.max(240, h))); if (Math.abs(want - basePR) > 0.01) { basePR = want; curPR = Math.min(curPR, basePR); if (renderer.getPixelRatio() !== curPR) { renderer.setPixelRatio(curPR); composer.setPixelRatio(curPR); } } }
   renderer.setSize(w, h, false); composer.setSize(w, h);
   if (typeof fxPass !== 'undefined') { const pr = renderer.getPixelRatio(); fxPass.uniforms.uRes.value.set(w * pr, h * pr); }
   camera.aspect = w / h; camera.updateProjectionMatrix();
 }
-addEventListener('resize', resize);
-addEventListener('orientationchange', () => setTimeout(resize, 350));
-if (window.visualViewport) visualViewport.addEventListener('resize', () => setTimeout(resize, 50));
+// поворот экрана, Stage Manager на iPad, изменение окна: пересчитать разрешение кадра (Full HD держится по высоте)
+let rsT = 0;
+const onResize = () => { clearTimeout(rsT); rsT = setTimeout(() => { if (typeof applyQuality === 'function' && quality) applyQuality(); else resize(); }, 60); };
+addEventListener('resize', onResize);
+addEventListener('orientationchange', () => setTimeout(onResize, 350));
+if (window.visualViewport) visualViewport.addEventListener('resize', onResize);
 
 const sound = new Sound();
 sound.vol = SAVE.set.vol / 100;
@@ -169,11 +204,12 @@ function disposeWorld() {
   if (ghost) { scene.remove(ghost.group); disposeMesh(ghost.group); ghost = null; }
 }
 
+let demoPbr = null; // фото-текстуры уровня 0 для фона меню (грузятся при запуске)
 function buildDemo() {
   disposeWorld();
   const th = theme(0), seed = 20261114;
   const G = genGrid(th, 0, seed, { demo: true });
-  lvl = buildLevel(th, G, { seed, demo: true, aniso: maxAniso });
+  lvl = buildLevel(th, G, { seed, demo: true, aniso: maxAniso, pbr: demoPbr });
   scene.add(lvl.root);
   scene.fog.color.set(th.fog); scene.fog.density = th.fogD;
   game.th = th; game.black = false;
@@ -595,6 +631,7 @@ function updatePlay(dt) {
   updatePlayer(dt, pl.wake > 0.45);
   updateTools(dt);
   const P = lights(dt, true);
+  updateLampLights(dt, P);
   const ptile = lvl.tile(Math.floor(pl.x / S), Math.floor(pl.z / S));
   const safe = ptile === 3 || ptile === 4 || !!(pl.hidden && !pl.hidden.knows);
   if (ptile === 4 && !game.secretSeen) { game.secretSeen = true; foundSecret(lvl.secret ? lvl.secret.kind : 'love'); }
@@ -1082,7 +1119,9 @@ async function startLevel(lv, fresh = false, opt = {}) {
   const thG = Object.assign({}, th, { needKey: task.kind === 'key' }), thB = Object.assign({}, th, { needKey: task.kind !== 'exit' });
   // Открытый мир: в ~9 раз больше площади, поэтому воды и батареек больше (но не в 9 раз — их надо искать).
   const G = genGrid(thG, lv, seed, { world: WORLD, allowSecret: lv <= LAST, noteIds: lv <= LAST ? notesFor(lv) : [], water: Math.max(2, Math.round(th.water * D.items * (WORLD ? 2.5 : 1))), batt: Math.max(1, Math.round(th.batt * D.items * (WORLD ? 2.5 : 1))) });
-  lvl = buildLevel(thB, G, { seed, aniso: maxAniso });
+  setAniso(Math.min(8, maxAniso));
+  const pbr = await themeTex(th);
+  lvl = buildLevel(thB, G, { seed, aniso: maxAniso, pbr });
   scene.add(lvl.root);
   game.finds = buildFinds(lvl, G.finds, seed, lvl.glowT);
   game.task = task; game.ex = buildExtras(lvl, task, seed, lv);
@@ -1924,6 +1963,8 @@ async function boot() {
   applyQuality();
   try { await Promise.race([document.fonts.ready, sleep(2500)]); await Promise.race([Promise.all(['700 100px Caveat', '600 30px "IBM Plex Mono"'].map((f) => document.fonts.load(f))), sleep(2000)]); } catch (e) { /* шрифты не критичны */ }
   if (lm) lm.textContent = tr('load.rooms');
+  setAniso(Math.min(8, maxAniso));
+  try { demoPbr = await Promise.race([themeTex(theme(0)), sleep(15000).then(() => null)]); } catch (e) { demoPbr = null; }
   await frames(1);
   buildDemo();
   game.mode = 'splash';

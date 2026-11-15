@@ -56,7 +56,7 @@ npm run shot -- --level 4 --eval "__zk.look(1.57)" # довільний JS пе�
 - `src/main.js` — точка входу (шрифти, стилі, i18n, перевірка WebGL, динамічний імпорт гри).
 - `src/game.js` — ігровий цикл, гравець, HUD, меню, керування, кооп. Великий файл — розбивати поступово, коли торкаємося частини.
 - `src/core/util.js`, `src/data/game-data.js`, `src/render/textures.js`, `src/world/{level,entity,extras}.js`, `src/audio/sound.js`, `src/net/net.js`.
-- Усі текстури, моделі й звуки — процедурні (canvas, Three.js-геометрія, WebAudio). Зовнішніх ассетів немає; так і тримати, якщо власник не вирішить інакше.
+- **Арт-напрям — реалістичний Full HD** (рішення власника): рендер ≥1080 рядків (`applyQuality`), фото-текстури CC0 2K (`public/assets/tex`, скрипт `scripts/fetch-assets.py`, ліцензії — `public/assets/CREDITS.md`), PBR-матеріали з запеченим світлом (`pbrMat` у `level.js`), 2–3 живі лампи біля гравця (`updateLampLights`). Теми з малюнками («Улыбки», цирк) — процедурні. Звуки — синтез WebAudio. Нові ассети — лише CC0 і з записом у CREDITS.
 - Three.js закріплений на `0.160.x`. Оновлювати лише окремою задачею з повною перевіркою.
 
 ## Правила

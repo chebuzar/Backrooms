@@ -129,7 +129,7 @@ async function run(bname, lv) {
   const info = await page.evaluate(() => window.__zk.info());
   const dev = devName ? devName.replace(/\s+/g, '_') : 'desktop';
   const file = path.join(outDir, `${A.name ? A.name + (lv !== null && levels.length > 1 ? "-lv" + lv : "") : label}-${bname}-${dev}${A.lang ? '-' + A.lang : ''}.png`);
-  await page.screenshot({ path: file });
+  await page.screenshot({ path: file, timeout: 120000 });
   if (errors.length) hadErrors = true;
   console.log(JSON.stringify({ file: path.relative(process.cwd(), file), browser: bname, device: dev, loadMs, fps, info, errors }));
   await Promise.race([browser.close(), new Promise((r) => setTimeout(r, 5000))]);
