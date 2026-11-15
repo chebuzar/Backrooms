@@ -13,7 +13,9 @@
     "check": "npm run lint && npm run build && npm run smoke",
     "shot": "node scripts/shot.mjs",
     "audio": "node scripts/audio.mjs",
-    "qa": "node scripts/qa.mjs"
+    "qa": "node scripts/qa.mjs",
+    "coop": "node scripts/coop-test.mjs",
+    "profile": "node scripts/profile.mjs"
   },
   "engines": {
     "node": ">=20"
