@@ -42,9 +42,35 @@ const DRAW = {
     x.fillStyle = '#9a1b1b'; x.fillRect(w * 0.1, h * 0.9, w * 0.35, 4);
     x.fillStyle = '#c8b46a'; x.fillRect(w * 0.42, 0, w * 0.16, h * 0.04);
   },
+  // советский плакат «Мирный атом»
+  atom: (x, w, h) => {
+    x.fillStyle = '#e8dcc0'; x.fillRect(0, 0, w, h);
+    x.fillStyle = '#b3201c'; x.fillRect(0, 0, w, h * 0.3);
+    x.fillStyle = '#f2e6c8'; x.font = `900 ${w * 0.115}px Impact, sans-serif`; x.textAlign = 'center';
+    x.fillText('МИРНЫЙ АТОМ', w / 2, h * 0.14); x.fillText('В КАЖДЫЙ ДОМ!', w / 2, h * 0.26);
+    const cx = w / 2, cy = h * 0.62; x.strokeStyle = '#1f3c7a'; x.lineWidth = w * 0.02;
+    for (let k = 0; k < 3; k++) { x.beginPath(); x.ellipse(cx, cy, w * 0.32, w * 0.11, k * Math.PI / 3, 0, 7); x.stroke(); }
+    x.fillStyle = '#b3201c'; x.beginPath(); x.arc(cx, cy, w * 0.05, 0, 7); x.fill();
+    x.fillStyle = '#1f3c7a'; x.font = `bold ${w * 0.06}px sans-serif`; x.fillText('ЧАЭС им. В. И. ЛЕНИНА', w / 2, h * 0.92);
+    x.fillStyle = 'rgba(80,60,30,.25)'; x.fillRect(0, h * 0.85, w, h * 0.15);
+  },
+  // знак радиационной опасности
+  rad: (x, w, h) => {
+    x.fillStyle = '#e2b51c'; x.fillRect(0, 0, w, h); x.strokeStyle = '#111'; x.lineWidth = w * 0.04; x.strokeRect(w * 0.04, w * 0.04, w * 0.92, h - w * 0.08);
+    const cx = w / 2, cy = h * 0.4, R = w * 0.3; x.fillStyle = '#111';
+    for (let k = 0; k < 3; k++) { const a0 = -Math.PI / 2 + k * 2 * Math.PI / 3 - Math.PI / 6; x.beginPath(); x.moveTo(cx, cy); x.arc(cx, cy, R, a0, a0 + Math.PI / 3); x.closePath(); x.fill(); }
+    x.fillStyle = '#e2b51c'; x.beginPath(); x.arc(cx, cy, R * 0.22, 0, 7); x.fill(); x.fillStyle = '#111'; x.beginPath(); x.arc(cx, cy, R * 0.15, 0, 7); x.fill();
+    x.font = `bold ${w * 0.1}px sans-serif`; x.textAlign = 'center'; x.fillText('ОСТОРОЖНО!', cx, h * 0.8); x.fillText('РАДИАЦИЯ', cx, h * 0.92);
+  },
+  // табличка объекта
+  objsign: (x, w, h) => {
+    x.fillStyle = '#2c3a33'; x.fillRect(0, 0, w, h); x.strokeStyle = '#c9c3a8'; x.lineWidth = 4; x.strokeRect(6, 6, w - 12, h - 12);
+    x.fillStyle = '#e6dfc4'; x.textAlign = 'center'; x.font = `bold ${h * 0.24}px sans-serif`; x.fillText('ОБЪЕКТ 4-Б', w / 2, h * 0.42);
+    x.font = `${h * 0.15}px sans-serif`; x.fillText('сектор «ГЛУБИНА-1»', w / 2, h * 0.72);
+  },
   stencil: (x, w, h) => {
     x.clearRect(0, 0, w, h); x.fillStyle = 'rgba(232,200,40,.9)'; x.fillRect(0, h * 0.78, w, h * 0.06);
-    x.fillStyle = 'rgba(20,18,16,.85)'; x.font = `900 ${h * 0.5}px Impact, sans-serif`; x.textAlign = 'center'; x.fillText('B2', w / 2, h * 0.6);
+    x.fillStyle = 'rgba(20,18,16,.85)'; x.font = `900 ${h * 0.5}px Impact, sans-serif`; x.textAlign = 'center'; x.fillText('Б-2', w / 2, h * 0.6);
   }
 };
 const KIND = {
@@ -54,18 +80,21 @@ const KIND = {
   panel: { w: 0.42, h: 0.56, d: 0.12, y: 1.45, tex: [128, 160] },
   alarm: { w: 0.11, h: 0.15, d: 0.035, y: 1.35, tex: [64, 88] },
   paper: { w: 0.21, h: 0.297, d: 0.002, y: 1.45, tex: [128, 180], tilt: 0.08 },
+  atom: { w: 0.5, h: 0.7, d: 0.003, y: 1.5, tex: [256, 360], tilt: 0.03 },
+  rad: { w: 0.28, h: 0.36, d: 0.004, y: 1.7, tex: [128, 164] },
+  objsign: { w: 0.5, h: 0.22, d: 0.01, y: 1.85, tex: [256, 112] },
   stencil: { w: 0.9, h: 0.6, d: 0.002, y: 1.6, tex: [256, 170], transparent: true }
 };
 // набор деталей по темам: вид → вероятность на одну грань стены (2 м)
 export const DETAIL_SETS = {
-  yellow: { outlet: 0.22, switch: 0.05, vent: 0.08, paper: 0.025 },
-  concrete: { panel: 0.05, vent: 0.07, alarm: 0.03, ext: 0.025 },
-  parking: { stencil: 0.06, panel: 0.03, ext: 0.03 },
-  damp: { outlet: 0.15, vent: 0.1, paper: 0.03 },
+  yellow: { outlet: 0.22, switch: 0.05, vent: 0.08, paper: 0.025, rad: 0.008 },
+  concrete: { panel: 0.05, vent: 0.07, alarm: 0.03, ext: 0.025, atom: 0.025, rad: 0.035, objsign: 0.03 },
+  parking: { stencil: 0.06, panel: 0.03, ext: 0.03, rad: 0.02 },
+  damp: { outlet: 0.15, vent: 0.1, paper: 0.03, rad: 0.03 },
   pool: { vent: 0.06 },
-  office: { outlet: 0.25, switch: 0.07, paper: 0.06, alarm: 0.025, ext: 0.03 },
-  warehouse: { stencil: 0.05, panel: 0.05, alarm: 0.03, ext: 0.04 },
-  dark: { outlet: 0.15, vent: 0.08, paper: 0.05, alarm: 0.02 }
+  office: { outlet: 0.25, switch: 0.07, paper: 0.06, alarm: 0.025, ext: 0.03, atom: 0.03, objsign: 0.02 },
+  warehouse: { stencil: 0.05, panel: 0.05, alarm: 0.03, ext: 0.04, rad: 0.03, objsign: 0.02 },
+  dark: { outlet: 0.15, vent: 0.08, paper: 0.05, alarm: 0.02, rad: 0.04 }
 };
 
 function instMat(map, uBake, uAmbK, transparent) {
