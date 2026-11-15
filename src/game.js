@@ -207,6 +207,9 @@ function moveCollide(dx, dz) {
   if (!blocked(pl.x + dx, pl.z)) pl.x += dx; else pl.vx *= 0.3;
   if (!blocked(pl.x, pl.z + dz)) pl.z += dz; else pl.vz *= 0.3;
 }
+// Открытый мир вместо «собери 3 предмета»: цель уровня — найти выход в дальнем конце мира.
+const WORLD = true;
+const levelTask = (lv, seed) => (WORLD ? { kind: 'exit' } : taskFor(lv, seed));
 const inPuddle = () => lvl.puddles.some(([x, z, r]) => (pl.x - x) ** 2 + (pl.z - z) ** 2 < r * r);
 // Реверб по типу пространства: [длина хвоста, с; громкость]
 const REVERB = { pool: [4.6, 0.6], halls: [3.6, 0.5], shelves: [4.0, 0.5], parking: [3.4, 0.45], circus: [2.4, 0.32], rooms: [1.1, 0.16], maze: [2.0, 0.3], smiles: [2.2, 0.34] };
@@ -609,6 +612,7 @@ function updatePlay(dt) {
   if (pl.light && pl.bat < 15 && Math.random() < 0.12) fI *= 0.15;
   flash.intensity = fI;
   if (eD < 10 || game.black) { game.hbT -= dt; if (game.hbT <= 0) { sound.heart(); game.hbT = game.black ? 0.55 : 0.36 + eD * 0.09; } }
+  updateZone(dt);
   ambientEvents(dt);
   scares(dt, stared, safe);
   if (pl.san < 45) { game.halT -= dt; if (game.halT <= 0) { game.halT = 10 + Math.random() * 16; hallucinate(); } }
@@ -661,8 +665,28 @@ function hud() {
   const s = Math.floor(game.runTime), c = `${String(Math.floor(s / 3600)).padStart(2, '0')}:${String(Math.floor(s / 60) % 60).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
   if (c !== lastClock) { $('hClock').textContent = c; lastClock = c; }
 }
+// ---------- зоны открытого мира ----------
+const zoneName = (z) => tr('zone.' + z.type);
+function updateZone(dt) {
+  game.zoneT = (game.zoneT || 0) - dt;
+  if (game.zoneT > 0 || !lvl.zoneAt) return;
+  game.zoneT = 0.25;
+  const z = lvl.zoneAt(pl.x, pl.z);
+  if (!z || z.id === game.zoneId) return;
+  const first = game.zoneId === undefined || game.zoneId === null;
+  game.zoneId = z.id; game.zone = z;
+  hudStatic();
+  game.zonesSeen = game.zonesSeen || new Set();
+  const fresh = !game.zonesSeen.has(z.id); game.zonesSeen.add(z.id);
+  const zc = $('zoneCap');
+  zc.querySelector('b').textContent = zoneName(z);
+  zc.querySelector('span').textContent = (fresh && !first ? tr('zone.new') + ' · ' : '') + tr('zone.sector') + ' ' + z.code;
+  zc.classList.remove('on'); void zc.offsetWidth; zc.classList.add('on');
+  if (fresh && !first) sound.zone();
+}
 function hudStatic() {
-  $('hLv').textContent = `УР. ${game.level} · ${game.th.name.toUpperCase()}`;
+  const zn = game.zone ? ` · ${zoneName(game.zone)} ${game.zone.code}` : '';
+  $('hLv').textContent = `УР. ${game.level} · ${game.th.name.toUpperCase()}${zn}`;
   $('hKey').hidden = !pl.hasKey || game.chase;
   const total = game.level <= LAST ? notesFor(game.level).length : 0;
   $('hNotes').textContent = total ? `ЗАПИСКИ ${game.notesLv}/${total}` : '';
@@ -959,7 +983,7 @@ async function startLevel(lv, fresh = false, opt = {}) {
   const th = theme(lv);
   $('cNum').textContent = lv <= LAST ? `УРОВЕНЬ ${lv} / ${LAST}` : `УРОВЕНЬ ${lv} · БЕСКОНЕЧНОСТЬ`;
   $('cName').textContent = th.name;
-  { const tk = taskFor(lv, seed); $('cObj').textContent = 'ЦЕЛЬ: ' + TASK_GOAL[tk.chase ? 'chase' : tk.kind].toUpperCase(); }
+  { const tk = levelTask(lv, seed); $('cObj').textContent = 'ЦЕЛЬ: ' + TASK_GOAL[tk.chase ? 'chase' : tk.kind].toUpperCase(); }
   $('cTip').textContent = th.tip;
   const mdef = monsterFor(lv);
   $('cMon').textContent = `${mdef.name.toUpperCase()}: ${mdef.trait}`;
@@ -969,9 +993,10 @@ async function startLevel(lv, fresh = false, opt = {}) {
   disposeWorld();
   const D = DIFF[game.diff] || DIFF.normal;
   game.seed = seed; game.taken = new Set();
-  const task = taskFor(lv, seed);
+  const task = levelTask(lv, seed);
   const thG = Object.assign({}, th, { needKey: task.kind === 'key' }), thB = Object.assign({}, th, { needKey: task.kind !== 'exit' });
-  const G = genGrid(thG, lv, seed, { allowSecret: lv <= LAST, noteIds: lv <= LAST ? notesFor(lv) : [], water: Math.max(2, Math.round(th.water * D.items)), batt: Math.max(1, Math.round(th.batt * D.items)) });
+  // Открытый мир: в ~9 раз больше площади, поэтому воды и батареек больше (но не в 9 раз — их надо искать).
+  const G = genGrid(thG, lv, seed, { world: WORLD, allowSecret: lv <= LAST, noteIds: lv <= LAST ? notesFor(lv) : [], water: Math.max(2, Math.round(th.water * D.items * (WORLD ? 2.5 : 1))), batt: Math.max(1, Math.round(th.batt * D.items * (WORLD ? 2.5 : 1))) });
   lvl = buildLevel(thB, G, { seed, aniso: maxAniso });
   scene.add(lvl.root);
   game.task = task; game.ex = buildExtras(lvl, task, seed, lv);
@@ -999,6 +1024,7 @@ async function startLevel(lv, fresh = false, opt = {}) {
     voiceT: 5, ambT: 30 + Math.random() * 20, musicOn: true, musicT: 14, shakeT: 0, blackGhost: false
   });
   if (fresh) { game.runTime = 0; game.deaths = 0; }
+  game.zoneId = null; game.zone = null; game.zoneT = 0; game.zonesSeen = new Set();
   if (!SAVE.toolsTip) { SAVE.toolsTip = 1; persist(); setTimeout(() => { if (game.mode === 'play') toast(isTouch ? 'Кнопки внизу: сканер, ЭМИ, карта, метка, тихий шаг, камера. Всё садит батарею или шумит' : 'Q сканер · R ЭМИ · M карта · G метка · C присесть · V камера. Всё садит батарею или шумит'); }, 6000); }
   SAVE.max = Math.max(SAVE.max, lv); SAVE.cont = lv; persist();
   if (lv >= 10) unlock('deep');

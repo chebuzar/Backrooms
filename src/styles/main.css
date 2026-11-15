@@ -189,6 +189,12 @@ select.inp{flex:none}
 .item .new{color:var(--lamp);font-size:12px}
 #whisper{position:fixed;z-index:11;left:50%;top:38%;transform:translate(-50%,-50%);font-size:clamp(15px,3vw,24px);letter-spacing:.32em;color:rgba(240,232,200,0);text-shadow:0 0 12px #000;pointer-events:none;white-space:nowrap;transition:color 1.1s}
 #whisper.on{color:rgba(240,232,200,.8)}
+#zoneCap{position:fixed;z-index:11;left:calc(14px + var(--sl,0px));top:calc(78px + var(--st,0px));display:flex;flex-direction:column;gap:3px;pointer-events:none;opacity:0;font-family:var(--f-head);text-shadow:0 0 10px #000,0 0 2px #000}
+#zoneCap b{font-weight:400;font-size:clamp(18px,3.2vw,30px);letter-spacing:.14em;color:var(--lamp)}
+#zoneCap b::before{content:'▶ ';font-size:.7em;vertical-align:.12em}
+#zoneCap span{font-family:var(--f-body);font-size:11px;letter-spacing:.24em;color:rgba(240,232,200,.75)}
+#zoneCap.on{animation:zoneCap 4.6s ease forwards}
+@keyframes zoneCap{0%{opacity:0;transform:translateX(-12px)}8%{opacity:1;transform:none}75%{opacity:1}100%{opacity:0}}
 #toasts{position:fixed;z-index:25;left:50%;top:calc(48px + var(--st));transform:translateX(-50%);display:flex;flex-direction:column;gap:6px;align-items:center;pointer-events:none}
 .toast{padding:7px 14px;background:rgba(10,8,3,.9);border:1px solid var(--line);font-size:13px;animation:tin .3s ease-out,tout .5s 2.8s forwards;white-space:nowrap}
 .toast.gold{border-color:var(--lamp);color:var(--lamp)}

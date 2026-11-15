@@ -353,6 +353,8 @@ class Sound {
   stinger() { this.tone(50, 2.2, 'sine', 0.3, 35); this.noise(1.8, 'lowpass', 500, 1, 0.12, null, 0.3); }
   lockerIn() { this.tone(180, 0.12, 'square', 0.06, 120); this.noise(0.25, 'bandpass', 1200, 2, 0.15); this.tone(90, 0.2, 'sine', 0.2, 60, null, 0.12); }
   lockerOut() { this.noise(0.3, 'bandpass', 900, 1.5, 0.14); this.tone(220, 0.15, 'square', 0.05, 160); }
+  // вход в новую зону: тихий низкий аккорд
+  zone() { for (const [f, d] of [[110, 0], [164.8, 0.08], [220, 0.16]]) this.tone(f, 2.4, 'sine', 0.05, f * 0.995, null, d); this.noise(1.6, 'bandpass', 900, 3, 0.02, null, 0.6); }
   ach() { this.tone(784, 0.18, 'sine', 0.08); this.tone(1046.5, 0.3, 'sine', 0.08, null, null, 0.14); }
   secret() { [523.25, 659.25, 783.99, 1046.5].forEach((f, k) => this.tone(f, 1.6, 'sine', 0.07, null, null, k * 0.12)); }
 }

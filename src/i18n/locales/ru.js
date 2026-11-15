@@ -140,6 +140,18 @@ export default {
   'chat.ph': 'Сообщение…',
   'chat.hear': 'Нажми, чтобы слышать друзей',
 
+  'zone.maze': 'ЛАБИРИНТ',
+  'zone.atrium': 'АТРИУМ',
+  'zone.halls': 'КОЛОННЫЙ ЗАЛ',
+  'zone.rooms': 'ОФИСНЫЙ БЛОК',
+  'zone.pool': 'БАССЕЙНЫ',
+  'zone.parking': 'ПАРКОВКА',
+  'zone.shelves': 'СКЛАД',
+  'zone.smiles': 'ИГРОВАЯ',
+  'zone.circus': 'ШАТЁР',
+  'zone.new': 'НОВАЯ ЗОНА',
+  'zone.sector': 'СЕКТОР',
+
   'card.level': 'УРОВЕНЬ {n}',
   'pro.skip': 'нажми, чтобы пропустить',
   'dead.retry': 'Ещё раз',

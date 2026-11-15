@@ -140,12 +140,105 @@ function layCircus(g, mw, mh, r) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Открытый мир: 3×3 блока по 27 клеток (≈160×160 м). Каждый блок — зона со своей планировкой,
+// иногда два соседних блока сливаются в огромный атриум. Между зонами пробиты проходы.
+const ZB = 27, ZN = 3;
+const ZONE_NAMES = {
+  maze: 'ЛАБИРИНТ', atrium: 'АТРИУМ', halls: 'КОЛОННЫЙ ЗАЛ', rooms: 'ОФИСНЫЙ БЛОК', pool: 'БАССЕЙНЫ',
+  parking: 'ПАРКОВКА', shelves: 'СКЛАД', smiles: 'ИГРОВАЯ', circus: 'ШАТЁР'
+};
+function layAtrium(g, mw, mh, r) {
+  interior(g, mw, mh);
+  const step = 4, ox = 2 + ((r() * 2) | 0), oy = 2 + ((r() * 2) | 0);
+  for (let y = oy; y < mh - 2; y += step) for (let x = ox; x < mw - 2; x += step) g[y * mw + x] = 1;
+  // пара перегородок, чтобы зал не просматривался насквозь
+  for (let k = 0; k < Math.round(mw * mh / 350); k++) {
+    const hor = r() < 0.5, len = 3 + ((r() * 4) | 0), x = 2 + ((r() * (mw - 4)) | 0), y = 2 + ((r() * (mh - 4)) | 0);
+    for (let i = 0; i < len; i++) { const X = hor ? x + i : x, Y = hor ? y : y + i; if (X > 1 && Y > 1 && X < mw - 2 && Y < mh - 2) g[Y * mw + X] = 1; }
+  }
+}
+function layZone(type, w, h, r, th, rooms) {
+  const s = new Uint8Array(w * h).fill(1);
+  if (type === 'maze') layMaze(s, w, h, (Math.min(w, h) - 1) >> 1, r, { open: th.layout === 'maze' ? th.open : 0.3, rooms: 3 }, rooms);
+  else if (type === 'atrium') layAtrium(s, w, h, r);
+  else if (type === 'halls') layHalls(s, w, h, r, th.pillars || 0.25, 26);
+  else if (type === 'rooms') layRooms(s, w, h, r, rooms);
+  else if (type === 'pool') layPool(s, w, h, r, 0.14);
+  else if (type === 'parking') layParking(s, w, h, r);
+  else if (type === 'shelves') layShelves(s, w, h, r);
+  else if (type === 'smiles') { layHalls(s, w, h, r, th.pillars || 0.1, 30); layPits(s, w, h, r, 2); }
+  else if (type === 'circus') layCircus(s, w, h, r);
+  return s;
+}
+function layWorld(th, r) {
+  const mw = ZB * ZN, mh = mw, g = new Uint8Array(mw * mh).fill(1), rooms = [];
+  const P = th.layout || 'maze', circus = P === 'circus', CENTER = 4;
+  // типы зон: основная планировка уровня + атриум + случайные «чужие» зоны
+  const others = ['maze', 'halls', 'rooms', 'pool', 'parking', 'shelves'].filter((x) => x !== P && !(circus && x === 'maze'));
+  for (let i = others.length - 1; i > 0; i--) { const j = (r() * (i + 1)) | 0; [others[i], others[j]] = [others[j], others[i]]; }
+  // 7 одиночных блоков (два блока заняты атриумом): основная планировка ×3, «чужие» ×3, лабиринт ×1
+  const Pm = circus ? 'halls' : P;
+  const types = [Pm, Pm, others[0], others[1], others[2], others[3], circus ? 'smiles' : P === 'maze' ? 'halls' : 'maze'];
+  for (let i = types.length - 1; i > 0; i--) { const j = (r() * (i + 1)) | 0; [types[i], types[j]] = [types[j], types[i]]; }
+  // слить два соседних блока в гигантский атриум
+  const block = new Int8Array(ZN * ZN).fill(-1), zones = [];
+  const pairs = [];
+  for (let b = 0; b < ZN * ZN; b++) {
+    const bx = b % ZN, by = (b / ZN) | 0;
+    if (bx < ZN - 1) pairs.push([b, b + 1]);
+    if (by < ZN - 1) pairs.push([b, b + ZN]);
+  }
+  const okPair = pairs.filter(([a, b]) => !(circus && (a === CENTER || b === CENTER)));
+  const merge = okPair[(r() * okPair.length) | 0];
+  const letters = 'ABCDEFGHJKLMNPRSTUVWXYZ';
+  const mk = (bs, type) => {
+    const xs = bs.map((b) => b % ZN), ys = bs.map((b) => (b / ZN) | 0);
+    const x0 = Math.min(...xs) * ZB, y0 = Math.min(...ys) * ZB, w = (Math.max(...xs) - Math.min(...xs) + 1) * ZB, h = (Math.max(...ys) - Math.min(...ys) + 1) * ZB;
+    const id = zones.length, code = letters[(r() * letters.length) | 0] + '-' + (10 + ((r() * 90) | 0));
+    zones.push({ id, type, x0, y0, x1: x0 + w - 1, y1: y0 + h - 1, name: ZONE_NAMES[type] || type, code });
+    for (const b of bs) block[b] = id;
+    const sub = [], sr = rng((r() * 4294967296) >>> 0);
+    const s = layZone(type, w, h, sr, th, sub);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) g[(y0 + y) * mw + x0 + x] = s[y * w + x];
+    for (const q of sub) rooms.push({ x0: q.x0 + x0, y0: q.y0 + y0, x1: q.x1 + x0, y1: q.y1 + y0 });
+  };
+  mk(merge, 'atrium');
+  let ti = 0;
+  for (let b = 0; b < ZN * ZN; b++) {
+    if (block[b] >= 0) continue;
+    mk([b], circus && b === CENTER ? 'circus' : types[ti++ % types.length]);
+  }
+  // проходы между соседними зонами
+  const walk = (v) => v === 0 || v === 6;
+  const dig = (x, y, dx, dy) => { for (let k = 0; k < 7; k++) { const X = x + dx * k, Y = y + dy * k; if (X <= 0 || Y <= 0 || X >= mw - 1 || Y >= mh - 1) return; const i = Y * mw + X; if (walk(g[i])) return; g[i] = 0; } };
+  for (const [a, b] of pairs) {
+    if (block[a] === block[b]) continue;
+    const ax = a % ZN, ay = (a / ZN) | 0, hor = b === a + 1;
+    const n = 2 + ((r() * 2) | 0);
+    for (let k = 0; k < n; k++) {
+      const off = 3 + 2 * ((r() * 11) | 0), wide = r() < 0.35;
+      for (let q = 0; q <= (wide ? 1 : 0); q++) {
+        if (hor) { const xa = (ax + 1) * ZB - 1, y = ay * ZB + off + q; dig(xa, y, -1, 0); dig(xa + 1, y, 1, 0); }
+        else { const ya = (ay + 1) * ZB - 1, x = ax * ZB + off + q; dig(x, ya, 0, -1); dig(x, ya + 1, 0, 1); }
+      }
+    }
+  }
+  // стартовая зона: угловой блок, не бассейн и не атриум
+  const corners = [0, ZN - 1, ZN * (ZN - 1), ZN * ZN - 1].filter((b) => !['pool', 'atrium', 'shelves'].includes(zones[block[b]].type));
+  const startZone = zones[block[corners.length ? corners[(r() * corners.length) | 0] : 0]];
+  return { g, mw, mh, rooms, zones, startZone };
+}
+const zoneAt = (zones, tx, ty) => { for (const z of zones) if (tx >= z.x0 && tx <= z.x1 && ty >= z.y0 && ty <= z.y1) return z; return null; };
+
 function genGrid(th, level, seed, o = {}) {
   const r = rng(seed);
-  const n = th.n, mw = 2 * n + 1, mh = mw;
-  let g = new Uint8Array(mw * mh).fill(1);
-  const rooms = [], L = th.layout || 'maze';
-  if (L === 'maze') layMaze(g, mw, mh, n, r, th, rooms);
+  const world = o.world ? layWorld(th, r) : null;
+  const n = th.n, mw = world ? world.mw : 2 * n + 1, mh = mw;
+  let g = world ? world.g : new Uint8Array(mw * mh).fill(1);
+  const rooms = world ? world.rooms : [], L = world ? 'world' : (th.layout || 'maze');
+  if (world) { /* уже размечено */ }
+  else if (L === 'maze') layMaze(g, mw, mh, n, r, th, rooms);
   else if (L === 'halls') layHalls(g, mw, mh, r, th.pillars || 0.25, 26);
   else if (L === 'rooms') layRooms(g, mw, mh, r, rooms);
   else if (L === 'parking') layParking(g, mw, mh, r);
@@ -155,9 +248,10 @@ function genGrid(th, level, seed, o = {}) {
   else if (L === 'circus') layCircus(g, mw, mh, r);
   // старт: самое открытое место
   let sx = 1, sy = 1, best = -1;
-  for (let k = 0; k < 60; k++) {
-    const x = L === 'maze' ? 1 + 2 * ((r() * n) | 0) : 1 + ((r() * (mw - 2)) | 0);
-    const y = L === 'maze' ? 1 + 2 * ((r() * n) | 0) : 1 + ((r() * (mh - 2)) | 0);
+  const sz = world && world.startZone;
+  for (let k = 0; k < (world ? 200 : 60); k++) {
+    const x = sz ? sz.x0 + 1 + ((r() * (sz.x1 - sz.x0 - 1)) | 0) : L === 'maze' ? 1 + 2 * ((r() * n) | 0) : 1 + ((r() * (mw - 2)) | 0);
+    const y = sz ? sz.y0 + 1 + ((r() * (sz.y1 - sz.y0 - 1)) | 0) : L === 'maze' ? 1 + 2 * ((r() * n) | 0) : 1 + ((r() * (mh - 2)) | 0);
     if (g[y * mw + x] !== 0) continue;
     let open = 0;
     for (let yy = -2; yy <= 2; yy++) for (let xx = -2; xx <= 2; xx++) {
@@ -246,7 +340,7 @@ function genGrid(th, level, seed, o = {}) {
       secret = { fx: mw - 1, fy, cx: mw + 1, cy: fy, kind: th.secret };
     }
   }
-  return { g, mw: W2, mh, spawn: { tx: sx, ty: sy, yaw }, door: D, key, notes, water, batt, secret, rooms, used };
+  return { g, mw: W2, mh, spawn: { tx: sx, ty: sy, yaw }, door: D, key, notes, water, batt, secret, rooms, used, zones: world ? world.zones : null };
 }
 
 // ---------------------------------------------------------------------------
@@ -280,6 +374,21 @@ class GB {
     return g;
   }
 }
+
+// Тот же интерфейс, что у GB, но геометрия раскладывается по квадратам CH×CH клеток,
+// чтобы камера отсекала невидимые части мира (frustum culling).
+const CH = 12;
+class CGB {
+  constructor() { this.parts = new Map(); }
+  grid(o, ...rest) {
+    const k = Math.floor(o[0] / (S * CH)) + ',' + Math.floor(o[2] / (S * CH));
+    let gb = this.parts.get(k); if (!gb) { gb = new GB(); this.parts.set(k, gb); }
+    gb.grid(o, ...rest);
+  }
+  get vc() { let n = 0; for (const gb of this.parts.values()) n += gb.vc; return n; }
+  geoms() { return [...this.parts.values()].map((gb) => gb.geom()).filter(Boolean); }
+}
+GB.prototype.geoms = function () { const g = this.geom(); return g ? [g] : []; };
 
 function bakedMat(map, uni = BAKE, extra = {}) {
   const m = new THREE.MeshLambertMaterial(Object.assign({ map }, extra));
@@ -393,7 +502,7 @@ function buildLevel(th, G, opts = {}) {
   const FU = [0, 0.14, 0.5, 0.86, 1];
   const WU = [0, 0.5, 1];
   const tallRepeat = th.wall === 'concrete' || th.wall === 'tiles';
-  const gW = new GB(), gF = new GB(), gC = new GB(), gD = new GB(), gRW = new GB(), gRF = new GB(), gRC = new GB(), gP = new GB(), gPS = new GB();
+  const gW = new CGB(), gF = new CGB(), gC = new CGB(), gD = new GB(), gRW = new GB(), gRF = new GB(), gRC = new GB(), gP = new CGB(), gPS = new CGB();
   const floorBake = (x, y, z, n, o) => { lightAt(x, y, z, 0, 1, 0, o); mul(o, aoXZ(x, z, -9, -9)); };
   const ceilBake = (x, y, z, n, o) => { lightAt(x, y, z, 0, -1, 0, o); mul(o, 0.72 + 0.28 * aoXZ(x, z, -9, -9)); };
   const rFloorBake = (x, y, z, n, o) => { roomLight(x, y, z, o); mul(o, aoXZ(x, z, -9, -9)); };
@@ -442,7 +551,7 @@ function buildLevel(th, G, opts = {}) {
   const mWall = bakedMat(wallT, BAKE, { bumpMap: wallT, bumpScale: 1.2 });
   const mFloor = bakedMat(floorT, BAKE, { bumpMap: floorT, bumpScale: 1.5 });
   const mCeil = bakedMat(ceilT);
-  const mesh = (gb, m) => { const geo = gb.geom(); if (geo) add(new THREE.Mesh(geo, m)); };
+  const mesh = (gb, m) => { for (const geo of gb.geoms()) add(new THREE.Mesh(geo, m)); };
   mesh(gW, mWall); mesh(gF, mFloor); mesh(gC, mCeil);
 
   // --- лампы на потолке
@@ -619,7 +728,7 @@ function buildLevel(th, G, opts = {}) {
     const pt = tex(pit ? TX.padCanvas(r) : TX.poolBottomCanvas(r));
     mesh(gP, bakedMat(pt)); mesh(gPS, bakedMat(pit ? pt : floorT));
   }
-  if (th.props === 'pool') {
+  if (th.props !== 'smiles') {
     const wg = [];
     for (let ty = 0; ty < mh; ty++) for (let tx = 0; tx < mw; tx++) {
       if (g[ty * mw + tx] !== 6) continue;
@@ -674,18 +783,45 @@ function buildLevel(th, G, opts = {}) {
     bm.forEach((arr, i) => { if (arr.length) add(new THREE.Mesh(mergeGeometries(arr), new THREE.MeshLambertMaterial({ color: COL[i] }))); });
     const pits = []; for (let i = 0; i < g.length; i++) if (g[i] === 6) pits.push(i);
     if (pits.length) {
-      const per = 120, ball = new THREE.SphereGeometry(0.085, 10, 8);
-      const im = new THREE.InstancedMesh(ball, new THREE.MeshLambertMaterial(), pits.length * per);
-      const BC = [0xe8483f, 0x3d7fe0, 0x3fbf62, 0xf2c230, 0xff8fb1, 0xf28a30].map((c) => new THREE.Color(c));
-      let q = 0;
+      // Верхний слой шариков — текстура на плоскости, под ней немного объёмных шариков.
+      // Шарики разложены по квадратам мира, чтобы невидимые не рисовались.
+      const BCs = ['#e8483f', '#3d7fe0', '#3fbf62', '#f2c230', '#ff8fb1', '#f28a30'];
+      const bc = TX.canvas(256, 256), bx = bc.getContext('2d');
+      bx.fillStyle = '#2a2a2a'; bx.fillRect(0, 0, 256, 256);
+      for (let k2 = 0; k2 < 900; k2++) {
+        const x = r() * 256, y = r() * 256, rad = 9 + r() * 3, col = BCs[(r() * BCs.length) | 0];
+        const gr = bx.createRadialGradient(x - rad * 0.35, y - rad * 0.35, rad * 0.1, x, y, rad);
+        gr.addColorStop(0, '#ffffffcc'); gr.addColorStop(0.25, col); gr.addColorStop(1, '#00000088');
+        bx.fillStyle = gr; bx.beginPath(); bx.arc(x, y, rad, 0, Math.PI * 2); bx.fill();
+        for (const [ox, oy] of [[256, 0], [-256, 0], [0, 256], [0, -256]]) { bx.beginPath(); bx.arc(x + ox, y + oy, rad, 0, Math.PI * 2); bx.fill(); }
+      }
+      const bT = tex(bc), pg = [];
+      const per = 24, ball = new THREE.SphereGeometry(0.085, 7, 5);
+      const BC = BCs.map((c) => new THREE.Color(c));
+      const byChunk = new Map();
       for (const i of pits) {
         const tx = i % mw, ty = (i / mw) | 0;
-        for (let k2 = 0; k2 < per; k2++) {
-          m4.makeTranslation((tx + 0.06 + r() * 0.88) * S, -0.06 - r() * 0.12, (ty + 0.06 + r() * 0.88) * S);
-          im.setMatrixAt(q, m4); im.setColorAt(q, BC[(r() * BC.length) | 0]); q++;
-        }
+        const p = new THREE.PlaneGeometry(S, S); p.rotateX(-Math.PI / 2); p.translate((tx + 0.5) * S, -0.11, (ty + 0.5) * S); pg.push(p);
+        const k = ((tx / CH) | 0) + ',' + ((ty / CH) | 0); if (!byChunk.has(k)) byChunk.set(k, []); byChunk.get(k).push(i);
       }
-      im.instanceMatrix.needsUpdate = true; im.instanceColor.needsUpdate = true; add(im);
+      if (pg.length) {
+        const geo = mergeGeometries(pg), uv = geo.attributes.uv, pos = geo.attributes.position;
+        for (let i = 0; i < uv.count; i++) uv.setXY(i, pos.getX(i) / 2.2, pos.getZ(i) / 2.2);
+        add(new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ map: bT })));
+      }
+      const bMat = new THREE.MeshLambertMaterial();
+      for (const list of byChunk.values()) {
+        const im = new THREE.InstancedMesh(ball, bMat, list.length * per);
+        let q = 0;
+        for (const i of list) {
+          const tx = i % mw, ty = (i / mw) | 0;
+          for (let k2 = 0; k2 < per; k2++) {
+            m4.makeTranslation((tx + 0.06 + r() * 0.88) * S, -0.07 - r() * 0.03, (ty + 0.06 + r() * 0.88) * S);
+            im.setMatrixAt(q, m4); im.setColorAt(q, BC[(r() * BC.length) | 0]); q++;
+          }
+        }
+        im.instanceMatrix.needsUpdate = true; im.instanceColor.needsUpdate = true; im.computeBoundingSphere(); add(im);
+      }
     }
   }
   // --- Пиксельный цирк: шатёр, кольцо, барабаны, шары, гирлянды, цифровое небо
@@ -979,6 +1115,7 @@ function buildLevel(th, G, opts = {}) {
 
   return {
     root, g, mw, mh, tile, lamps, items, colliders, secret, floorList, lockers, HH, circus, puddles,
+    zones: G.zones, zoneAt: (x, z) => (G.zones ? zoneAt(G.zones, Math.floor(x / S), Math.floor(z / S)) : null),
     spawn: { x: (G.spawn.tx + 0.5) * S, z: (G.spawn.ty + 0.5) * S, yaw: G.spawn.yaw },
     door: { x: dfx, z: dfz, nx: dnx, nz: dnz },
     idx: (x, z) => Math.floor(z / S) * mw + Math.floor(x / S),

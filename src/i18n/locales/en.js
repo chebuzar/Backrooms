@@ -139,6 +139,18 @@ export default {
   'chat.ph': 'Message…',
   'chat.hear': 'Tap to hear your friends',
 
+  'zone.maze': 'THE MAZE',
+  'zone.atrium': 'THE ATRIUM',
+  'zone.halls': 'PILLAR HALL',
+  'zone.rooms': 'OFFICE BLOCK',
+  'zone.pool': 'THE POOLS',
+  'zone.parking': 'PARKING',
+  'zone.shelves': 'WAREHOUSE',
+  'zone.smiles': 'PLAYROOM',
+  'zone.circus': 'THE TENT',
+  'zone.new': 'NEW ZONE',
+  'zone.sector': 'SECTOR',
+
   'card.level': 'LEVEL {n}',
   'pro.skip': 'tap to skip',
   'dead.retry': 'Try again',
