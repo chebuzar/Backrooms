@@ -107,17 +107,30 @@ const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), LOOK.bloom[0], LO
 composer.addPass(bloom);
 // свечение можно считать в ¼ кадра вместо ½ (bloomDiv = 2) — 10 проходов размытия в 4 раза дешевле
 { const bs = bloom.setSize.bind(bloom); bloom.setSize = (w, h) => bs(w / bloomDiv, h / bloomDiv); }
-composer.addPass(new OutputPass());
+// Перевод в цвета экрана (ACES + sRGB) делает сам шейдер FX — тот же расчёт, что в OutputPass, но без лишнего
+// прохода по всему кадру (на iPad это ~4 млн пикселей HalfFloat чтения и записи). OutputPass оставлен выключенным как запасной.
+const outPass = new OutputPass(); outPass.enabled = false;
+composer.addPass(outPass);
 const FX = {
   uniforms: {
     tDiffuse: { value: null }, uRes: { value: new THREE.Vector2(640, 360) }, uVhs: { value: 0.25 }, uTime: { value: 0 }, uGrain: { value: 0.08 }, uVig: { value: 0.3 }, uAb: { value: 0.15 },
-    uDist: { value: 0 }, uRed: { value: 0 }, uFade: { value: 0 }, uWhite: { value: 0 }, uSat: { value: 1 }, uNV: { value: 0 }
+    uDist: { value: 0 }, uRed: { value: 0 }, uFade: { value: 0 }, uWhite: { value: 0 }, uSat: { value: 1 }, uNV: { value: 0 },
+    uExpo: { value: 1 }, uTM: { value: 1 }
   },
   vertexShader: 'varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
   fragmentShader: `
     varying vec2 vUv; uniform sampler2D tDiffuse; uniform vec2 uRes; uniform float uVhs;
-    uniform float uTime,uGrain,uVig,uAb,uDist,uRed,uFade,uWhite,uSat,uNV;
+    uniform float uTime,uGrain,uVig,uAb,uDist,uRed,uFade,uWhite,uSat,uNV,uExpo,uTM;
     float rnd(vec2 c){ return fract(sin(dot(c,vec2(12.9898,78.233)))*43758.5453); }
+    // ACES Filmic + sRGB — дословно как в three.js r160 (tonemapping_pars_fragment / colorspace_pars_fragment)
+    vec3 zkRRT(vec3 v){ vec3 a=v*(v+0.0245786)-0.000090537; vec3 b=v*(0.983729*v+0.4329510)+0.238081; return a/b; }
+    vec3 acesTM(vec3 color){
+      const mat3 ACESInputMat=mat3(vec3(0.59719,0.07600,0.02840),vec3(0.35458,0.90834,0.13383),vec3(0.04823,0.01566,0.83777));
+      const mat3 ACESOutputMat=mat3(vec3(1.60475,-0.10208,-0.00327),vec3(-0.53108,1.10813,-0.07276),vec3(-0.07367,-0.00605,1.07602));
+      color*=uExpo/0.6; color=ACESInputMat*color; color=zkRRT(color); color=ACESOutputMat*color; return clamp(color,0.0,1.0);
+    }
+    vec3 toSRGB(vec3 c){ return mix(pow(c,vec3(0.41666))*1.055-vec3(0.055),c*12.92,vec3(lessThanEqual(c,vec3(0.0031308)))); }
+    vec3 S(vec2 uv){ vec3 c=texture2D(tDiffuse,uv).rgb; return uTM>0.5 ? toSRGB(acesTM(c)) : c; }
     void main(){
       vec2 uv=vUv; vec2 c=uv-0.5;
       float band=step(0.993,rnd(vec2(floor(uv.y*90.0),floor(uTime*18.0))));
@@ -129,8 +142,8 @@ const FX = {
       vec2 off=c*uAb*0.008;
       // цвет «плывёт» вправо относительно яркости, как на VHS
       vec2 cb=vec2(1.6/uRes.x,0.0)*uVhs*(uRes.y/480.0);
-      vec3 col=vec3(texture2D(tDiffuse,uv+off+cb).r,texture2D(tDiffuse,uv).g,texture2D(tDiffuse,uv-off-cb*0.6).b);
-      vec3 bl=(texture2D(tDiffuse,uv+cb*2.0).rgb+texture2D(tDiffuse,uv-cb*2.0).rgb)*0.5;
+      vec3 col=vec3(S(uv+off+cb).r,S(uv).g,S(uv-off-cb*0.6).b);
+      vec3 bl=(S(uv+cb*2.0)+S(uv-cb*2.0))*0.5;
       float ly=dot(col,vec3(0.299,0.587,0.114)); col=mix(col,vec3(ly)+(bl-vec3(dot(bl,vec3(0.299,0.587,0.114))))*1.0,0.35*uVhs);
       // цветокор: мягкая S-кривая, тени в холодную зелень, света тёплые
       col=clamp(col,0.0,1.0); col=mix(col,col*col*(3.0-2.0*col),0.35);
@@ -213,7 +226,10 @@ function applyQuality() {
   if (LOOK.vhsPixel && LOOK.h[q]) basePR = Math.min(dpr, Math.max(0.25, LOOK.h[q] / h));
   setTexHi(prof.tex2k); setTexScale(q === 'low' ? 1 : 2); setAniso(anisoNow());
   const samples = typeof prof.msaa === 'function' ? prof.msaa(basePR) : prof.msaa;
-  for (const rt of [composer.renderTarget1, composer.renderTarget2]) if (rt.samples !== samples) { rt.samples = samples; rt.dispose(); }
+  // Сглаживание нужно только там, где рисуются стены и предметы. С тенями N8AO сцену рисует его проход (свой MSAA-кадр),
+  // а дальше идут плоские полноэкранные проходы (свечение, цвет, плёнка) — MSAA им ничего не даёт, только лишняя работа.
+  const postS = prof.ao ? 0 : samples;
+  for (const rt of [composer.renderTarget1, composer.renderTarget2]) if (rt.samples !== postS) { rt.samples = postS; rt.dispose(); }
   setAO(prof.ao, samples);
   // выключенная лампа исключается из шейдера (одна перекомпиляция при смене профиля, а не каждый кадр)
   lampLights.forEach((L, i) => { L.visible = i < prof.lamps; });
@@ -2036,7 +2052,7 @@ function loop(now) {
   const rawDt = (now - last) / 1000, dt = Math.min(0.05, rawDt); last = now; tAll += dt;
   const pt0 = PERF ? performance.now() : 0;
   autoRes(rawDt);
-  U.uTime.value = tAll;
+  U.uTime.value = tAll; U.uExpo.value = renderer.toneMappingExposure; U.uTM.value = outPass.enabled ? 0 : 1;
   if (!lvl) return;
   const m = game.mode;
   if (m === 'menu' || m === 'splash' || m === 'prologue') {
@@ -2090,7 +2106,7 @@ function perfFrame(frame, upd, ren) {
 if (import.meta.env.DEV || new URLSearchParams(location.search).has('debug')) {
   const faceTo = (x, z) => Math.atan2(-(x - pl.x), -(z - pl.z));
   window.__zk = {
-    game, pl, SAVE, renderer, scene, camera, sound, THREE, wrist, LOOK, bloom, amb, U, applyQuality, aoPass, ending: () => showEnding(), prologue: () => newGame(),
+    game, pl, SAVE, renderer, scene, camera, sound, THREE, wrist, LOOK, bloom, amb, U, applyQuality, aoPass, composer, renderPass, ending: () => showEnding(), prologue: () => newGame(),
     get lvl() { return lvl; },
     get ent() { return ent; },
     get ready() { return game.mode === 'play' && !busy; },
