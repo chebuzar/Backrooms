@@ -1,6 +1,6 @@
 import { defineConfig } from 'vite';
 
-// BASE_PATH задаёт GitHub Actions: '/backrooms/' для chebuzar.github.io/backrooms.
+// BASE_PATH задаёт GitHub Actions: '/<repo>/' для chebuzar.github.io/<repo>.
 // Для своего домена или локально — './'.
 export default defineConfig({
   base: process.env.BASE_PATH || './',

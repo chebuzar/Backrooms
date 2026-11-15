@@ -71,8 +71,8 @@ npm run shot -- --level 4 --eval "__zk.look(1.57)" # довільний JS пе�
 
 ## Деплой
 
-Push у `main` → `.github/workflows/deploy.yml`: lint → build (`BASE_PATH=/backrooms/`) → smoke (Chromium + WebKit) → GitHub Pages.
-Сайт: https://chebuzar.github.io/backrooms/
+Push у `main` → `.github/workflows/deploy.yml`: lint → build (`BASE_PATH=/Backrooms/`) → smoke (Chromium + WebKit) → GitHub Pages.
+Сайт: https://chebuzar.github.io/Backrooms/
 
 ## Відомі проблеми (беклог)
 

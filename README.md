@@ -4,7 +4,7 @@
 
 Моделі, текстури, світло й звук генеруються кодом (Three.js + WebAudio), тому кожен лабіринт новий. Кооп до 4 гравців із голосовим чатом через WebRTC (PeerJS).
 
-**Грати:** https://chebuzar.github.io/backrooms/ (після першого деплою)
+**Грати:** https://chebuzar.github.io/Backrooms/ (після першого деплою)
 
 ## Швидкий старт
 
@@ -23,7 +23,8 @@ npm run dev        # локальний сервер з гарячим пере�
 | `npm run build` | збірка в `dist/` |
 | `npm run preview` | локальний перегляд зібраної версії |
 | `npm run lint` | ESLint |
-| `npm run smoke` | браузерний smoke-тест зібраної версії (Playwright, Chromium) |
+| `npm run smoke` | браузерний smoke-тест зібраної версії (Playwright: Chromium + WebKit/Safari) |
+| `npm run shot -- --level 3` | скріншот сцени гри в Chromium/WebKit, на комп'ютері чи телефоні (див. `CLAUDE.md`) |
 | `npm run check` | lint + build + smoke |
 
 ## Структура
@@ -45,6 +46,7 @@ src/
   i18n/                 локалізація: t(), applyI18n(), словники ru / uk / en
   styles/main.css       стилі
 scripts/smoke.mjs       smoke-тест
+scripts/shot.mjs        скріншоти для перевірки (QA)
 ```
 
 ## Мови
