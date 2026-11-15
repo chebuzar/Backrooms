@@ -199,9 +199,9 @@ function procession(r, mats) {
   const g = new THREE.Group(), people = [];
   // реалистичные люди (скелетная модель); если модель не загрузилась — прежние фигуры
   if (humanReady()) {
-    const paper = lam(0xffffff, { map: mats.paper, side: THREE.DoubleSide }), bag = lam(0x3e2716);
+    const paper = lam(0xffffff, { map: mats.paper, side: THREE.DoubleSide }), hat = lam(0x1a1918);
     for (let k = 0; k < 6; k++) {
-      const c = makeCivilian({ h: 1.74 + r() * 0.12, suit: [0xb9ab8c, 0xb4a789, 0xbdaf90][k % 3], wrap: shaded, paper, bag });
+      const c = makeCivilian({ h: 1.9, wrap: shaded, paper, hat });
       g.add(c.g); people.push({ g: c.g, civ: c });
     }
     return { group: g, people, radius: 0.6, colliders: [] };
@@ -357,7 +357,7 @@ function updateFinds(finds, dt, t, pl) {
         w.g.position.set(x - f.x, 0, z - f.z);
         // группа повёрнута вместе с f.group — компенсируем поворот
         w.g.rotation.y = yaw - f.group.rotation.y;
-        if (w.civ) { w.civ.update(dt, 0.75); return; }
+        if (w.civ) { w.civ.update(dt, 0.75, f.s / 0.75); return; }
         const ph = f.s * 4.2 + w.ph * 0;
         w.legs[0].rotation.x = Math.sin(ph - k) * 0.4; w.legs[1].rotation.x = -Math.sin(ph - k) * 0.4;
         w.hips.position.y = 0.95 + Math.abs(Math.cos(ph - k)) * 0.03;
