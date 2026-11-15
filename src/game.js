@@ -594,7 +594,7 @@ function updatePlay(dt) {
   if (ptile === 3 || ptile === 4) drain = -4;
   pl.san = clamp(pl.san - drain * dt, 0, 100);
   game.minSan = Math.min(game.minSan, pl.san);
-  if (pl.san <= 0) { die('san'); return; }
+  if (pl.san <= 0 && !game.god) { die('san'); return; }
   if (pl.light) {
     pl.bat = Math.max(0, pl.bat - 0.75 * dt * (ent && ent.lit && ent.ai.fear ? 3 : 1));
     if (pl.bat <= 0) { pl.light = false; $('bLight').classList.remove('on'); sound.click(); toast('🔋 Фонарик сел'); }
@@ -637,7 +637,7 @@ function entTick(dt, stared) {
   const lit = stared && pl.light && ent.dist < 14;
   const res = ent.update(dt, { targets, stared: st, lit, black: game.black, music: game.musicOn, moving: Math.hypot(pl.vx, pl.vz) > 0.5, force: game.chase, mul: th.entSpeed * D.speed * (game.chase ? 1.12 : 1) });
   if (res && res.kill) {
-    if (res.kill === targets[0].id) { if (game.mode === 'play') { startScare(); return true; } }
+    if (res.kill === targets[0].id) { if (game.mode === 'play' && !game.god) { startScare(); return true; } }
     else { const r = rp.get(res.kill); if (r && !r.dead) { r.dead = true; net.send(res.kill, { t: 'caught', id: res.kill }); } }
   }
   return false;
@@ -1733,6 +1733,47 @@ function loop(now) {
   if (game.coop) coopFrame(dt);
   if (m === 'ending') return;
   composer.render(dt);
+}
+
+// ---------- отладка ----------
+// Включается на dev-сервере или по ?debug в адресе. Используется автотестами (scripts/shot.mjs).
+if (import.meta.env.DEV || new URLSearchParams(location.search).has('debug')) {
+  const faceTo = (x, z) => Math.atan2(-(x - pl.x), -(z - pl.z));
+  window.__zk = {
+    game, pl, SAVE, renderer, scene, camera, sound, THREE,
+    get lvl() { return lvl; },
+    get ent() { return ent; },
+    get ready() { return game.mode === 'play' && !busy; },
+    // запустить уровень сразу (без пролога); o: { seed, diff, secret }
+    start(lv = 0, o = {}) { hideAllPanels(); return startLevel(lv, true, o); },
+    god(on = true) { game.god = !!on; return game.god; },
+    // усыпить монстра навсегда (для скриншотов уровня)
+    calm() { if (ent) { ent.state = 'dormant'; ent.timer = 1e9; ent.m.group.visible = false; } },
+    // разбудить монстра рядом с игроком
+    wake() { if (ent) { ent.timer = 0; } },
+    tp(x, z, yaw) { pl.x = x; pl.z = z; if (yaw !== undefined) pl.yaw = yaw; pl.vx = pl.vz = 0; },
+    look(yaw, pitch = 0) { pl.yaw = yaw; pl.pitch = pitch; },
+    // встать перед дверью выхода и смотреть на неё
+    toExit(dist = 2.2) {
+      const d = lvl.door;
+      for (const s of [1, -1]) {
+        const x = d.x + d.nx * dist * s, z = d.z + d.nz * dist * s;
+        if (!blocked(x, z)) { this.tp(x, z, faceTo(d.x, d.z)); pl.pitch = 0.05; return true; }
+      }
+      return false;
+    },
+    // поставить монстра перед игроком
+    meet(dist = 4) {
+      if (!ent) return false;
+      const x = pl.x - Math.sin(pl.yaw) * dist, z = pl.z - Math.cos(pl.yaw) * dist;
+      ent.appear(x, z, pl.x, pl.z); ent.state = 'roam'; return true;
+    },
+    info() {
+      return { mode: game.mode, level: game.level, theme: game.th && game.th.name, san: +pl.san.toFixed(1), bat: +pl.bat.toFixed(1),
+        x: +pl.x.toFixed(2), z: +pl.z.toFixed(2), ent: ent ? ent.state : null, entDist: ent ? +ent.dist.toFixed(1) : null,
+        pr: renderer.getPixelRatio(), quality: SAVE.set.q, calls: renderer.info.render.calls, tris: renderer.info.render.triangles };
+    }
+  };
 }
 
 // ---------- запуск ----------
