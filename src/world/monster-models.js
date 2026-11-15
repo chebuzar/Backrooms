@@ -152,3 +152,86 @@ export function makeMonsterMesh(look = {}) {
   };
   return m;
 }
+
+// ---------- обычный человек (для находки «Процессия») ----------
+// Та же модель Quaternius (CC0), но в костюме: цвета по костям (кожа головы и кистей, волосы, костюм, тёмные туфли).
+// Левая рука неподвижно держит газету у лица (поза — CCD-IK по позиции газеты), правая идёт с портфелем.
+let CIVIL = null;
+function civilGeometry() {
+  if (CIVIL) return CIVIL;
+  let sm = null; SRC.human.scene.traverse((o) => { if (!sm && o.isSkinnedMesh) sm = o; });
+  const geo = sm.geometry.clone(), names = sm.skeleton.bones.map((b) => b.name);
+  const pos = geo.attributes.position, si = geo.attributes.skinIndex, sw = geo.attributes.skinWeight, n = pos.count;
+  // высота головы в позе привязки — для волос (верх и затылок)
+  let hy0 = Infinity, hy1 = -Infinity, hz0 = Infinity, hz1 = -Infinity;
+  const dom = new Array(n);
+  for (let i = 0; i < n; i++) {
+    let best = 0, bw = -1; for (let k = 0; k < 4; k++) { const w = sw.getComponent(i, k); if (w > bw) { bw = w; best = si.getComponent(i, k); } }
+    dom[i] = names[best] || '';
+    if (/^Head/.test(dom[i])) { const y = pos.getY(i), z = pos.getZ(i); hy0 = Math.min(hy0, y); hy1 = Math.max(hy1, y); hz0 = Math.min(hz0, z); hz1 = Math.max(hz1, z); }
+  }
+  const col = new Float32Array(n * 3), C = new THREE.Color();
+  for (let i = 0; i < n; i++) {
+    const b = dom[i];
+    if (/^Head/.test(b)) {
+      const ty = (pos.getY(i) - hy0) / (hy1 - hy0 || 1), tz = (pos.getZ(i) - hz0) / (hz1 - hz0 || 1);
+      C.set(ty > 0.8 || (ty > 0.45 && tz > 0.7) ? 0x2c2018 : 0xdcb79c);            // волосы (макушка, затылок) / лицо
+    } else if (/Hand/.test(b)) C.set(0xdcb79c);                                      // кисти
+    else if (/Foot|Toe/.test(b)) C.set(0x17120e);                                     // туфли
+    else if (b === 'Neck') C.set(0xe8e2d4);                                           // воротник рубашки
+    else C.set(0xffffff);                                                             // костюм (цвет — у материала)
+    col[i * 3] = C.r; col[i * 3 + 1] = C.g; col[i * 3 + 2] = C.b;
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  CIVIL = geo; return geo;
+}
+export const humanReady = () => !!SRC.human;
+// opts: { h — рост, suit — цвет костюма, wrap(mat) — обёртка освещения, paper — материал газеты, bag — материал портфеля }
+export function makeCivilian(opts = {}) {
+  if (!SRC.human) return null;
+  const src = SRC.human, model = skClone(src.scene), group = new THREE.Group(); group.add(model);
+  const s = (opts.h || 1.78) / src.h; model.scale.setScalar(s); model.position.y = -src.y0 * s;
+  // процессия идёт в сторону −Z своей группы — разворачиваем модель лицом туда
+  model.rotation.y = Math.PI;
+  // тело: костюм + рубашка/кожа/волосы/туфли из цветов вершин; нижняя часть тела — тот же костюм
+  const suitM = (opts.wrap || ((m) => m))(new THREE.MeshLambertMaterial({ color: opts.suit ?? 0xb9ab8c, vertexColors: true }));
+  model.traverse((o) => { if (o.isSkinnedMesh) { o.geometry = civilGeometry(); o.material = suitM; o.frustumCulled = false; } });
+  model.updateMatrixWorld(true);
+  const B = (n) => bone(model, n);
+  // газета — у лица, крепится к голове (точка крепления в метрах, оси модели)
+  const mq = new THREE.Quaternion(), gp = new THREE.Vector3(), gq = new THREE.Quaternion(), gs = new THREE.Vector3();
+  group.getWorldQuaternion(mq);
+  const anchor = (b) => { const g = new THREE.Group(); if (!b) return g; b.matrixWorld.decompose(gp, gq, gs); b.add(g); g.scale.set(1 / gs.x, 1 / gs.y, 1 / gs.z); g.quaternion.copy(gq.clone().invert().multiply(mq)); return g; };
+  const handR = anchor(B('RightHand'));
+  const paper = new THREE.Mesh(new THREE.PlaneGeometry(0.58, 0.42, 4, 1), opts.paper);
+  { const p = paper.geometry.attributes.position; for (let i = 0; i < p.count; i++) p.setZ(i, -Math.abs(p.getX(i)) * 0.22); paper.geometry.computeVertexNormals(); }
+  // газета держится ровно перед лицом (на высоте глаз), не качается вместе с костями
+  const H = opts.h || 1.78; paper.position.set(-0.02, H * 0.9, -0.34); paper.rotation.set(0.08, Math.PI, 0); group.add(paper);
+  // портфель в правой руке
+  const bag = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.3, 0.4), opts.bag); bag.position.set(0, -0.2, 0); handR.add(bag);
+  const handle = new THREE.Mesh(new THREE.TorusGeometry(0.045, 0.012, 6, 12, Math.PI), opts.bag); handle.rotation.set(0, Math.PI / 2, 0); handle.position.set(0, -0.04, 0); handR.add(handle);
+  // левая рука: CCD-IK — кисть к нижнему левому углу газеты
+  model.updateMatrixWorld(true);
+  const chain = [B('LeftForeArm'), B('LeftArm')], hand = B('LeftHand');
+  const target = new THREE.Vector3(); paper.localToWorld(target.set(0.24, -0.17, -0.03));
+  if (hand && chain[0] && chain[1]) {
+    const hp = new THREE.Vector3(), bp = new THREE.Vector3(), a = new THREE.Vector3(), c = new THREE.Vector3(), q = new THREE.Quaternion(), pq = new THREE.Quaternion();
+    for (let it = 0; it < 12; it++) for (const b of chain) {
+      b.updateMatrixWorld(true); hand.getWorldPosition(hp); b.getWorldPosition(bp);
+      a.subVectors(hp, bp).normalize(); c.subVectors(target, bp).normalize();
+      q.setFromUnitVectors(a, c); b.parent.getWorldQuaternion(pq);
+      // поворот в мировых → в локальные кости
+      const wq = b.getWorldQuaternion(new THREE.Quaternion()); wq.premultiply(q);
+      b.quaternion.copy(pq.invert().multiply(wq));
+    }
+  }
+  const armRot = ['LeftShoulder', 'LeftArm', 'LeftForeArm', 'LeftHand'].map((n) => { const b = B(n); return b && [b, b.quaternion.clone()]; }).filter(Boolean);
+  // анимация ходьбы без левой руки (её держим в позе чтения)
+  const walk = src.clips.walk.clone(); walk.tracks = walk.tracks.filter((t) => !/(LeftShoulder|LeftArm|LeftForeArm|LeftHand)/.test(t.name));
+  const mixer = new THREE.AnimationMixer(model); const act = mixer.clipAction(walk); act.play();
+  return {
+    g: group, mats: [suitM],
+    // speed — м/с; поза левой руки возвращается после шага анимации
+    update(dt, speed) { mixer.timeScale = speed / 1.3; mixer.update(dt); for (const [b, q0] of armRot) b.quaternion.copy(q0); }
+  };
+}

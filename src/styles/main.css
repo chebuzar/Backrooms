@@ -187,8 +187,8 @@ select.inp{flex:none}
 #bHear{position:fixed;z-index:29;left:50%;bottom:calc(90px + var(--sb));transform:translateX(-50%);padding:12px 18px;background:var(--lamp);color:#151106;font-family:var(--f-head);font-size:13px}
 #bHear[hidden]{display:none}
 .item .new{color:var(--lamp);font-size:12px}
-#whisper{position:fixed;z-index:11;left:50%;top:38%;transform:translate(-50%,-50%);font-size:clamp(15px,3vw,24px);letter-spacing:.32em;color:rgba(240,232,200,0);text-shadow:0 0 12px #000;pointer-events:none;white-space:nowrap;transition:color 1.1s}
-#whisper.on{color:rgba(240,232,200,.8)}
+#whisper{position:fixed;z-index:11;left:50%;top:38%;transform:translate(-50%,-50%);font-size:clamp(15px,3vw,24px);letter-spacing:.32em;color:rgba(240,232,200,.8);text-shadow:0 0 12px #000;opacity:0;pointer-events:none;white-space:nowrap;transition:opacity 1.1s}
+#whisper.on{opacity:1}
 #tools,#hud .bars{transition:opacity .35s}
 body.scanning #tools,body.scanning #hud .bars{opacity:.12}
 #minimap{position:absolute;right:calc(14px + var(--sr));top:calc(62px + var(--st));width:150px;height:150px;border-radius:50%;pointer-events:none;box-shadow:0 2px 12px rgba(0,0,0,.55);overflow:hidden}

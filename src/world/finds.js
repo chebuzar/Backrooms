@@ -6,6 +6,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { S } from './level.js';
 import { canvas } from '../render/textures.js';
 import { rng } from '../core/util.js';
+import { makeCivilian, humanReady } from './monster-models.js';
 
 // kind → радиус расчистки в клетках и награда рассудком при находке
 const FIND_KINDS = {
@@ -196,6 +197,15 @@ function walker(mats, r) {
 }
 function procession(r, mats) {
   const g = new THREE.Group(), people = [];
+  // реалистичные люди (скелетная модель); если модель не загрузилась — прежние фигуры
+  if (humanReady()) {
+    const paper = lam(0xffffff, { map: mats.paper, side: THREE.DoubleSide }), bag = lam(0x3e2716);
+    for (let k = 0; k < 6; k++) {
+      const c = makeCivilian({ h: 1.74 + r() * 0.12, suit: [0xb9ab8c, 0xb4a789, 0xbdaf90][k % 3], wrap: shaded, paper, bag });
+      g.add(c.g); people.push({ g: c.g, civ: c });
+    }
+    return { group: g, people, radius: 0.6, colliders: [] };
+  }
   for (let k = 0; k < 6; k++) { const w = walker(mats, r); g.add(w.g); people.push(w); }
   return { group: g, people, radius: 0.6, colliders: [] };
 }
@@ -347,6 +357,7 @@ function updateFinds(finds, dt, t, pl) {
         w.g.position.set(x - f.x, 0, z - f.z);
         // группа повёрнута вместе с f.group — компенсируем поворот
         w.g.rotation.y = yaw - f.group.rotation.y;
+        if (w.civ) { w.civ.update(dt, 0.75); return; }
         const ph = f.s * 4.2 + w.ph * 0;
         w.legs[0].rotation.x = Math.sin(ph - k) * 0.4; w.legs[1].rotation.x = -Math.sin(ph - k) * 0.4;
         w.hips.position.y = 0.95 + Math.abs(Math.cos(ph - k)) * 0.03;
