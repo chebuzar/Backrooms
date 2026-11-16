@@ -42,6 +42,14 @@ export class Game {
   profile: QualityProfile;
   private acc = 0;
   private last = performance.now();
+  private lastDraw = 0;
+  /** Обмеження FPS (0 — без обмеження). */
+  fpsCap = 60;
+  /** Автопідлаштування роздільності (вимикає тест швидкодії й debug-панель). */
+  autoScale = true;
+  /** Гачки для інструментів (debug-панель, тест швидкодії): виклик після кадру й керування камерою. */
+  onFrame: ((dtMs: number) => void) | null = null;
+  cameraOverride: ((cam: THREE.PerspectiveCamera, dt: number) => void) | null = null;
   private time = 0;
   level: Level | null = null;
   assets!: Assets;
@@ -131,6 +139,7 @@ export class Game {
   applySettings(s: Settings): void {
     look.exposure.value = BASE_EXPOSURE * s.brightness;
     this.camera.fov = s.fov; this.camera.updateProjectionMatrix();
+    this.fpsCap = s.fpsLimit === 'off' ? 0 : Number(s.fpsLimit);
     this.audio.setVolumes(s.masterVolume, s.musicVolume, s.sfxVolume);
     Object.assign(this.input.settings, { sensitivity: s.sensitivity, invertY: s.invertY, crouchToggle: s.crouchToggle });
     const p = this.qualityFromSettings();
@@ -293,10 +302,13 @@ export class Game {
 
   frame(): void {
     const now = performance.now();
+    // обмеження частоти: пропускаємо виклики rAF, що прийшли зарано (120 Гц екран → 60, 60 Гц → 30)
+    if (this.fpsCap > 0 && now - this.lastDraw < (1000 / this.fpsCap) * 0.92) return;
+    this.lastDraw = now;
     const dtMs = Math.min(100, now - this.last);
     this.last = now;
     const dt = dtMs / 1000;
-    if (this.mode === 'play' && this.governor.update(dtMs)) this.resize();
+    if (this.mode === 'play' && this.autoScale && this.governor.update(dtMs)) this.resize();
     this.input.poll(dt);
     if (this.input.consume('pause') && this.mode === 'play') this.pause();
     const [lx, ly] = this.input.takeLook();
@@ -315,6 +327,7 @@ export class Game {
     if (this.hud.readerOpen && (this.input.consume('interact') || this.input.consume('pause'))) this.hud.closeDoc();
     const lvl = this.level;
     this.rig.update(this.player, this.acc / STEP, dt);
+    this.cameraOverride?.(this.camera, dt);
     if (lvl) {
       lvl.update(this.time, dt, this.camera);
       // ліхтарик у руці: трохи нижче й правіше очей, світить туди, куди дивишся
@@ -349,6 +362,7 @@ export class Game {
     this.hud.update(dt);
     this.audio.updateListener({ x: c.position.x, y: c.position.y, z: c.position.z, fx: f.x, fy: f.y, fz: f.z });
     this.post.render();
+    this.onFrame?.(dtMs);
   }
 
   start(): void {

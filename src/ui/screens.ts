@@ -114,6 +114,7 @@ export class UI {
         <label>${t.quality}</label>${seg('quality', (['auto', 'low', 'medium', 'high', 'ultra'] as const).map((q) => [q, t.qualities[q]]))}
         <label>${t.brightness}</label>${range('brightness', 0.6, 1.6, 0.05)}
         <label>${t.fov}</label>${range('fov', 60, 90, 1)}
+        <label>${t.fpsLimit}</label>${seg('fpsLimit', (['30', '60', 'off'] as const).map((v) => [v, t.fpsOpts[v]]))}
         <h2>${t.sections.audio}</h2>
         <label>${t.master}</label>${range('masterVolume', 0, 1, 0.05)}
         <label>${t.music}</label>${range('musicVolume', 0, 1, 0.05)}

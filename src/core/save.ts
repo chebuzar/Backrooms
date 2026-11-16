@@ -13,6 +13,8 @@ export interface Settings {
   crouchToggle: boolean;
   fov: number; // 60..90
   subtitles: boolean;
+  /** Обмеження частоти кадрів: '30', '60' або 'off' (без обмеження). */
+  fpsLimit: '30' | '60' | 'off';
 }
 
 export interface Progress {
@@ -40,7 +42,7 @@ const KEY = 'zakulisye_v3';
 
 export const DEFAULT_SETTINGS: Settings = {
   quality: 'auto', brightness: 1, masterVolume: 0.85, musicVolume: 0.7, sfxVolume: 1,
-  sensitivity: 1, invertY: false, crouchToggle: false, fov: 72, subtitles: true
+  sensitivity: 1, invertY: false, crouchToggle: false, fov: 75, subtitles: true, fpsLimit: '60'
 };
 
 const freshProgress = (): Progress => ({ checkpoint: null, docs: [], notes: [], tapes: [], completed: [], endings: [], playSeconds: 0, deaths: 0 });
@@ -71,7 +73,8 @@ export function parseSave(raw: string | null): SaveFile {
       invertY: bool(s.invertY, d.invertY),
       crouchToggle: bool(s.crouchToggle, d.crouchToggle),
       fov: num(s.fov, d.fov, 60, 90),
-      subtitles: bool(s.subtitles, d.subtitles)
+      subtitles: bool(s.subtitles, d.subtitles),
+      fpsLimit: s.fpsLimit === '30' || s.fpsLimit === '60' || s.fpsLimit === 'off' ? s.fpsLimit : d.fpsLimit
     },
     progress: {
       ...freshProgress(),

@@ -33,6 +33,19 @@ async function boot(): Promise<void> {
       }
     });
   }
+  if (q.has('debug') && !q.has('nodbg')) void import('./dev/debug').then(({ DebugPanel }) => new DebugPanel(game));
+  if (q.has('bench')) void startBench(game);
   await game.run();
+}
+
+/** ?bench: дочекатися рівня, пропустити екран «18+» і запустити тест швидкодії. */
+async function startBench(game: Game): Promise<void> {
+  const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  while (game.mode === 'boot' || !game.level) await wait(200);
+  document.querySelector<HTMLButtonElement>('.age [data-go]')?.click();
+  await wait(1200);
+  const { runBench } = await import('./dev/bench');
+  const list = (new URLSearchParams(location.search).get('bench') ?? '').split(',').filter((x): x is QualityName => x in PROFILES);
+  await runBench(game, list.length ? list : undefined);
 }
 boot().catch((e) => { console.error(e); document.body.insertAdjacentHTML('beforeend', `<pre style="color:#f66;position:fixed;top:0">${String(e)}</pre>`); });

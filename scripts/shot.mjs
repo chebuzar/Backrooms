@@ -44,7 +44,7 @@ for (const b of browsers) {
   page.on('pageerror', (e) => logs.push('pageerror: ' + e.message));
   page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') logs.push(m.type() + ': ' + m.text()); });
   const q = new URLSearchParams(A.query || '');
-  q.set('debug', '1'); if (A.webgl) q.set('webgl', '1');
+  q.set('debug', '1'); if (!A.dbg) q.set('nodbg', '1'); if (A.webgl) q.set('webgl', '1');
   const t0 = Date.now();
   await page.goto(base + '?' + q.toString(), { waitUntil: 'commit', timeout: 120000 });
   let info = null;
