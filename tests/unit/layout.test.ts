@@ -32,3 +32,22 @@ describe('level layout', () => {
     expect(l.walls.length).toBeGreaterThan(80);
   });
 });
+
+describe('level presets (base, parking)', () => {
+  const cases = [['base', 1961], ['base', 7], ['parking', 4], ['parking', 99]] as const;
+  it.each(cases)('%s %i: every cell reachable, exit far, rift set, no lamp inside a wall', (preset, seed) => {
+    const l = generateLayout({ seed, preset });
+    expect(Array.from(l.dist).filter((d) => d < 0).length).toBe(0);
+    expect(Math.hypot(l.exit.x - l.spawn.x, l.exit.z - l.spawn.z)).toBeGreaterThan(30);
+    expect(l.points.rift).toBeDefined();
+    for (const p of l.lights) for (const w of l.walls) {
+      const hit = Math.abs(p.x - w.x) < w.w / 2 + p.w / 2 && Math.abs(p.z - w.z) < w.d / 2 + p.d / 2;
+      expect(hit).toBe(false);
+    }
+  });
+  it('themes differ in height and lamps', () => {
+    const b = generateLayout({ seed: 1, preset: 'base' }), p = generateLayout({ seed: 1, preset: 'parking' });
+    expect(b.height).toBeGreaterThan(2.7);
+    expect(p.theme.lamp.color[2]).toBeLessThan(0.5);
+  });
+});

@@ -4,6 +4,42 @@
 import { rng, irange, pick, type Rng } from '../core/rng';
 
 export type ZoneStyle = 'rooms' | 'hall' | 'corridors' | 'dark';
+export type Preset = 'yellow' | 'base' | 'parking';
+type RGB = [number, number, number];
+
+/** Вигляд рівня: висота, фарба на стінах, лампи, альбедо для запікання (Blender) — спільне для гри й Blender. */
+export interface Theme {
+  id: Preset;
+  height: number;
+  /** Висота нижньої фарбованої смуги стін (матеріал wallLow), 0 — без смуги. */
+  paintH: number;
+  /** Плінтус (матеріал base). */
+  plinth: boolean;
+  lamp: { w: number; d: number; spacing: number; color: RGB; power: number; offP: number; flickerP: number };
+  /** Альбедо поверхонь для запікання (лінійні). */
+  albedo: Record<'wall' | 'wallLow' | 'base' | 'floor' | 'ceil', RGB>;
+  pillar: number;
+}
+
+export const THEMES: Record<Preset, Theme> = {
+  yellow: {
+    id: 'yellow', height: 2.7, paintH: 0, plinth: true, pillar: 0.56,
+    lamp: { w: 1.2, d: 0.6, spacing: 2, color: [1.0, 0.95, 0.8], power: 22, offP: 0.06, flickerP: 0.05 },
+    albedo: { wall: [0.58, 0.47, 0.2], wallLow: [0.58, 0.47, 0.2], base: [0.3, 0.23, 0.12], floor: [0.26, 0.19, 0.09], ceil: [0.68, 0.66, 0.58] }
+  },
+  // радянська база: нижня частина стін — зелена олійна фарба, верх — побілка; лінолеум; холодні лампи денного світла
+  base: {
+    id: 'base', height: 3.0, paintH: 1.5, plinth: false, pillar: 0.6,
+    lamp: { w: 1.25, d: 0.22, spacing: 3, color: [0.86, 0.95, 1.0], power: 26, offP: 0.14, flickerP: 0.1 },
+    albedo: { wall: [0.62, 0.62, 0.58], wallLow: [0.12, 0.26, 0.17], base: [0.1, 0.1, 0.1], floor: [0.36, 0.24, 0.12], ceil: [0.5, 0.5, 0.48] }
+  },
+  // підземна парковка: сирий бетон, натрієві лампи, більшість не світить
+  parking: {
+    id: 'parking', height: 3.2, paintH: 1.1, plinth: false, pillar: 0.7,
+    lamp: { w: 1.25, d: 0.16, spacing: 4, color: [1.0, 0.62, 0.3], power: 30, offP: 0.42, flickerP: 0.16 },
+    albedo: { wall: [0.4, 0.39, 0.36], wallLow: [0.32, 0.36, 0.4], base: [0.2, 0.2, 0.2], floor: [0.22, 0.21, 0.2], ceil: [0.36, 0.35, 0.33] }
+  }
+};
 
 export interface WallBox {
   /** Центр і розміри в метрах (w — уздовж X, d — уздовж Z). */
@@ -20,6 +56,7 @@ export interface Spot { x: number; z: number; yaw: number }
 
 export interface Layout {
   seed: number;
+  theme: Theme;
   cell: number;
   cols: number;
   rows: number;
@@ -43,6 +80,7 @@ export interface LayoutOptions {
   cell?: number;
   height?: number;
   zones?: ZoneStyle[];
+  preset?: Preset;
 }
 
 /** Ребра: h[y*cols+x] — стіна між (x,y) і (x,y+1); v[y*cols+x] — між (x,y) і (x+1,y). */
@@ -134,11 +172,12 @@ function carveCorridors(g: EdgeGrid, r: Rng, x0: number, y0: number, x1: number,
   }
 }
 
-export function generateLayout(o: LayoutOptions): Layout {
-  const cols = o.cols ?? 60, rows = o.rows ?? 60, cell = o.cell ?? 1.2, height = o.height ?? 2.7;
-  const r = rng(o.seed);
+interface Plan { g: EdgeGrid; pillars: [number, number][]; zones: ZoneStyle[]; start: [number, number] }
+
+/** Жовті кімнати: зони 3×3 різних стилів (кімнати, зал із колонами, коридори, темрява). */
+function planYellow(r: Rng, cols: number, rows: number, zonesOpt?: ZoneStyle[]): Plan {
   const g = new EdgeGrid(cols, rows);
-  const zones: ZoneStyle[] = o.zones ?? Array.from({ length: 9 }, () => pick(r, ['rooms', 'rooms', 'hall', 'corridors', 'dark'] as const));
+  const zones: ZoneStyle[] = zonesOpt ?? Array.from({ length: 9 }, () => pick(r, ['rooms', 'rooms', 'hall', 'corridors', 'dark'] as const));
   const zw = Math.floor(cols / 3), zh = Math.floor(rows / 3);
   const pillars: [number, number][] = [];
   zones.forEach((style, i) => {
@@ -162,10 +201,86 @@ export function generateLayout(o: LayoutOptions): Layout {
   }
   // кілька зайвих проходів — кільця в маршрутах, щоб від монстра можна було втекти по колу
   for (let i = 0; i < cols * rows * 0.03; i++) { const x = irange(r, 0, cols - 2), y = irange(r, 0, rows - 2); if (r() < 0.5) g.setV(x, y, false); else g.setH(x, y, false); }
+  const startZone = Math.max(0, zones.findIndex((z) => z === 'rooms'));
+  return { g, pillars, zones, start: [(startZone % 3) * zw + (zw >> 1), Math.floor(startZone / 3) * zh + (zh >> 1)] };
+}
+
+/** Позиції ліній коридорів: перша — з відступом, далі через крок (коридор займає 2 клітинки). */
+function corridorLines(r: Rng, n: number): number[] {
+  const out: number[] = [];
+  for (let p = irange(r, 4, 7); p < n - 5; p += irange(r, 10, 14)) out.push(p);
+  return out;
+}
+
+/** Радянська база: сітка широких коридорів (2 клітинки), між ними блоки — лабораторії, кабінети, склади, зали. */
+function planBase(r: Rng, cols: number, rows: number): Plan {
+  const g = new EdgeGrid(cols, rows);
+  const ys = corridorLines(r, rows), xs = corridorLines(r, cols);
+  const pillars: [number, number][] = [];
+  const bx = [0, ...xs.flatMap((c) => [c, c + 2]), cols], by = [0, ...ys.flatMap((c) => [c, c + 2]), rows];
+  for (let j = 0; j < by.length - 1; j += 2) for (let i = 0; i < bx.length - 1; i += 2) {
+    const x0 = bx[i] as number, x1 = bx[i + 1] as number, y0 = by[j] as number, y1 = by[j + 1] as number;
+    if (x1 - x0 < 2 || y1 - y0 < 2) continue;
+    // межі блоку з коридором — стіни з 1–2 дверима на кожному боці
+    const side = (len: number, set: (t: number, on: boolean) => void) => {
+      for (let t = 0; t < len; t++) set(t, true);
+      const doors = len > 9 && r() < 0.6 ? 2 : 1;
+      for (let k = 0; k < doors; k++) if (r() < 0.85) set(irange(r, 1, Math.max(1, len - 2)), false);
+    };
+    if (y0 > 0) side(x1 - x0, (t, on) => g.setH(x0 + t, y0 - 1, on));
+    if (y1 < rows) side(x1 - x0, (t, on) => g.setH(x0 + t, y1 - 1, on));
+    if (x0 > 0) side(y1 - y0, (t, on) => g.setV(x0 - 1, y0 + t, on));
+    if (x1 < cols) side(y1 - y0, (t, on) => g.setV(x1 - 1, y0 + t, on));
+    const kind = r();
+    if (kind < 0.62) carveRooms(g, r, x0, y0, x1, y1);
+    else if (kind < 0.8) {
+      // зал (диспетчерська, цех): колони через 3 клітинки
+      for (let y = y0 + 3; y < y1 - 2; y += 3) for (let x = x0 + 3; x < x1 - 2; x += 3) pillars.push([x, y]);
+    } // інакше — великий склад без перегородок (стелажі ставить гра)
+  }
+  const zones: ZoneStyle[] = Array.from({ length: 9 }, () => (r() < 0.25 ? 'dark' : 'rooms'));
+  zones[0] = 'rooms';
+  return { g, pillars, zones, start: [xs[0] ?? 4, ys[0] ?? 4] };
+}
+
+/** Парковка: відкритий простір, колони через 5 клітинок, сходові клітки й будки, кілька довгих стінок-пандусів. */
+function planParking(r: Rng, cols: number, rows: number): Plan {
+  const g = new EdgeGrid(cols, rows);
+  const pillars: [number, number][] = [];
+  for (let y = 5; y < rows - 2; y += 5) for (let x = 5; x < cols - 2; x += 5) pillars.push([x, y]);
+  const boxes: [number, number, number, number][] = [];
+  for (let k = 0, tries = 0; k < 5 && tries < 200; tries++) {
+    const w = irange(r, 3, 5), h = irange(r, 3, 5), x = irange(r, 1, cols - w - 1), y = irange(r, 1, rows - h - 1);
+    if (x < 9 && y < 9) continue; // не біля старту
+    if (boxes.some(([bx, by, bw, bh]) => x < bx + bw + 2 && bx < x + w + 2 && y < by + bh + 2 && by < y + h + 2)) continue;
+    boxes.push([x, y, w, h]); k++;
+    for (let t = 0; t < w; t++) { g.setH(x + t, y - 1, true); g.setH(x + t, y + h - 1, true); }
+    for (let t = 0; t < h; t++) { g.setV(x - 1, y + t, true); g.setV(x + w - 1, y + t, true); }
+    const d = r() < 0.5 ? (r() < 0.5 ? () => g.setH(x + irange(r, 0, w - 1), y - 1, false) : () => g.setH(x + irange(r, 0, w - 1), y + h - 1, false))
+      : (r() < 0.5 ? () => g.setV(x - 1, y + irange(r, 0, h - 1), false) : () => g.setV(x + w - 1, y + irange(r, 0, h - 1), false));
+    d();
+  }
+  for (let k = 0; k < 6; k++) {
+    const len = irange(r, 6, 13), x = irange(r, 2, cols - 3), y = irange(r, 2, rows - 3);
+    if (r() < 0.5) for (let t = 0; t < len && y + t < rows - 1; t++) g.setV(x, y + t, true);
+    else for (let t = 0; t < len && x + t < cols - 1; t++) g.setH(x + t, y, true);
+  }
+  const zones: ZoneStyle[] = Array.from({ length: 9 }, () => (r() < 0.55 ? 'dark' : 'hall'));
+  zones[0] = 'hall';
+  return { g, pillars, zones, start: [2, 2] };
+}
+
+export function generateLayout(o: LayoutOptions): Layout {
+  const preset = o.preset ?? 'yellow', theme = THEMES[preset];
+  const dflt = preset === 'yellow' ? 60 : preset === 'base' ? 48 : 44;
+  const cols = o.cols ?? dflt, rows = o.rows ?? dflt, cell = o.cell ?? 1.2, height = o.height ?? theme.height;
+  const r = rng(o.seed);
+  const plan = preset === 'yellow' ? planYellow(r, cols, rows, o.zones) : preset === 'base' ? planBase(r, cols, rows) : planParking(r, cols, rows);
+  const { g, pillars, zones } = plan;
+  const zw = Math.floor(cols / 3), zh = Math.floor(rows / 3);
 
   // старт — центр першої «кімнатної» зони; зв'язність: усе, що недосяжне, приєднуємо, прорізаючи стіну
-  const startZone = Math.max(0, zones.findIndex((z) => z === 'rooms'));
-  const sx = (startZone % 3) * zw + (zw >> 1), sy = Math.floor(startZone / 3) * zh + (zh >> 1);
+  const [sx, sy] = plan.start;
   let dist = bfs(g, sx, sy);
   for (let guard = 0; guard < cols * rows; guard++) {
     let fixed = false;
@@ -207,16 +322,20 @@ export function generateLayout(o: LayoutOptions): Layout {
   const W = cols * cell, D = rows * cell;
   walls.push({ x: W / 2, z: -T / 2, w: W + 2 * T, d: T, kind: 'outer' }, { x: W / 2, z: D + T / 2, w: W + 2 * T, d: T, kind: 'outer' });
   walls.push({ x: -T / 2, z: D / 2, w: T, d: D, kind: 'outer' }, { x: W + T / 2, z: D / 2, w: T, d: D, kind: 'outer' });
-  for (const k of isPillarCorner) { const [px, py] = k.split(',').map(Number) as [number, number]; walls.push({ x: px * cell, z: py * cell, w: 0.56, d: 0.56, kind: 'pillar' }); }
+  for (const k of isPillarCorner) { const [px, py] = k.split(',').map(Number) as [number, number]; walls.push({ x: px * cell, z: py * cell, w: theme.pillar, d: theme.pillar, kind: 'pillar' }); }
 
-  // світло: панелі 1.2×0.6 м кожні 2 клітинки; у темних зонах більшість вимкнена
+  // світло: світильники через theme.lamp.spacing клітинок; у темних зонах більшість вимкнена
   const lights: LightPanel[] = [];
-  for (let y = 0; y < rows; y += 2) for (let x = 0; x < cols; x += 2) {
+  const L = theme.lamp, sp = L.spacing;
+  for (let y = 0; y < rows; y += sp) for (let x = 0; x < cols; x += sp) {
     const zi = Math.min(2, Math.floor(x / zw)) + 3 * Math.min(2, Math.floor(y / zh));
     const dark = zones[zi] === 'dark';
     const roll = r();
-    const state: LightPanel['state'] = dark ? (roll < 0.18 ? 'on' : roll < 0.26 ? 'flicker' : 'off') : roll < 0.06 ? 'off' : roll < 0.11 ? 'flicker' : 'on';
-    lights.push({ x: (x + 1) * cell, z: (y + 1) * cell, w: 1.2, d: 0.6, state });
+    const state: LightPanel['state'] = dark ? (roll < 0.18 ? 'on' : roll < 0.26 ? 'flicker' : 'off') : roll < L.offP ? 'off' : roll < L.offP + L.flickerP ? 'flicker' : 'on';
+    const lx = (x + sp / 2) * cell, lz = (y + sp / 2) * cell;
+    // не вмуровувати світильник у стіну чи колону (для нових рівнів; жовті кімнати лишаються як запечені)
+    if (preset !== 'yellow' && walls.some((w) => Math.abs(w.x - lx) < w.w / 2 + L.w / 2 + 0.1 && Math.abs(w.z - lz) < w.d / 2 + L.d / 2 + 0.1)) continue;
+    lights.push({ x: lx, z: lz, w: L.w, d: L.d, state });
   }
 
   // вихід («Шов») — найдальша досяжна клітинка
@@ -230,11 +349,21 @@ export function generateLayout(o: LayoutOptions): Layout {
   let mid = 0;
   for (let c = 0; c < dist.length; c++) if (dist[c] === target) { mid = c; break; }
 
+  // «Розлам» — прихований другий шов: найдальша клітинка темної зони, що не біля виходу (якщо темних зон нема — 70 % шляху)
+  let rift = -1;
+  for (let c = 0; c < dist.length; c++) {
+    const x = c % cols, y = (c / cols) | 0;
+    const zi = Math.min(2, Math.floor(x / zw)) + 3 * Math.min(2, Math.floor(y / zh));
+    if (zones[zi] !== 'dark' || Math.hypot(x - ex, y - ey) < 12) continue;
+    if (rift < 0 || (dist[c] as number) > (dist[rift] as number)) rift = c;
+  }
+  if (rift < 0) { const t7 = Math.floor((dist[far] as number) * 0.7); for (let c = 0; c < dist.length; c++) if (dist[c] === t7) { rift = c; break; } }
+
   return {
-    seed: o.seed, cell, cols, rows, height, wallThickness: T, walls, lights, zones,
+    seed: o.seed, theme, cell, cols, rows, height, wallThickness: T, walls, lights, zones,
     spawn: at(sx, sy, 0),
     exit: { ...at(ex, ey), cx: ex, cz: ey },
-    points: { order7: at(sx + 1, sy), note1: at(mid % cols, (mid / cols) | 0) },
+    points: { order7: at(sx + 1, sy), note1: at(mid % cols, (mid / cols) | 0), rift: at(rift % cols, (rift / cols) | 0) },
     dist
   };
 }

@@ -26,6 +26,8 @@ async function boot(): Promise<void> {
         /** Одразу в гру без прологу (для автотестів). */
         play: () => { document.querySelector<HTMLButtonElement>('.age [data-go]')?.click(); setTimeout(() => game.play(), 300); },
         look: (yaw: number, pitch = 0) => { game.player.yaw = yaw; game.player.pitch = pitch; },
+        /** Поставити гравця в точку й повернути камеру (для повторюваних скріншотів). */
+        tp: (x: number, z: number, yaw = 0, pitch = 0) => { game.player.teleport(x, 0, z, yaw); game.player.pitch = pitch; },
         info: () => ({ backend: gfx.backend, quality: game.profile.name, mode: game.mode, draw: gfx.renderer.info.render.drawCalls,
           pos: game.player ? [game.player.pos.x, game.player.pos.y, game.player.pos.z].map((v) => +v.toFixed(2)) : null })
       }

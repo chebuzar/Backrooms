@@ -1,10 +1,10 @@
-// Карта рівня зверху (PNG): npx tsx scripts/levels/map.ts <seed> [out.png]
+// Карта рівня зверху (PNG): npx tsx scripts/levels/map.ts <seed> [out.png] [yellow|base|parking]
 import { writeFileSync } from 'node:fs';
 import { deflateSync } from 'node:zlib';
-import { generateLayout } from '../../src/world/layout';
+import { generateLayout, type Preset } from '../../src/world/layout';
 
-const seed = Number(process.argv[2] ?? 1987), out = process.argv[3] ?? `.shots/map-${seed}.png`;
-const l = generateLayout({ seed });
+const seed = Number(process.argv[2] ?? 1987), preset = (process.argv[4] ?? 'yellow') as Preset, out = process.argv[3] ?? `.shots/map-${preset}-${seed}.png`;
+const l = generateLayout({ seed, preset });
 const S = 12; // пікселів на метр
 const W = Math.ceil(l.cols * l.cell * S) + 8, H = Math.ceil(l.rows * l.cell * S) + 8;
 const px = new Uint8Array(W * H * 3).fill(0);

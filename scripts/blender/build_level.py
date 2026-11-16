@@ -36,8 +36,14 @@ D = L["rows"] * L["cell"]
 NX = math.ceil(W / CH)
 NZ = math.ceil(D / CH)
 LMAX = 4.0  # максимальна освітленість у карті (більше — обрізається)
-BASE_H = 0.09  # висота плінтуса
+THEME = L.get("theme") or {
+    "id": "yellow", "paintH": 0, "plinth": True,
+    "lamp": {"color": [1.0, 0.95, 0.8], "power": 22.0},
+    "albedo": {"wall": [0.58, 0.47, 0.2], "wallLow": [0.58, 0.47, 0.2], "base": [0.3, 0.23, 0.12], "floor": [0.26, 0.19, 0.09], "ceil": [0.68, 0.66, 0.58]},
+}
+BASE_H = 0.09 if THEME["plinth"] else 0.0  # висота плінтуса
 BASE_T = 0.014  # наскільки плінтус виступає
+PAINT_H = float(THEME.get("paintH") or 0)  # межа нижньої фарбованої смуги стін
 os.makedirs(args.out, exist_ok=True)
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -68,13 +74,9 @@ def material(name, rgb, emit=None):
 
 
 # альбедо, близькі до справжніх текстур: від них залежить колір відбитого світла (жовтий «суп» Закулисья)
-MATS = {
-    "wall": material("wall", (0.58, 0.47, 0.2)),
-    "base": material("base", (0.3, 0.23, 0.12)),
-    "floor": material("floor", (0.26, 0.19, 0.09)),
-    "ceil": material("ceil", (0.68, 0.66, 0.58)),
-}
-SLOT = {"wall": 0, "base": 1, "floor": 2, "ceil": 3}
+A = THEME["albedo"]
+MATS = {k: material(k, tuple(A[k])) for k in ("wall", "base", "floor", "ceil", "wallLow")}
+SLOT = {"wall": 0, "base": 1, "floor": 2, "ceil": 3, "wallLow": 4}
 
 
 def chunk_bounds(ix, iz):
@@ -108,40 +110,104 @@ class MeshBuilder:
         for poly, m in zip(me.polygons, self.mat):
             poly.material_index = m
         ob = bpy.data.objects.new(name, me)
-        for k in ("wall", "base", "floor", "ceil"):
+        for k in ("wall", "base", "floor", "ceil", "wallLow"):
             me.materials.append(MATS[k])
         scene.collection.objects.link(ob)
         return ob
 
 
-def add_box_sides(mb, x0, x1, z0, z1, y0, y1, mat, caps, cut):
-    """Бічні грані блоку (без верху й низу). caps — чи малювати торці; cut — межі шматка, по яких торці не потрібні."""
-    cx0, cx1, cz0, cz1 = cut
-    # Blender: Z — вгору; у грі Y — вгору. Будуємо в координатах гри (x, y, z) → Blender (x, -z, y).
+EPS = 1e-4
+
+
+def wall_faces(boxes, y0, y1):
+    """Видимі бічні грані набору осьових блоків (стін/колон/плінтусів).
+    Прибирає частини граней, сховані всередині сусіднього блоку або звернені в нього, а з двох граней в одній площині
+    (торець стіни на поверхні іншої) лишає одну — інакше вони «борються» за пікселі (z-fighting, мерехтлива смуга в кутах)
+    і запікання світла дає темну пляму. Повертає [(вісь нормалі, знак, площина, a, b)]: вісь 'x'|'z', відрізок [a, b] уздовж іншої осі."""
+    out = []
+    for i, b in enumerate(boxes):
+        x0, x1, z0, z1, thin = b
+        for axis, sign, c, a0, a1 in (("z", 1, z1, x0, x1), ("z", -1, z0, x0, x1), ("x", 1, x1, z0, z1), ("x", -1, x0, z0, z1)):
+            prio = 2 if thin in (axis, "both") else 1  # довга грань важливіша за торець
+            hidden = []
+            for j, o in enumerate(boxes):
+                if j == i:
+                    continue
+                ox0, ox1, oz0, oz1, othin = o
+                n0, n1, p0, p1 = (oz0, oz1, ox0, ox1) if axis == "z" else (ox0, ox1, oz0, oz1)
+                lo, hi = max(a0, p0), min(a1, p1)
+                if hi - lo <= EPS:
+                    continue
+                inside = n0 + EPS < c < n1 - EPS
+                into = (sign < 0 and abs(c - n1) <= EPS) or (sign > 0 and abs(c - n0) <= EPS)
+                coinc = (sign < 0 and abs(c - n0) <= EPS) or (sign > 0 and abs(c - n1) <= EPS)
+                if inside or into:
+                    hidden.append((lo, hi))
+                elif coinc:
+                    oprio = 2 if othin in (axis, "both") else 1
+                    if (oprio, -j) > (prio, -i):
+                        hidden.append((lo, hi))
+            hidden.sort()
+            cur = a0
+            for lo, hi in hidden:
+                if lo > cur + 1e-3:
+                    out.append((axis, sign, c, cur, lo))
+                cur = max(cur, hi)
+            if a1 > cur + 1e-3:
+                out.append((axis, sign, c, cur, a1))
+    return out
+
+
+def face_quad(mb, f, y0, y1, mat):
+    axis, sign, c, a, b = f
+
     def P(x, y, z):
         return (x, -z, y)
-    # довгі грані ±Z
-    if True:
-        mb.quad([P(x0, y0, z1), P(x1, y0, z1), P(x1, y1, z1), P(x0, y1, z1)], [(x0, y0), (x1, y0), (x1, y1), (x0, y1)], mat)
-        mb.quad([P(x1, y0, z0), P(x0, y0, z0), P(x0, y1, z0), P(x1, y1, z0)], [(-x1, y0), (-x0, y0), (-x0, y1), (-x1, y1)], mat)
-    if caps[0] and x0 > cx0 + 1e-6:
-        mb.quad([P(x0, y0, z0), P(x0, y0, z1), P(x0, y1, z1), P(x0, y1, z0)], [(z0, y0), (z1, y0), (z1, y1), (z0, y1)], mat)
-    if caps[1] and x1 < cx1 - 1e-6:
-        mb.quad([P(x1, y0, z1), P(x1, y0, z0), P(x1, y1, z0), P(x1, y1, z1)], [(-z1, y0), (-z0, y0), (-z0, y1), (-z1, y1)], mat)
+    if axis == "z" and sign > 0:
+        mb.quad([P(a, y0, c), P(b, y0, c), P(b, y1, c), P(a, y1, c)], [(a, y0), (b, y0), (b, y1), (a, y1)], mat)
+    elif axis == "z":
+        mb.quad([P(b, y0, c), P(a, y0, c), P(a, y1, c), P(b, y1, c)], [(-b, y0), (-a, y0), (-a, y1), (-b, y1)], mat)
+    elif sign < 0:
+        mb.quad([P(c, y0, a), P(c, y0, b), P(c, y1, b), P(c, y1, a)], [(a, y0), (b, y0), (b, y1), (a, y1)], mat)
+    else:
+        mb.quad([P(c, y0, b), P(c, y0, a), P(c, y1, a), P(c, y1, b)], [(-b, y0), (-a, y0), (-a, y1), (-b, y1)], mat)
 
 
-def add_box_sides_x(mb, x0, x1, z0, z1, y0, y1, mat, cut):
-    """Для стін уздовж Z: довгі грані дивляться на ±X, торці — на ±Z."""
-    cx0, cx1, cz0, cz1 = cut
+def boxes_of(walls, grow=0.0):
+    out = []
+    for w in walls:
+        thin = "both" if w["kind"] == "pillar" else ("z" if w["w"] >= w["d"] else "x")
+        out.append((w["x"] - w["w"] / 2 - grow, w["x"] + w["w"] / 2 + grow, w["z"] - w["d"] / 2 - grow, w["z"] + w["d"] / 2 + grow, thin))
+    return out
 
-    def P(x, y, z):
-        return (x, -z, y)
-    mb.quad([P(x1, y0, z1), P(x1, y0, z0), P(x1, y1, z0), P(x1, y1, z1)], [(-z1, y0), (-z0, y0), (-z0, y1), (-z1, y1)], mat)
-    mb.quad([P(x0, y0, z0), P(x0, y0, z1), P(x0, y1, z1), P(x0, y1, z0)], [(z0, y0), (z1, y0), (z1, y1), (z0, y1)], mat)
-    if z0 > cz0 + 1e-6:
-        mb.quad([P(x1, y0, z0), P(x0, y0, z0), P(x0, y1, z0), P(x1, y1, z0)], [(-x1, y0), (-x0, y0), (-x0, y1), (-x1, y1)], mat)
-    if z1 < cz1 - 1e-6:
-        mb.quad([P(x0, y0, z1), P(x1, y0, z1), P(x1, y1, z1), P(x0, y1, z1)], [(x0, y0), (x1, y0), (x1, y1), (x0, y1)], mat)
+
+def split_by_chunks(f):
+    """Розрізати грань межами шматків і віддати пари (ключ шматка, грань)."""
+    axis, sign, c, a, b = f
+    if c < -EPS and sign < 0 or c > (D if axis == "z" else W) + EPS and sign > 0:
+        return []  # зовнішній бік зовнішньої стіни — ніхто не побачить
+    nN = NZ if axis == "z" else NX
+    kn = min(nN - 1, max(0, int(math.floor(c / CH))))
+    nA = NX if axis == "z" else NZ
+    res = []
+    cuts = [a] + [k * CH for k in range(1, nA) if a + 1e-3 < k * CH < b - 1e-3] + [b]
+    for p, q in zip(cuts[:-1], cuts[1:]):
+        ka = min(nA - 1, max(0, int(math.floor((p + q) / 2 / CH))))
+        key = (ka, kn) if axis == "z" else (kn, ka)
+        res.append((key, (axis, sign, c, p, q)))
+    return res
+
+
+WALL_FACES = {}
+_wf = wall_faces(boxes_of(L["walls"]), BASE_H, H)
+_pf = wall_faces(boxes_of(L["walls"], BASE_T), 0, BASE_H) if BASE_H > 0 else []
+for f in _wf:
+    for key, g in split_by_chunks(f):
+        WALL_FACES.setdefault(key, []).append(("wall", g))
+for f in _pf:
+    for key, g in split_by_chunks(f):
+        WALL_FACES.setdefault(key, []).append(("base", g))
+print(f"WALL FACES: {len(_wf)} wall pieces, {len(_pf)} plinth pieces")
 
 
 def build_chunk(ix, iz):
@@ -162,27 +228,25 @@ def build_chunk(ix, iz):
         for c, d in zip(zs[:-1], zs[1:]):
             mb.quad([P(a, 0, d), P(b, 0, d), P(b, 0, c), P(a, 0, c)], [(a, d), (b, d), (b, c), (a, c)], "floor")
             mb.quad([P(a, H, c), P(b, H, c), P(b, H, d), P(a, H, d)], [(a, c), (b, c), (b, d), (a, d)], "ceil")
-    for w in L["walls"]:
-        x0, x1 = w["x"] - w["w"] / 2, w["x"] + w["w"] / 2
-        z0, z1 = w["z"] - w["d"] / 2, w["z"] + w["d"] / 2
-        # обрізати блок межами шматка; зовнішні стіни лежать за краєм карти — для крайових шматків межу розширюємо
-        ex0 = cx0 - 0.5 if cx0 <= 1e-6 else cx0
-        ex1 = cx1 + 0.5 if cx1 >= W - 1e-6 else cx1
-        ez0 = cz0 - 0.5 if cz0 <= 1e-6 else cz0
-        ez1 = cz1 + 0.5 if cz1 >= D - 1e-6 else cz1
-        X0, X1, Z0, Z1 = max(x0, ex0), min(x1, ex1), max(z0, ez0), min(z1, ez1)
-        if X1 - X0 <= 1e-4 or Z1 - Z0 <= 1e-4:
-            continue
-        along_x = w["w"] >= w["d"]
-        if along_x:
-            add_box_sides(mb, X0, X1, Z0, Z1, BASE_H, H, "wall", (True, True), (ex0, ex1, ez0, ez1))
-            add_box_sides(mb, X0 - BASE_T, X1 + BASE_T, Z0 - BASE_T, Z1 + BASE_T, 0, BASE_H, "base", (True, True), (ex0, ex1, ez0, ez1))
+    for kind, f in WALL_FACES.get((ix, iz), []):
+        if kind == "wall":
+            if PAINT_H > BASE_H + 0.01:
+                face_quad(mb, f, BASE_H, PAINT_H, "wallLow")
+                face_quad(mb, f, PAINT_H, H, "wall")
+            else:
+                face_quad(mb, f, BASE_H, H, "wall")
         else:
-            add_box_sides_x(mb, X0, X1, Z0, Z1, BASE_H, H, "wall", (ex0, ex1, ez0, ez1))
-            add_box_sides_x(mb, X0 - BASE_T, X1 + BASE_T, Z0 - BASE_T, Z1 + BASE_T, 0, BASE_H, "base", (ex0, ex1, ez0, ez1))
-        # верх плінтуса
-        bx0, bx1, bz0, bz1 = X0 - BASE_T, X1 + BASE_T, Z0 - BASE_T, Z1 + BASE_T
-        mb.quad([P(bx0, BASE_H, bz1), P(bx1, BASE_H, bz1), P(bx1, BASE_H, bz0), P(bx0, BASE_H, bz0)], [(bx0, bz1), (bx1, bz1), (bx1, bz0), (bx0, bz0)], "base")
+            face_quad(mb, f, 0, BASE_H, "base")
+            # верх плінтуса — смужка між гранню плінтуса й стіною (лише видимі ділянки, тож стики не накладаються)
+            axis, sign, c, a, b = f
+            c2 = c - sign * BASE_T
+            if axis == "z":
+                lo, hi = (c2, c) if sign > 0 else (c, c2)
+                a2, b2 = a - BASE_T, b + BASE_T  # z-грані закривають і кутові квадратики
+                mb.quad([P(a2, BASE_H, hi), P(b2, BASE_H, hi), P(b2, BASE_H, lo), P(a2, BASE_H, lo)], [(a2, hi), (b2, hi), (b2, lo), (a2, lo)], "base")
+            else:
+                lo, hi = (c2, c) if sign > 0 else (c, c2)
+                mb.quad([P(lo, BASE_H, b), P(hi, BASE_H, b), P(hi, BASE_H, a), P(lo, BASE_H, a)], [(lo, b), (hi, b), (hi, a), (lo, a)], "base")
     ob = mb.to_object(f"chunk_{ix}_{iz}")
     # друга розгортка — під карту світла
     me = ob.data
@@ -205,7 +269,7 @@ def build_chunk(ix, iz):
 
 
 def add_lights():
-    col = (1.0, 0.95, 0.8)
+    col = tuple(THEME["lamp"]["color"])
     for p in L["lights"]:
         if p["state"] == "off":
             continue
@@ -213,7 +277,7 @@ def add_lights():
         ld.shape = "RECTANGLE"
         ld.size = p["w"]
         ld.size_y = p["d"]
-        ld.energy = args.power * (0.75 if p["state"] == "flicker" else 1.0)
+        ld.energy = float(THEME["lamp"].get("power", args.power)) * (p["w"] * p["d"] / 0.72) ** 0.5 * (0.75 if p["state"] == "flicker" else 1.0)
         ld.color = col
         ob = bpy.data.objects.new("lamp", ld)
         ob.location = (p["x"], -p["z"], H - 0.012)
