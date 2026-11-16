@@ -40,11 +40,11 @@ export async function buildLevel0(assets: Assets, physics: Physics, onProgress: 
   const lmLoader = new THREE.TextureLoader();
   let done = 0;
   await Promise.all(manifest.chunks.map(async (c) => {
-    const [gltf, lm] = await Promise.all([assets.model(`assets/levels/level0/${c.glb}`), lmLoader.loadAsync(base + c.lm)]);
+    const lmPromise = c.lm.endsWith('.ktx2') ? assets.texture(`assets/levels/level0/${c.lm}`) : lmLoader.loadAsync(base + c.lm);
+    const [gltf, lm] = await Promise.all([assets.model(`assets/levels/level0/${c.glb}`), lmPromise]);
     lm.colorSpace = THREE.NoColorSpace;
     lm.flipY = false;
-    lm.generateMipmaps = true;
-    lm.minFilter = THREE.LinearMipmapLinearFilter;
+    if (!c.lm.endsWith('.ktx2')) { lm.generateMipmaps = true; lm.minFilter = THREE.LinearMipmapLinearFilter; }
     const mats = materialsFor(lm);
     gltf.scene.traverse((o) => {
       const mesh = o as THREE.Mesh;

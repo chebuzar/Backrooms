@@ -12,6 +12,7 @@ import { Input } from '../input/input';
 import { AudioEngine, type SpatialVoice } from '../audio/audio';
 import { humLoop, footstepCarpet, typeClick, paperRustle, seamDrone } from '../audio/synth';
 import { HUD } from '../ui/hud';
+import { Ambience } from './ambience';
 import { Interactions } from './interact';
 import { DOCS, PROLOGUE, OBJECTIVES, HINTS, LEVEL_END } from '../story/ru';
 import { Store, type Settings } from '../core/save';
@@ -49,6 +50,7 @@ export class Game {
   private humT = 0;
   flashlightOn = false;
   hud!: HUD;
+  readonly ambience = new Ambience(this.audio);
   interact!: Interactions;
   private clicks: AudioBuffer[] = [];
   private rustle: AudioBuffer | null = null;
@@ -110,6 +112,7 @@ export class Game {
     for (let i = 0; i < 8; i++) this.steps.push(footstepCarpet(ctx, i + 1));
     for (let i = 0; i < 6; i++) this.clicks.push(typeClick(ctx, i + 1));
     this.rustle = paperRustle(ctx, 1);
+    this.ambience.prepare();
     const sp = this.level?.seam.group.position;
     if (sp) this.audio.play3D(seamDrone(ctx), sp.x, 1.3, sp.z, { loop: true, gain: 0.9, ref: 1.5, wet: 0.4 });
     const hum = humLoop(ctx, 4, 3);
@@ -139,9 +142,17 @@ export class Game {
   async run(): Promise<void> {
     this.mode = 'menu';
     // рівень вантажиться, поки гравець читає попередження
-    this.loading = this.init().then(() => this.start());
+    let pct = 0;
+    const bar = document.createElement('div');
+    bar.className = 'loadline';
+    this.loading = this.init((p) => { pct = p; bar.textContent = `Подготовка экспедиции… ${Math.round(p * 100)} %`; }).then(() => this.start());
     await this.ui.age(this.store.data.ageConfirmed);
+    if (pct < 1) {
+      bar.textContent = `Подготовка экспедиции… ${Math.round(pct * 100)} %`;
+      document.getElementById('ui')?.appendChild(bar);
+    }
     await this.loading;
+    bar.remove();
     this.store.data.ageConfirmed = true; this.store.save();
     this.audio.unlock(); this.prepareAudio();
     this.showMenu();
@@ -331,6 +342,7 @@ export class Game {
       this.hud.setPrompt(it ? it.prompt : null, key);
       if (it && this.input.consume('interact')) it.use();
       this.store.progress.playSeconds += dt;
+      this.ambience.update(dt, this.player);
       this.hud.setTime(this.store.progress.playSeconds);
     } else this.hud.setPrompt(null, '');
     this.hud.update(dt);

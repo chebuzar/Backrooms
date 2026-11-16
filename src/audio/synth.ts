@@ -109,3 +109,60 @@ export function seamDrone(ctx: BaseAudioContext, seconds = 6): AudioBuffer {
   }
   return b;
 }
+
+/** Глухий удар/стук здалеку (двері, щось важке впало). */
+export function distantThud(ctx: BaseAudioContext, seed: number): AudioBuffer {
+  const sr = ctx.sampleRate, n = Math.floor(sr * 1.6);
+  const b = ctx.createBuffer(1, n, sr), d = b.getChannelData(0);
+  const r = rng(seed * 13 + 1);
+  const hits = 1 + Math.floor(r() * 3), f = 45 + r() * 30;
+  let lp = 0;
+  for (let i = 0; i < n; i++) {
+    const t = i / sr;
+    let v = 0;
+    for (let k = 0; k < hits; k++) {
+      const tk = t - k * (0.28 + r() * 0.02);
+      if (tk < 0) continue;
+      v += Math.sin(2 * Math.PI * f * tk * (1 - tk * 0.4)) * Math.exp(-tk * 9) * (1 - k * 0.25);
+    }
+    lp += (r() * 2 - 1 - lp) * 0.05;
+    d[i] = v * 0.8 + lp * Math.exp(-t * 6) * 0.6;
+  }
+  return b;
+}
+
+/** Метал по бетону: довге скреготіння. */
+export function scrape(ctx: BaseAudioContext, seed: number): AudioBuffer {
+  const sr = ctx.sampleRate, n = Math.floor(sr * 2.2);
+  const b = ctx.createBuffer(1, n, sr), d = b.getChannelData(0);
+  const r = rng(seed * 17 + 9);
+  let ph = 0, bp1 = 0, bp2 = 0;
+  for (let i = 0; i < n; i++) {
+    const t = i / sr;
+    const f = 380 + 160 * Math.sin(t * 2.3) + 60 * Math.sin(t * 13.1);
+    ph += (2 * Math.PI * f) / sr;
+    const noise = r() * 2 - 1;
+    bp1 += (noise - bp1) * 0.3; bp2 += (bp1 - bp2) * 0.3;
+    const env = Math.sin(Math.PI * t / 2.2) * (0.6 + 0.4 * Math.sin(t * 9));
+    d[i] = (Math.sin(ph) * 0.25 + Math.sin(ph * 2.01) * 0.12 + (bp1 - bp2) * 0.6) * env * 0.5;
+  }
+  return b;
+}
+
+/** Важке дихання після бігу: вдих-видих фільтрованим шумом. */
+export function breath(ctx: BaseAudioContext, seed: number): AudioBuffer {
+  const sr = ctx.sampleRate, n = Math.floor(sr * 1.15);
+  const b = ctx.createBuffer(1, n, sr), d = b.getChannelData(0);
+  const r = rng(seed * 23 + 4);
+  let a1 = 0, a2 = 0;
+  for (let i = 0; i < n; i++) {
+    const t = i / sr;
+    const noise = r() * 2 - 1;
+    const inhale = t < 0.42;
+    const k = inhale ? 0.18 : 0.1;
+    a1 += (noise - a1) * k; a2 += (a1 - a2) * k;
+    const env = inhale ? Math.sin(Math.PI * t / 0.42) * 0.7 : Math.sin(Math.PI * (t - 0.42) / 0.7) * Math.exp(-(t - 0.42) * 1.5);
+    d[i] = (a1 - a2 * 0.6) * Math.max(0, env) * 0.9;
+  }
+  return b;
+}
