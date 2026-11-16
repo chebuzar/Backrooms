@@ -7,7 +7,9 @@ import { threeToSoloNavMesh, DebugDrawer } from '@recast-navigation/three';
 import * as YUKA from 'yuka';
 import { MeshBVH, acceleratedRaycast } from 'three-mesh-bvh';
 import Stats from 'stats-gl';
-import GUI from 'lil-gui';
+import { Pane } from 'tweakpane';
+import { Brush, Evaluator, SUBTRACTION } from 'three-bvh-csg';
+import { SimplexNoise } from 'three/addons/math/SimplexNoise.js';
 
 const out = {};
 const step = async (name, fn) => {
@@ -80,13 +82,37 @@ await step('statsgl', async () => {
   return 'panel added, GPU timer: ' + (stats.gpuPanel ? 'yes' : 'no (browser has no timer query)');
 });
 
-await step('lilgui', () => {
-  const gui = new GUI({ title: 'debug' });
+await step('tweakpane', () => {
+  const pane = new Pane({ title: 'debug' });
   const p = { exposure: 1 };
-  gui.add(p, 'exposure', 0, 2);
-  gui.controllers[0].setValue(1.5);
-  if (p.exposure !== 1.5) throw new Error('control did not update value');
-  return 'controls: ' + gui.controllers.length;
+  const b = pane.addBinding(p, 'exposure', { min: 0, max: 2 });
+  p.exposure = 1.5; pane.refresh();
+  const graph = pane.addBinding({ fps: 60 }, 'fps', { readonly: true, view: 'graph', min: 0, max: 120 });
+  if (!b || !graph) throw new Error('bindings not created');
+  return 'binding + fps graph created';
+});
+
+await step('csg', () => {
+  // Doorway cut into a wall: wall minus box.
+  const wallB = new Brush(new THREE.BoxGeometry(4, 3, 0.2));
+  const door = new Brush(new THREE.BoxGeometry(1, 2.1, 0.5));
+  door.position.set(0, -0.45, 0); door.updateMatrixWorld();
+  wallB.updateMatrixWorld();
+  const res = new Evaluator().evaluate(wallB, door, SUBTRACTION);
+  const tris = res.geometry.index ? res.geometry.index.count / 3 : res.geometry.attributes.position.count / 3;
+  const rc = new THREE.Raycaster(new THREE.Vector3(0, -0.5, 2), new THREE.Vector3(0, 0, -1));
+  const throughDoor = rc.intersectObject(res).length === 0;
+  const rc2 = new THREE.Raycaster(new THREE.Vector3(1.5, 0, 2), new THREE.Vector3(0, 0, -1));
+  const hitsWall = rc2.intersectObject(res).length > 0;
+  if (!throughDoor || !hitsWall) throw new Error('doorway not cut: through=' + throughDoor + ' wall=' + hitsWall);
+  return 'wall with doorway: ' + tris + ' triangles, ray passes through door';
+});
+
+await step('noise', () => {
+  const n = new SimplexNoise({ random: (() => { let s = 1; return () => ((s = (s * 16807) % 2147483647) / 2147483647); })() });
+  const v = [n.noise(0.1, 0.2), n.noise3d(1.3, 2.1, 0.7), n.noise(5.5, 3.3)];
+  if (v.some((x) => !(x >= -1 && x <= 1)) || v[0] === v[2]) throw new Error('bad noise ' + v);
+  return 'three/addons SimplexNoise: ' + v.map((x) => x.toFixed(3)).join(', ');
 });
 
 renderer.render(scene, camera);

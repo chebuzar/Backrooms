@@ -16,3 +16,4 @@ test-results/
 meshy_output/
 # сирі завантажені ассети (до оптимізації)
 .assets-src/
+.playwright-mcp/
