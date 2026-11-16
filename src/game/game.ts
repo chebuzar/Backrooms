@@ -110,7 +110,7 @@ export class Game {
     this.input.enabled = false;
     this.resize();
     // заздалегідь скомпілювати шейдери, щоб не було ривків при першому погляді на щось нове
-    try { await this.gfx.renderer.compileAsync(lvl.scene, this.camera); } catch { /* не критично */ }
+    try { this.gfx.renderer.setRenderTarget(null); await this.gfx.renderer.compileAsync(lvl.scene, this.camera); } catch { /* не критично */ }
   }
 
   private setScene(s: THREE.Scene): void {

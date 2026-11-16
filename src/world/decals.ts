@@ -3,10 +3,28 @@
 // проєкція не потрібна. Змішування «множенням»: декаль лише темнить уже освітлену поверхню, тому світло й тіні — від стіни,
 // і пляма не виглядає «приклеєною». Один меш на рівень (один виклик малювання).
 import * as THREE from 'three/webgpu';
-import { texture, uv, vec4, mix, smoothstep, positionView, float, mrt, attribute } from 'three/tsl';
+import { texture, uv, vec4, mix, smoothstep, positionView, float, attribute, output } from 'three/tsl';
 import { rng } from '../core/rng';
 import type { Layout } from './layout';
 import type { Decor } from './decor';
+
+/**
+ * MRT декалі: у головному проході сцени пише колір і «1» у нормалі/швидкості (множення лишає їх без змін).
+ * У будь-якому іншому рендер-таргеті без цих імен стандартний MRTNode дає порожню структуру (помилка WGSL у WebGPU) —
+ * тоді лишаємо лише основний вихід кольору.
+ */
+class DecalMRT extends THREE.MRTNode {
+  override setup(builder: THREE.NodeBuilder): THREE.Node | null {
+    const rt = builder.renderer.getRenderTarget() as { textures?: { name: string }[] } | null;
+    const names = rt?.textures?.map((t) => t.name) ?? [];
+    if (!names.some((n) => n in this.outputNodes)) {
+      const out = (this.outputNodes as Record<string, THREE.Node>).output as THREE.Node;
+      (this as unknown as { members: THREE.Node[] }).members = [out];
+      return THREE.OutputStructNode.prototype.setup.call(this, builder) as THREE.Node | null;
+    }
+    return super.setup(builder) as THREE.Node | null;
+  }
+}
 
 type Quad = { c: [number, number, number]; u: [number, number, number]; v: [number, number, number]; cell: number; flip: boolean };
 
@@ -102,7 +120,7 @@ export function buildDecals(l: Layout, decor: Decor[], atlas: THREE.Texture): TH
   const edge = smoothstep(0.0, 0.22, lc.x).mul(smoothstep(1.0, 0.78, lc.x)).mul(smoothstep(0.0, 0.18, lc.y)).mul(smoothstep(1.0, 0.82, lc.y));
   m.colorNode = vec4(mix(float(1), texture(atlas, uv()).rgb, edge.mul(fade.oneMinus())), 1);
   // у буфери нормалей і швидкостей пишемо 1 — множення залишає їх без змін (AO й TRAA не бачать декалей)
-  m.mrtNode = mrt({ normal: vec4(1), velocity: vec4(1) });
+  m.mrtNode = new DecalMRT({ output, normal: vec4(1), velocity: vec4(1) }) as unknown as typeof m.mrtNode;
   const mesh = new THREE.Mesh(g, m);
   mesh.renderOrder = 2;
   mesh.frustumCulled = false;
