@@ -93,6 +93,16 @@
 
 ---
 
+## Джерела ассетів без ключів (знайдено 16.11.2026)
+| Що | Джерело | Ліцензія |
+|---|---|---|
+| Текстури, HDRI | Poly Haven, ambientCG | CC0 |
+| Меблі й предмети | Poly Haven | CC0 |
+| Реалістичні тіла людей (основа монстрів) | MakeHuman / MPFB2 (`makehuman_system_assets_cc0.zip`) | CC0 (ассети), код MPFB — лише в Blender, у гру не потрапляє |
+| Анімації людиноподібних | Quaternius Universal Animation Library 1–2 (glTF) | CC0 |
+| Звуки жаху й атмосфера | OpenGameArt «Horror Hit Soundpack 1», itch.io «Free Audio Asset Collection» (Sami Hiltunen), «Free Horror Strings» (HZSmith) | CC0 |
+| Ключі, які легко зробити безкоштовно | Sketchfab (токен у налаштуваннях акаунта), Freesound (заявка на API-ключ — видається одразу) | — |
+
 ## Потрібна допомога Назара
 - 🔑 **Ключі API не приймаються сервісами** (Context7, Meshy, Sketchfab, Freesound): усі збережені значення сервіси відхиляють. Перевірити й вставити заново в налаштуваннях середовища `backrooms` → Network secrets (лише сам ключ, без `Bearer`/`Token`). Без Meshy і Sketchfab моделі монстрів робимо самі (Blender + відкриті CC0-бібліотеки) — це повільніше.
 - Злиття гілки в `main`, коли нова гра дійде до готовності (до того сайт показує стару версію).
