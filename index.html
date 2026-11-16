@@ -62,6 +62,7 @@ setTimeout(function(){if(!window.__zkReady)window.__zkFail(window.__zkT?window._
     <span class="lbl" data-i18n="set.quality">Графика</span><div class="seg" id="segQ"><button type="button" data-v="auto" data-i18n="set.q.auto">Авто</button><button type="button" data-v="low" data-i18n="set.q.low">Низкая</button><button type="button" data-v="med" data-i18n="set.q.med">Средняя</button><button type="button" data-v="high" data-i18n="set.q.high">Высокая</button></div>
     <span class="lbl" data-i18n="set.diff">Сложность</span><div class="seg" id="segD"><button type="button" data-v="easy" data-i18n="set.d.easy">Лёгкая</button><button type="button" data-v="normal" data-i18n="set.d.normal">Обычная</button><button type="button" data-v="nightmare" data-i18n="set.d.nightmare">Кошмар</button></div>
     <span class="lbl" data-i18n="set.vib">Вибрация</span><div class="seg" id="segV"><button type="button" data-v="1" data-i18n="set.on">Вкл</button><button type="button" data-v="0" data-i18n="set.off">Выкл</button></div>
+    <span class="lbl" data-i18n="set.rep">Отчёты о работе игры</span><div class="seg" id="segR"><button type="button" data-v="1" data-i18n="set.on">Вкл</button><button type="button" data-v="0" data-i18n="set.off">Выкл</button></div>
   </div>
   <p class="hint dev" id="devInfo"></p>
   <p class="hint" data-i18n="set.hint">Если игра тормозит, поставь графику «Низкая». Сложность меняется со следующего уровня.</p>
@@ -136,6 +137,13 @@ setTimeout(function(){if(!window.__zkReady)window.__zkFail(window.__zkT?window._
   </div>
 </div></div>
 
+<div id="bug" class="layer panel"><div class="pbox narrow">
+  <header><h2 data-i18n="bug.title">Сообщить об ошибке</h2><button class="back" type="button" data-i18n="common.back">Назад</button></header>
+  <textarea id="bugText" rows="5" maxlength="2000" data-i18n-attr="placeholder:bug.ph" placeholder="Что случилось? Например: застрял в стене у выхода"></textarea>
+  <p class="hint" data-i18n="bug.note">Вместе с сообщением отправятся: уровень и место в игре, устройство, скорость игры, снимок экрана. Без имени и личных данных.</p>
+  <button id="bugSend" class="btn primary" type="button" data-i18n="bug.send">Отправить</button>
+</div></div>
+
 <div id="pause" class="layer panel"><div class="pbox narrow">
   <header><h2 data-i18n="pause.title">Пауза</h2></header>
   <nav class="mlist">
@@ -143,6 +151,7 @@ setTimeout(function(){if(!window.__zkReady)window.__zkFail(window.__zkT?window._
     <button data-go="journal" type="button" data-i18n="journal.title">Журнал</button>
     <button data-go="settings" type="button" data-i18n="menu.settings">Настройки</button>
     <button data-go="help" type="button" data-i18n="menu.help">Как играть</button>
+    <button data-go="bug" type="button" data-i18n="pause.bug">Сообщить об ошибке</button>
     <button id="bQuit" type="button" data-i18n="pause.quit">В главное меню</button>
   </nav>
 </div></div>

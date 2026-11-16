@@ -20,6 +20,7 @@ import { FIND_KINDS, FIND_IDS, buildFinds, updateFinds, findPoint } from './worl
 import { makeWrist, poseWrist, drawRadar } from './world/wrist.js';
 import { createMinimap, drawMinimap, trackTrail, resetMinimap } from './ui/minimap.js';
 import { playCutscene } from './ui/cutscene.js';
+import { frameStatsReset, frameStat, sendPerf, sendBug, reportsConfigured } from './net/reports.js';
 import { makeDust, updateDust } from './render/dust.js';
 import { preloadMonsters, makeMonsterMesh } from './world/monster-models.js';
 import { updateLockers } from './world/lockers.js';
@@ -34,7 +35,7 @@ document.documentElement.classList.toggle('touch', isTouch);
 const DEV = device;
 
 // ---------- сохранение ----------
-const DEF = { sens: 1, vol: 80, q: 'auto', diff: 'normal', vib: true };
+const DEF = { sens: 1, vol: 80, q: 'auto', diff: 'normal', vib: true, rep: true };
 const SAVE = Object.assign({ max: -1, cont: 0, notes: [], ach: [], anom: [], docs: [] }, store.load());
 if (!Array.isArray(SAVE.docs)) SAVE.docs = [];
 if (!Array.isArray(SAVE.anom)) SAVE.anom = [];
@@ -1306,6 +1307,7 @@ async function startLevel(lv, fresh = false, opt = {}) {
   await sleep(Math.max(0, 4200 - (performance.now() - t0)));
   card.classList.add('fade'); showHUD();
   game.mode = 'play'; busy = false;
+  frameStatsReset({ level: lv, seed });
   if (!game.endless || lv < DOCS.length) setTimeout(() => showDoc(lv), 3600);
   sound.stinger();
   if (game.pending) { const a = game.pending; game.pending = null; startLevel(a[0], a[1], a[2]); return; }
@@ -1320,6 +1322,7 @@ async function startLevel(lv, fresh = false, opt = {}) {
 }
 function exitLevel() {
   if (game.mode !== 'play') return;
+  reportPerf('exit');
   if (game.coop) { unlock('friend'); if (game.coop.host) net.broadcast({ t: 'exit' }); }
   if (game.chase) { unlock('run'); game.chase = false; }
   closeKeypad(); game.mapOpen = false; hide('mapBox'); pl.nv = false; game.scanT = 0; $('scanLayer').querySelectorAll('.sm').forEach((e) => e.remove());
@@ -1426,7 +1429,7 @@ async function showEnding() {
 // ---------- меню и экраны ----------
 const show = (id) => $(id).classList.add('on');
 const hide = (id) => $(id).classList.remove('on');
-const PANELS = ['menu', 'settings', 'journal', 'ach', 'help', 'about', 'pause', 'dead', 'ending', 'reader', 'prologue', 'levels', 'online', 'chatBox'];
+const PANELS = ['menu', 'settings', 'journal', 'ach', 'help', 'about', 'pause', 'dead', 'ending', 'reader', 'prologue', 'levels', 'online', 'chatBox', 'bug'];
 function hideAllPanels() { PANELS.forEach(hide); }
 function showHUD() { show('hud'); show('controls'); hudStatic(); }
 function hideHUD() { hide('hud'); hide('controls'); input.joyId = null; input.lookId = null; joyReset(); }
@@ -1552,7 +1555,7 @@ function syncSettings() {
   const s = SAVE.set;
   $('sSens').value = s.sens; $('vSens').textContent = Number(s.sens).toFixed(1);
   $('sVol').value = s.vol; $('vVol').textContent = s.vol;
-  for (const [id, v] of [['segQ', s.q], ['segD', s.diff], ['segV', s.vib ? '1' : '0']]) $(id).querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.v === v));
+  for (const [id, v] of [['segQ', s.q], ['segD', s.diff], ['segV', s.vib ? '1' : '0'], ['segR', s.rep === false ? '0' : '1']]) $(id).querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.v === v));
   // что определилось: «Устройство: Apple · мощное. Авто = Ультра»
   const di = $('devInfo');
   if (di) {
@@ -1563,6 +1566,7 @@ function syncSettings() {
 window.addEventListener('langchange', () => syncSettings());
 $('sSens').addEventListener('input', (e) => { SAVE.set.sens = +e.target.value; persist(); syncSettings(); });
 $('sVol').addEventListener('input', (e) => { SAVE.set.vol = +e.target.value; sound.setVol(SAVE.set.vol / 100); persist(); syncSettings(); });
+$('segR').addEventListener('click', (e) => { const v = e.target.dataset.v; if (!v) return; SAVE.set.rep = v === '1'; persist(); syncSettings(); });
 $('segQ').addEventListener('click', (e) => { const v = e.target.dataset.v; if (!v) return; SAVE.set.q = v; persist(); applyQuality(); syncSettings(); });
 $('segD').addEventListener('click', (e) => { const v = e.target.dataset.v; if (!v) return; SAVE.set.diff = v; persist(); syncSettings(); });
 $('segV').addEventListener('click', (e) => { const v = e.target.dataset.v; if (!v) return; SAVE.set.vib = v === '1'; persist(); syncSettings(); vib(30); });
@@ -2095,8 +2099,37 @@ function loop(now) {
   const pt1 = PERF ? performance.now() : 0;
   if (PERF) { renderer.info.autoReset = false; renderer.info.reset(); }
   composer.render(dt);
+  if (shotWait) takeShot();
   if (PERF) perfFrame(rawDt * 1000, pt1 - pt0, performance.now() - pt1);
+  if (m === 'play') frameStat(rawDt * 1000, `L${game.level} ${Math.round(pl.x)},${Math.round(pl.z)}${ent && ent.state === 'chase' ? ' chase' : ''}`);
 }
+
+// ---------- отчёты игроков (src/net/reports.js) ----------
+// контекст: где в игре и на каком устройстве — без личных данных
+function reportCtx() {
+  return { level: game.level, seed: game.seed, mode: game.mode, pos: pl ? [Math.round(pl.x), Math.round(pl.z)] : null, coop: !!game.coop,
+    device: { platform: DEV.platform, form: DEV.form, tier: DEV.tier, gpu: DEV.gpu, model: DEV.model }, quality: SAVE.set.q, profile: quality,
+    render: [renderer.domElement.width, renderer.domElement.height, +renderer.getPixelRatio().toFixed(2)], calls: renderer.info.render.calls };
+}
+function reportPerf(why) { sendPerf(Object.assign({ why }, reportCtx()), SAVE.set.rep !== false); }
+addEventListener('pagehide', () => { if (game.mode === 'play' || game.mode === 'paused') reportPerf('leave'); });
+// снимок кадра для сообщения об ошибке: берётся сразу после отрисовки (буфер WebGL ещё цел), 480 px по ширине
+let shotWait = null;
+const grabShot = () => new Promise((res) => { shotWait = res; setTimeout(() => { if (shotWait) { shotWait = null; res(null); } }, 1500); });
+function takeShot() {
+  const r = shotWait; shotWait = null;
+  try { const c = renderer.domElement, w = 480, h = Math.round(w * c.height / c.width), o = document.createElement('canvas'); o.width = w; o.height = h; o.getContext('2d').drawImage(c, 0, 0, w, h); r(o.toDataURL('image/jpeg', 0.6)); } catch (e) { r(null); }
+}
+$('bugSend').addEventListener('click', async () => {
+  const text = $('bugText').value.trim();
+  if (text.length < 3) { toast(tr('bug.empty')); return; }
+  sound.ui(); $('bugSend').disabled = true;
+  const shot = await grabShot();
+  sendBug(text, reportCtx(), shot);
+  $('bugText').value = ''; $('bugSend').disabled = false;
+  toast(reportsConfigured() && navigator.onLine ? tr('bug.thanks') : tr('bug.queued'));
+  openPanel('pause', 'bug');
+});
 
 // ---------- панель замеров (?perf в адресе) ----------
 // Показывает на реальном устройстве, на что уходит время кадра: логика игры, отправка кадра в видеочип,
