@@ -11,7 +11,8 @@ import { Player } from './player';
 import { CameraRig } from './camera-rig';
 import { Input } from '../input/input';
 import { AudioEngine, type SpatialVoice } from '../audio/audio';
-import { humLoop, footstepCarpet, typeClick, paperRustle, seamDrone, scrape } from '../audio/synth';
+import { humLoop, footstepCarpet, typeClick, paperRustle, seamDrone } from '../audio/synth';
+import { SoundBank } from '../audio/bank';
 import { HUD } from '../ui/hud';
 import { Ambience } from './ambience';
 import { Interactions } from './interact';
@@ -58,7 +59,8 @@ export class Game {
   private humVoices: { voice: SpatialVoice; lamp: number }[] = [];
   private humT = 0;
   private dimT = 0;
-  private creak: AudioBuffer | null = null;
+  /** Записані звуки (CC0): кроки, двері, папір, ліхтарик, тканина, удари, фон. */
+  readonly sfx = new SoundBank();
   flashlightOn = false;
   hud!: HUD;
   readonly ambience = new Ambience(this.audio);
@@ -123,6 +125,13 @@ export class Game {
     for (let i = 0; i < 8; i++) this.steps.push(footstepCarpet(ctx, i + 1));
     for (let i = 0; i < 6; i++) this.clicks.push(typeClick(ctx, i + 1));
     this.rustle = paperRustle(ctx, 1);
+    void this.sfx.load(ctx, `${import.meta.env.BASE_URL}assets/sfx/`).then(() => {
+      // тихий фоновий трек рівня (наш, ACE-Step): шар під гулом ламп
+      const amb = this.sfx.get('amb_l0');
+      const bus = this.audio.music;
+      const src = amb && bus ? this.audio.play2D(amb, 0.32, 1, bus) : null;
+      if (src) src.loop = true;
+    });
     this.ambience.prepare();
     const sp = this.level?.seam.group.position;
     if (sp) this.audio.play3D(seamDrone(ctx), sp.x, 1.3, sp.z, { loop: true, gain: 0.9, ref: 1.5, wet: 0.4 });
@@ -135,7 +144,9 @@ export class Game {
   }
 
   private footstep(x: number, y: number, z: number, loud: number): void {
-    const b = this.steps[this.stepIdx++ % Math.max(1, this.steps.length)];
+    // записані кроки (на килимі — приглушені); поки бібліотека вантажиться — синтез
+    const rec = this.sfx.ready ? this.sfx.pick('carpet_') : null;
+    const b = rec ?? this.steps[this.stepIdx++ % Math.max(1, this.steps.length)];
     if (b) this.audio.play3D(b, x, y + 0.05, z, { gain: 0.35 + loud * 0.65, rate: 0.94 + Math.random() * 0.12, ref: 2, wet: 0.25 });
   }
 
@@ -227,19 +238,20 @@ export class Game {
           get prompt() { return d.target > 0.1 ? HINTS.doorShut : HINTS.doorOpen; }, use: () => doors.toggle(d) });
       });
     }
-    lvl.doors.onMove = (d) => {
-      const ctx = this.audio.ctx;
-      if (!ctx) return;
-      this.creak ??= scrape(ctx, 7);
+    const doorSound = (name: string, d: { pivot: THREE.Object3D }, gain: number) => {
+      const b = this.sfx.pick(name);
       const p = d.pivot.position;
-      this.audio.play3D(this.creak, p.x, 1.2, p.z, { gain: 0.55, rate: 0.55 + Math.random() * 0.15, ref: 2, wet: 0.35 });
+      if (b) this.audio.play3D(b, p.x, 1.2, p.z, { gain, rate: 0.9 + Math.random() * 0.15, ref: 2, wet: 0.4 });
     };
+    lvl.doors.onMove = (d, opening) => { doorSound('creak', d, 0.7); if (opening) doorSound('dooropen', d, 0.6); };
+    lvl.doors.onShut = (d) => doorSound('doorclose', d, 0.9);
   }
 
   private readDoc(id: keyof typeof DOCS, after?: () => void): void {
     const d = DOCS[id];
     if (!d) return;
-    if (this.rustle) this.audio.play2D(this.rustle, 0.8);
+    const flip = this.sfx.pick('bookflip') ?? this.rustle;
+    if (flip) this.audio.play2D(flip, 0.8);
     const list = d.kind === 'note' ? this.store.progress.notes : this.store.progress.docs;
     if (!list.includes(id)) { list.push(id); this.store.save(); }
     this.mode = 'pause';
@@ -341,7 +353,11 @@ export class Game {
       this.player.yaw = Math.sin(this.time * 0.07) * 0.5;
       this.player.pitch = -0.04 + Math.sin(this.time * 0.11) * 0.03;
     }
-    if (this.input.consume('flashlight') && this.mode === 'play') this.flashlightOn = !this.flashlightOn;
+    if (this.input.consume('flashlight') && this.mode === 'play') {
+      this.flashlightOn = !this.flashlightOn;
+      const click = this.sfx.get('metalclick');
+      if (click) this.audio.play2D(click, 0.5, this.flashlightOn ? 1.1 : 0.9);
+    }
     if (this.hud.readerOpen && (this.input.consume('interact') || this.input.consume('pause'))) this.hud.closeDoc();
     const lvl = this.level;
     this.rig.update(this.player, this.acc / STEP, dt);

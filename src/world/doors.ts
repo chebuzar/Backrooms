@@ -29,6 +29,8 @@ export class Doors {
   readonly list: Door[] = [];
   /** Викликається, коли двері рушили (для звуку): позиція й швидкість. */
   onMove: ((d: Door, opening: boolean) => void) | null = null;
+  /** Полотно стало в раму (глухий стук). */
+  onShut: ((d: Door) => void) | null = null;
 
   constructor(l: Layout, decor: Decor[], private readonly physics: Physics, tex: { door_c: THREE.Texture; door_n: THREE.Texture }) {
     const r = rng(l.seed ^ 0xd00f);
@@ -91,6 +93,7 @@ export class Doors {
       // важке полотно: розгін і гальмування, без стрибків
       const step = (d.target - d.angle) * Math.min(1, dt * 3.2);
       d.angle += Math.sign(step) * Math.min(Math.abs(step), dt * 1.9);
+      if (d.target === 0 && d.angle < 0.02) { d.angle = 0; this.onShut?.(d); }
       this.apply(d);
     }
   }

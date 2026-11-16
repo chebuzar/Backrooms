@@ -40,3 +40,10 @@
 - `tex/level0/ceil_*` — ambientCG OfficeCeiling001, **CC0**: https://ambientcg.com/view?id=OfficeCeiling001
 - `tex/level0/carpet_*` — ambientCG Carpet011, **CC0**: https://ambientcg.com/view?id=Carpet011
 - `tex/level0/decals` — ambientCG Leaking001, Leaking004–009, **CC0**: https://ambientcg.com
+
+## Звуки (`public/assets/sfx`, скрипт `scripts/assets/make-sounds.py`)
+
+- `step_*`, `dooropen_*`, `doorclose_*`, `creak*`, `bookflip*`, `metalclick`, `metallatch`, `cloth*` — Kenney «RPG Audio», **CC0**: https://opengameart.org/content/rpg-sound-pack (kenney.nl)
+- `hit_*` — «Horror Hit Soundpack 1», **CC0**, OpenGameArt
+- `amb_l0`, `amb_l1`, `amb_l2` — згенеровано нами моделлю ACE-Step 1.5 (Apache-2.0)
+- гул ламп, гул Шва — синтез у грі (`src/audio/synth.ts`)
