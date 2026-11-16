@@ -16,6 +16,6 @@ export default tseslint.config(
     }
   },
   // скрипти Node; код у page.evaluate(...) виконується в браузері, тому й браузерні глобали
-  { files: ['scripts/**', 'server/**', '*.config.*'], languageOptions: { globals: { ...globals.node, ...globals.browser } } },
+  { files: ['scripts/**', 'tests/e2e/**', 'server/**', '*.config.*'], languageOptions: { globals: { ...globals.node, ...globals.browser } } },
   { files: ['**/*.js', '**/*.mjs'], rules: { '@typescript-eslint/no-unused-vars': ['warn', { caughtErrors: 'none' }], 'no-empty': ['error', { allowEmptyCatch: true }] } }
 );

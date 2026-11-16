@@ -11,6 +11,10 @@ const ICONS = {
   pause: '<path d="M7 5h3.5v14H7zm6.5 0H17v14h-3.5z"/>'
 };
 
+/** Елементи інтерфейсу, яким дотик має дістатися як звичайне натискання/прокрутка. */
+const UI_SELECTOR = '.reader, .screen, .prologue, .loadline, button, a, input, select, label';
+const onUI = (t: EventTarget | null) => t instanceof Element && !!t.closest(UI_SELECTOR);
+
 const svg = (p: string) => `<svg viewBox="0 0 24 24" aria-hidden="true">${p}</svg>`;
 
 export class TouchControls {
@@ -75,6 +79,8 @@ export class TouchControls {
   private onStart(e: TouchEvent): void {
     this.active = true;
     if (!this.root.classList.contains('shown')) return;
+    // дотик по інтерфейсу (записка, меню, кнопки) не наш: інакше preventDefault «з'їдає» натискання «Закрыть»
+    if (onUI(e.target)) return;
     for (const t of Array.from(e.changedTouches)) {
       if (t.clientX < innerWidth * 0.42 && this.stickId === null) {
         this.stickId = t.identifier; this.sx = t.clientX; this.sy = t.clientY;
@@ -107,7 +113,8 @@ export class TouchControls {
         this.lx = t.clientX; this.ly = t.clientY;
       }
     }
-    e.preventDefault();
+    // гасимо прокрутку/масштаб лише для пальців стіка й огляду — записка має прокручуватися
+    if (this.stickId !== null || this.lookId !== null) e.preventDefault();
   }
 
   private onEnd(e: TouchEvent): void {

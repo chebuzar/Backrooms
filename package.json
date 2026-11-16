@@ -14,7 +14,7 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
-    "check": "npm run lint && npm run typecheck && npm run test && npm run build && npm run smoke",
+    "check": "npm run lint && npm run typecheck && npm run test && npm run build && npm run smoke && npm run e2e",
     "shot": "node scripts/shot.mjs",
     "smoke": "node scripts/shot.mjs --prod --browser chromium,webkit --name smoke --out .shots/smoke",
     "optimize-asset": "node scripts/optimize-asset.mjs",
@@ -22,7 +22,8 @@
     "fetch-model": "NODE_USE_ENV_PROXY=1 node scripts/fetch-model.mjs",
     "fetch-sound": "NODE_USE_ENV_PROXY=1 node scripts/fetch-sound.mjs",
     "blender-test": "blender -b -P scripts/blender/bake.py -- --out .shots/tools/bake-test.glb --size 512 --samples 32",
-    "mcp-check": "node scripts/mcp-check.mjs"
+    "mcp-check": "node scripts/mcp-check.mjs",
+    "e2e": "node tests/e2e/touch-reader.mjs"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.21.0",

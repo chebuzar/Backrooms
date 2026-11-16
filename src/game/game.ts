@@ -217,6 +217,7 @@ export class Game {
     if (!list.includes(id)) { list.push(id); this.store.save(); }
     this.mode = 'pause';
     this.input.enabled = false;
+    this.input.touch?.show(false); // кнопки гри не перекривають записку; play() поверне їх
     if (document.pointerLockElement) document.exitPointerLock();
     this.hud.openDoc(d, () => { this.play(); after?.(); });
   }
