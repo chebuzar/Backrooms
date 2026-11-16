@@ -23,7 +23,7 @@ const browsers = A.browser === 'all' ? ['chromium', 'webkit', 'firefox'] : Strin
 const LAUNCH = {
   chromium: { args: ['--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-vulkan=swiftshader', '--use-webgpu-adapter=swiftshader', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] },
   webkit: {},
-  firefox: {}
+  firefox: { headless: !process.env.DISPLAY, firefoxUserPrefs: { 'webgl.force-enabled': true, 'webgl.disabled': false, 'webgl.enable-webgl2': true } }
 };
 
 const server = A.prod

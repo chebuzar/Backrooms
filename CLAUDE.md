@@ -32,7 +32,8 @@
 | `?debug` в адресі | `window.__zk` (renderer, scene, camera, info()) ; `?webgl` — примусово WebGL 2; `?q=low\|medium\|high\|ultra` |
 
 - Порт скріншотів — 5191 (**4190 WebKit блокує** як «небезпечний»).
-- Chromium у контейнері запускається з програмним WebGPU (SwiftShader) — FPS не показовий, порівнювати відносно; WebKit у Playwright — без WebGPU (перевіряє запасний WebGL 2). Firefox: `npx playwright install firefox`, якщо немає.
+- Chromium у контейнері запускається з програмним WebGPU (SwiftShader) — FPS не показовий, порівнювати відносно; WebKit у Playwright — без WebGPU (перевіряє запасний WebGL 2).
+- Firefox у контейнері працює лише з віртуальним екраном і програмним OpenGL: `LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a -s "-screen 0 1280x720x24" npm run shot -- --browser firefox` (потрібні пакети `xvfb libgl1-mesa-dri`; браузер — `npx playwright install firefox`).
 
 ## Ассети й ліцензії
 - Джерела: Poly Haven, ambientCG (CC0, без ключа), Sketchfab/Freesound/Meshy (ключі — лише зі змінних середовища або network secrets; **ніколи в коді/git**). Кожен ассет — у `public/assets/CREDITS.md` (fetch-скрипти дописують самі).

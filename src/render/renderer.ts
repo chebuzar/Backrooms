@@ -34,8 +34,15 @@ export async function createRenderer(canvas: HTMLCanvasElement, forceWebGL = fal
       gpuName = [i.vendor, i.architecture, i.device, i.description].filter(Boolean).join(' ');
     } else {
       const gl = (renderer.backend as unknown as { gl?: WebGL2RenderingContext }).gl;
-      const ext = gl?.getExtension('WEBGL_debug_renderer_info');
-      if (gl && ext) gpuName = String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL));
+      if (gl) {
+        // Firefox віддає справжню назву в RENDERER і застерігає від WEBGL_debug_renderer_info
+        const plain = String(gl.getParameter(gl.RENDERER));
+        if (/firefox/i.test(navigator.userAgent) || !/^WebKit WebGL$/i.test(plain)) gpuName = plain;
+        else {
+          const ext = gl.getExtension('WEBGL_debug_renderer_info');
+          gpuName = ext ? String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)) : plain;
+        }
+      }
     }
   } catch { /* назва відеокарти — лише підказка */ }
   return { renderer, backend, gpuName };
