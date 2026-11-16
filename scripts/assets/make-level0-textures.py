@@ -103,7 +103,11 @@ save('dmg_c', np.clip(dmg * srgb(0.98, 0.9, 0.7), 0, 1), 'etc1s', True, 1024)
 
 # --- стеля: акустичні плити, трохи пожовклі від років під люмінесцентним світлом
 ceil = load(f'{A}/OfficeCeiling001/OfficeCeiling001_2K-JPG_Color.jpg')
-save('ceil_c', np.clip(ceil * srgb(0.93, 0.9, 0.8), 0, 1), 'uastc', True)
+ceil_ao0 = load(f'{A}/OfficeCeiling001/OfficeCeiling001_2K-JPG_AmbientOcclusion.jpg', mode='L')
+# шви між плитами (з карти AO самої текстури) — темніші й сіріші, щоб сітка профілів читалась, як на фото
+groove = np.clip((1 - ceil_ao0) * 5.0, 0, 1)[..., None]
+ceil = ceil * (1 - 0.5 * groove) + srgb(0.42, 0.41, 0.38) * 0.5 * groove
+save('ceil_c', np.clip(ceil * srgb(0.93, 0.9, 0.8), 0, 1), 'uastc', True, 1024)
 save('ceil_n', load(f'{A}/OfficeCeiling001/OfficeCeiling001_2K-JPG_NormalGL.jpg'), 'uastc', False, 1024)
 ceil_ao = load(f'{A}/OfficeCeiling001/OfficeCeiling001_2K-JPG_AmbientOcclusion.jpg', mode='L')
 ceil_r = load(f'{A}/OfficeCeiling001/OfficeCeiling001_2K-JPG_Roughness.jpg', mode='L')

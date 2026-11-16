@@ -458,7 +458,7 @@ for key in todo:
     bpy.ops.object.select_all(action="DESELECT")
     ob.select_set(True)
     bpy.ops.export_scene.gltf(filepath=os.path.join(args.out, f"chunk_{name}.glb"), export_format="GLB", use_selection=True,
-                              export_texcoords=True, export_normals=True, export_materials="PLACEHOLDER", export_yup=True)
+                              export_texcoords=True, export_normals=True, export_materials="EXPORT", export_image_format="NONE", export_yup=True)
     manifest["chunks"].append({"x": ix, "z": iz, "glb": f"chunk_{name}.glb", "lm": f"lm_{name}.png"})
 
 json.dump(manifest, open(os.path.join(args.out, "manifest.json"), "w"), indent=1)

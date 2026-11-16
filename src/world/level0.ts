@@ -7,6 +7,8 @@ import { generateLayout, type Layout } from './layout';
 import { loadLevel0Textures, makeLevel0Materials, probeLit, probeAt } from './materials';
 import { Lamps } from './lamps';
 import { Seam } from './seam';
+import { decorate } from './decor';
+import { buildDecals } from './decals';
 
 export const LEVEL0_SEED = 1987;
 
@@ -69,18 +71,26 @@ export async function buildLevel0(assets: Assets, physics: Physics, onProgress: 
   scene.add(lamps.mesh, lamps.frame);
 
   // ліхтарик: тепла лампа розжарювання, м'яка пляма, тінь
-  const flashlight = new THREE.SpotLight(0xffe2b8, 0, 26, 0.42, 0.55, 1.6);
+  // ліхтарик: тепла лампа розжарювання; гаряча пляма з дуже м'яким краєм (без «наліпки»), реальне квадратичне згасання
+  const flashlight = new THREE.SpotLight(0xffe2b8, 0, 28, 0.42, 0.92, 2);
   flashlight.castShadow = true;
   flashlight.shadow.mapSize.set(1024, 1024);
   flashlight.shadow.bias = -0.0004;
   flashlight.shadow.camera.near = 0.1;
   scene.add(flashlight, flashlight.target);
+  // розсіяне світло навколо променя (відбивач ліхтарика) — широкий слабкий конус без тіні
+  const spill = new THREE.SpotLight(0xffd9a8, 0, 18, 0.95, 1.0, 2);
+  flashlight.add(spill);
+  spill.target = flashlight.target;
   // ледь помітне заповнення, щоб чорні кути не були «дірами»
   scene.add(new THREE.AmbientLight(0x2a2412, 0.25));
   // «Шов» — на найближчій до виходу стіні
   const seamAt = seamPlacement(layout);
   const seam = new Seam(seamAt.x, seamAt.z, seamAt.yaw, H);
   scene.add(seam.group);
+
+  // сліди часу: підтьоки, бруд, плями (атлас справжніх декалей, змішування множенням)
+  scene.add(buildDecals(layout, decorate(layout), tex.decals));
 
   const spots = await placeProps(assets, physics, layout, scene);
   onProgress(1);

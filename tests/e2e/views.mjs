@@ -9,7 +9,7 @@ const which = process.argv[2] ?? 'webkit', name = process.argv[3] ?? 'cur', extr
 const VIEWS = [
   ['spawn-n', 12.6, 12.6, 0, 0, 0], ['spawn-sw', 12.6, 12.6, 3.93, 0, 0], ['spawn-up', 12.6, 12.6, 1.2, 0.55, 0], ['door', 16, 15, 2.4, -0.05, 0],
   ['hall', 58, 10, 2.3, 0, 0], ['corridor', 60, 36, 0.8, 0, 0], ['rooms', 36, 36, 1.9, -0.1, 0],
-  ['dark', 12, 36, 0.4, 0, 1]
+  ['dark', 12, 36, 0.4, 0, 1], ['flash-wall', 13.5, 12.6, 1.57, -0.1, 1]
 ];
 const srv = await createServer({ root: process.cwd(), server: { port: 5191, strictPort: true }, logLevel: 'error' });
 await srv.listen();
@@ -43,7 +43,12 @@ for (const [label, x, z, yaw, pitch, light] of VIEWS) {
   }, [x, z, yaw, pitch, light]);
   await page.waitForTimeout(2600);
   const f = `.shots/view-${name}-${which}-${label}.png`;
-  await page.screenshot({ path: f });
+  // під навантаженням браузер іноді показує чорний кадр, поки компілює шейдер — перезнімаємо
+  for (let k = 0; k < 4; k++) {
+    const buf = await page.screenshot({ path: f });
+    if (buf.length > 60000) break;
+    await page.waitForTimeout(3000);
+  }
   files.push(f);
 }
 await b.close(); await srv.close();

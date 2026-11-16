@@ -4,7 +4,7 @@ import * as THREE from 'three/webgpu';
 import {
   pass, mrt, output, normalView, velocity, packNormalToRGB, unpackRGBToNormal, sample, uniform, Fn,
   vec2, vec3, vec4, float, screenUV, screenCoordinate, mix, smoothstep, dot, clamp, fract, sin, length,
-  neutralToneMapping, sRGBTransferOETF, max, time
+  neutralToneMapping, acesFilmicToneMapping, agxToneMapping, sRGBTransferOETF, max, time
 } from 'three/tsl';
 import { ao } from 'three/addons/tsl/display/GTAONode.js';
 import { traa } from 'three/addons/tsl/display/TRAANode.js';
@@ -34,6 +34,10 @@ export const look = {
   hurt: uniform(0.0),
   aspect: uniform(16 / 9)
 };
+
+/** Тональна корекція (правило власника: AgX або ACES). ?tm=agx|aces|neutral — для порівняння скріншотами. */
+const TM = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('tm') : null;
+const TONEMAP = TM === 'neutral' ? neutralToneMapping : TM === 'agx' ? agxToneMapping : acesFilmicToneMapping;
 
 export class PostPipeline {
   readonly pipeline: THREE.RenderPipeline;
@@ -91,7 +95,7 @@ export class PostPipeline {
       const ab = c.mul(look.aberration.add(look.fear.mul(0.006))).mul(r2.mul(4).add(0.4));
       const col = vec3(S(uvd.add(ab)).r, S(uvd).g, S(uvd.sub(ab)).b).toVar();
       // експозиція й тональна компресія Khronos Neutral: зберігає відтінок (насичений жовтий не «буріє»)
-      col.assign(neutralToneMapping(col.mul(look.exposure), float(1)));
+      col.assign(TONEMAP(col.mul(look.exposure), float(1)));
       // грейдинг: тіні трохи в холодну зелень, світла в теплий жовтий (флуоресцентні лампи)
       const lum = dot(col, vec3(0.2126, 0.7152, 0.0722));
       col.addAssign(vec3(-0.008, 0.004, 0.01).mul(float(1).sub(smoothstep(0, 0.4, lum))));

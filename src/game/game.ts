@@ -332,7 +332,9 @@ export class Game {
       lvl.update(this.time, dt, this.camera);
       // ліхтарик у руці: трохи нижче й правіше очей, світить туди, куди дивишся
       const fl = lvl.flashlight, c = this.camera;
-      fl.intensity += ((this.flashlightOn ? 38 : 0) - fl.intensity) * Math.min(1, dt * 18);
+      fl.intensity += ((this.flashlightOn ? 26 : 0) - fl.intensity) * Math.min(1, dt * 18);
+      const spill = fl.children[0] as THREE.SpotLight | undefined;
+      if (spill) spill.intensity = fl.intensity * 0.12;
       fl.position.set(0.18, -0.16, 0.05).applyQuaternion(c.quaternion).add(c.position);
       fl.target.position.set(0, -0.08, -6).applyQuaternion(c.quaternion).add(c.position);
       this.humT -= dt;
