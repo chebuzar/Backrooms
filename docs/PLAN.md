@@ -55,8 +55,10 @@ Claude може міняти порядок і рішення, коротко п
 - ✅ Справжні текстури: шпалери ShareTextures wallpaper_10/26 (перефарбовані), стеля ambientCG OfficeCeiling001, килим Carpet011, декалі Leaking → `scripts/assets/make-level0-textures.py`; `ASSETS.md`; без «намальованого кодом».
 - ✅ Контрольні кадри: `node tests/e2e/views.mjs webkit <назва>` (8 ракурсів).
 - ✅ Розстановка деталей `src/world/decor.ts` (двері-рами з перемичкою, розетки, вимикачі, решітки, щитки, вирвані плити) → JSON → Blender `build_level.py` (кіт + плитки стелі + `--resume`).
-- 🔄 Повне запікання рівня 0 з кітом (1024², 64 семпли): `.assets-src/levels/bake-l0.sh` → `.assets-src/levels/level0-k` (лог `bake-l0k.log`); після — `publish-level.py` у `public/assets/levels/level0`.
-- ⬜ Сітка стелі виразніша (обробка текстури AO), ⬜ ліхтарик м'який без кілець, ⬜ декалі-плями в грі (множення), ⬜ AgX/ACES, ⬜ живе згасання запеченого світла біля вимкнених ламп, ⬜ контроль якості й «моторошність».
+- 🔄 Повне запікання рівня 0 з кітом (1024², 64 семпли, ~6 хв/шматок): `.assets-src/levels/bake-l0.sh` → `.assets-src/levels/level0-k` (лог `bake-l0k.log`; після перезапуску контейнера просто запустити скрипт ще раз — `--resume`). **Коли допечеться:** скрипт уже з виправленим експортом? НІ — процес почався до виправлення, тому після завершення запустити `blender -b -P scripts/blender/build_level.py -- --layout .assets-src/levels/level0-1987.json --out .assets-src/levels/level0-k --size 1024 --no-bake` (перезберегти GLB з назвами матеріалів), потім `python3 -I scripts/levels/publish-level.py .assets-src/levels/level0-k public/assets/levels/level0`. Те саме `--no-bake` + publish для рівнів 1 (`level1-77.json` → `level1`) і 2 (`level2-12.json` → `level2`).
+- ✅ ГОЛОВНА ПОМИЛКА знайдена й виправлена: Blender експортував матеріали-заглушки без назв, gltfpack зливав усе в одну сітку → підлога й стеля малювалися матеріалом стін. Тепер `export_materials="EXPORT"`.
+- ✅ Декалі (`src/world/decals.ts`, множення, м'які краї, типи клітинок атласу), ✅ ACES (порівняно з AgX/Neutral), ✅ м'якший ліхтарик + розсіяне світло, ✅ шви стелі з AO, ✅ живе згасання запеченого світла біля ламп (`lampDeficits`, `Lamps.fillDeficits`).
+- ⬜ Після публікації нового рівня 0 — контрольні кадри (`views.mjs`), чесна оцінка «моторошності», доведення (щільність деталей/плям, яскравість).
 
 ## Етапи (початковий план)
 
