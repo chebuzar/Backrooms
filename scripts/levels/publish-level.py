@@ -9,7 +9,8 @@ gltfpack = os.path.join('node_modules', '.bin', 'gltfpack')
 for c in man['chunks']:
     g_in, g_out = os.path.join(src, c['glb']), os.path.join(dst, c['glb'])
     # -noq: без квантування (UV у метрах виходять за 0..1, точність потрібна для карти світла); -cc: Meshopt
-    subprocess.run([gltfpack, '-i', g_in, '-o', g_out, '-cc', '-noq', '-km', '-kn'], check=True, stdout=subprocess.DEVNULL)
+    # -kv: зберегти UV0/UV1, хоча матеріали-заглушки їх не використовують (інакше зникають розгортки)
+    subprocess.run([gltfpack, '-i', g_in, '-o', g_out, '-cc', '-noq', '-kv', '-km', '-kn'], check=True, stdout=subprocess.DEVNULL)
     lm_out = c['lm'].replace('.png', '.ktx2')
     subprocess.run(['toktx', '--t2', '--genmipmap', '--assign_oetf', 'linear', '--encode', 'uastc', '--uastc_quality', '2', '--zcmp', '18',
                     os.path.join(dst, lm_out), os.path.join(src, c['lm'])], check=True)

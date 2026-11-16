@@ -23,7 +23,7 @@ export const look = {
   bloomThreshold: uniform(1.05),
   grain: uniform(0.022),
   vignette: uniform(0.42),
-  aberration: uniform(0.0025),
+  aberration: uniform(0.0014),
   distortion: uniform(0.06),
   saturation: uniform(1.0),
   /** Подих страху: посилює аберацію, віньєтку й зерно (0..1). */

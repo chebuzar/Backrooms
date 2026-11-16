@@ -25,7 +25,16 @@ export class Seam {
     plane.position.set(0, height * 0.46, 0);
     plane.renderOrder = 5;
     this.group.add(plane);
-    this.light = new THREE.PointLight(0x9fd0ff, 2.2, 7, 2);
+    // холодна «паморозь» довкола розрізу: на жовтій стіні — блакитна пляма, ніби тут холодніше
+    const frostMat = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
+    const fu = uv().sub(0.5).mul(vec3(1.0, 0.55, 1).xy);
+    const fr = fu.length();
+    frostMat.colorNode = vec3(0.12, 0.28, 0.5).mul(smoothstep(0.5, 0.0, fr)).mul(sin(time.mul(0.6)).mul(0.1).add(0.9));
+    const frost = new THREE.Mesh(new THREE.PlaneGeometry(2.4, height * 0.95), frostMat);
+    frost.position.set(0, height * 0.47, -0.002);
+    frost.renderOrder = 4;
+    this.group.add(frost);
+    this.light = new THREE.PointLight(0x8fc4ff, 3.2, 8, 2);
     this.light.position.set(0, height * 0.5, 0.25);
     this.group.add(this.light);
     this.group.position.set(x, 0, z);
@@ -33,6 +42,6 @@ export class Seam {
   }
 
   update(t: number): void {
-    this.light.intensity = (2.0 + Math.sin(t * 0.9) * 0.3 + (Math.sin(t * 13.7) > 0.97 ? 1.2 : 0)) * (1 + this.open.value * 3);
+    this.light.intensity = (3.0 + Math.sin(t * 0.9) * 0.4 + (Math.sin(t * 13.7) > 0.97 ? 1.2 : 0)) * (1 + this.open.value * 3);
   }
 }

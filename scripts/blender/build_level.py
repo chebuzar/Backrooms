@@ -165,17 +165,21 @@ def build_chunk(ix, iz):
     for w in L["walls"]:
         x0, x1 = w["x"] - w["w"] / 2, w["x"] + w["w"] / 2
         z0, z1 = w["z"] - w["d"] / 2, w["z"] + w["d"] / 2
-        # обрізати блок межами шматка
-        X0, X1, Z0, Z1 = max(x0, cx0), min(x1, cx1), max(z0, cz0), min(z1, cz1)
+        # обрізати блок межами шматка; зовнішні стіни лежать за краєм карти — для крайових шматків межу розширюємо
+        ex0 = cx0 - 0.5 if cx0 <= 1e-6 else cx0
+        ex1 = cx1 + 0.5 if cx1 >= W - 1e-6 else cx1
+        ez0 = cz0 - 0.5 if cz0 <= 1e-6 else cz0
+        ez1 = cz1 + 0.5 if cz1 >= D - 1e-6 else cz1
+        X0, X1, Z0, Z1 = max(x0, ex0), min(x1, ex1), max(z0, ez0), min(z1, ez1)
         if X1 - X0 <= 1e-4 or Z1 - Z0 <= 1e-4:
             continue
         along_x = w["w"] >= w["d"]
         if along_x:
-            add_box_sides(mb, X0, X1, Z0, Z1, BASE_H, H, "wall", (True, True), (cx0, cx1, cz0, cz1))
-            add_box_sides(mb, X0 - BASE_T, X1 + BASE_T, Z0 - BASE_T, Z1 + BASE_T, 0, BASE_H, "base", (True, True), (cx0, cx1, cz0, cz1))
+            add_box_sides(mb, X0, X1, Z0, Z1, BASE_H, H, "wall", (True, True), (ex0, ex1, ez0, ez1))
+            add_box_sides(mb, X0 - BASE_T, X1 + BASE_T, Z0 - BASE_T, Z1 + BASE_T, 0, BASE_H, "base", (True, True), (ex0, ex1, ez0, ez1))
         else:
-            add_box_sides_x(mb, X0, X1, Z0, Z1, BASE_H, H, "wall", (cx0, cx1, cz0, cz1))
-            add_box_sides_x(mb, X0 - BASE_T, X1 + BASE_T, Z0 - BASE_T, Z1 + BASE_T, 0, BASE_H, "base", (cx0, cx1, cz0, cz1))
+            add_box_sides_x(mb, X0, X1, Z0, Z1, BASE_H, H, "wall", (ex0, ex1, ez0, ez1))
+            add_box_sides_x(mb, X0 - BASE_T, X1 + BASE_T, Z0 - BASE_T, Z1 + BASE_T, 0, BASE_H, "base", (ex0, ex1, ez0, ez1))
         # верх плінтуса
         bx0, bx1, bz0, bz1 = X0 - BASE_T, X1 + BASE_T, Z0 - BASE_T, Z1 + BASE_T
         mb.quad([P(bx0, BASE_H, bz1), P(bx1, BASE_H, bz1), P(bx1, BASE_H, bz0), P(bx0, BASE_H, bz0)], [(bx0, bz1), (bx1, bz1), (bx1, bz0), (bx0, bz0)], "base")
