@@ -9,6 +9,7 @@ import { Lamps } from './lamps';
 import { Seam } from './seam';
 import { decorate } from './decor';
 import { buildDecals } from './decals';
+import { Doors } from './doors';
 
 export const LEVEL0_SEED = 1987;
 
@@ -24,6 +25,7 @@ export interface Level {
   flashlight: THREE.SpotLight;
   /** Місця сюжетних предметів (центр, на який дивитися). */
   spots: Record<string, PropSpot>;
+  doors: Doors;
   update(t: number, dt: number, camera: THREE.Camera): void;
 }
 
@@ -90,14 +92,17 @@ export async function buildLevel0(assets: Assets, physics: Physics, onProgress: 
   scene.add(seam.group);
 
   // сліди часу: підтьоки, бруд, плями (атлас справжніх декалей, змішування множенням)
-  scene.add(buildDecals(layout, decorate(layout), tex.decals));
+  const decor = decorate(layout);
+  scene.add(buildDecals(layout, decor, tex.decals));
+  const doors = new Doors(layout, decor, physics, tex);
+  scene.add(doors.group);
 
   const spots = await placeProps(assets, physics, layout, scene);
   onProgress(1);
 
   return {
-    scene, layout, lamps, flashlight, seam, spots,
-    update(t) { lamps.update(t); seam.update(t); }
+    scene, layout, lamps, flashlight, seam, spots, doors,
+    update(t, dt) { lamps.update(t); seam.update(t); doors.update(dt); }
   };
 }
 

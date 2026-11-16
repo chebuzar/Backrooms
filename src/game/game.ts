@@ -11,7 +11,7 @@ import { Player } from './player';
 import { CameraRig } from './camera-rig';
 import { Input } from '../input/input';
 import { AudioEngine, type SpatialVoice } from '../audio/audio';
-import { humLoop, footstepCarpet, typeClick, paperRustle, seamDrone } from '../audio/synth';
+import { humLoop, footstepCarpet, typeClick, paperRustle, seamDrone, scrape } from '../audio/synth';
 import { HUD } from '../ui/hud';
 import { Ambience } from './ambience';
 import { Interactions } from './interact';
@@ -58,6 +58,7 @@ export class Game {
   private humVoices: { voice: SpatialVoice; lamp: number }[] = [];
   private humT = 0;
   private dimT = 0;
+  private creak: AudioBuffer | null = null;
   flashlightOn = false;
   hud!: HUD;
   readonly ambience = new Ambience(this.audio);
@@ -218,6 +219,21 @@ export class Game {
     docSpot('note1');
     const sp = lvl.seam.group.position;
     this.interact.add({ id: 'seam', x: sp.x, y: 1.3, z: sp.z, reach: 1.7, prompt: HINTS.enterSeam, enabled: true, use: () => void this.enterSeam() });
+    // двері: по точці взаємодії з кожного боку прорізу; підказка міняється з відчинено/зачинено
+    for (const d of lvl.doors.list) {
+      d.sides.forEach(([x, y, z], i) => {
+        const doors = lvl.doors;
+        this.interact.add({ id: `${d.id}-${i}`, x, y, z, reach: 1.7, enabled: true,
+          get prompt() { return d.target > 0.1 ? HINTS.doorShut : HINTS.doorOpen; }, use: () => doors.toggle(d) });
+      });
+    }
+    lvl.doors.onMove = (d) => {
+      const ctx = this.audio.ctx;
+      if (!ctx) return;
+      this.creak ??= scrape(ctx, 7);
+      const p = d.pivot.position;
+      this.audio.play3D(this.creak, p.x, 1.2, p.z, { gain: 0.55, rate: 0.55 + Math.random() * 0.15, ref: 2, wet: 0.35 });
+    };
   }
 
   private readDoc(id: keyof typeof DOCS, after?: () => void): void {

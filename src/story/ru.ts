@@ -62,7 +62,9 @@ export const HINTS = {
   take: 'Взять',
   read: 'Читать',
   close: 'Закрыть',
-  enterSeam: 'Пройти'
+  enterSeam: 'Пройти',
+  doorOpen: 'Открыть',
+  doorShut: 'Закрыть'
 };
 
 export const LEVEL_END = {

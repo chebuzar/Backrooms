@@ -33,9 +33,9 @@ const liveDim = Fn(() => {
 
 
 type Tex = THREE.Texture;
-const TEX = ['wall_c', 'wall_n', 'wall_r', 'wall2_c', 'dmg_c', 'mold', 'ceil_c', 'ceil_n', 'ceil_ar', 'carpet_c', 'carpet_n', 'carpet_r', 'decals'] as const;
+const TEX = ['wall_c', 'wall_n', 'wall_r', 'wall2_c', 'dmg_c', 'mold', 'ceil_c', 'ceil_n', 'ceil_ar', 'carpet_c', 'carpet_n', 'carpet_r', 'decals', 'door_c', 'door_n'] as const;
 export type Level0Textures = Record<(typeof TEX)[number], Tex>;
-const SRGB = new Set(['wall_c', 'wall2_c', 'dmg_c', 'mold', 'ceil_c', 'carpet_c', 'decals']);
+const SRGB = new Set(['wall_c', 'wall2_c', 'dmg_c', 'mold', 'ceil_c', 'carpet_c', 'decals', 'door_c']);
 
 export async function loadLevel0Textures(a: Assets): Promise<Level0Textures> {
   const list = await Promise.all(TEX.map((n) => a.texture(`assets/tex/level0/${n}.ktx2`)));

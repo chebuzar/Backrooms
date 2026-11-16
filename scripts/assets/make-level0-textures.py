@@ -137,3 +137,11 @@ with tempfile.TemporaryDirectory() as td:
     png = os.path.join(td, 'decals.png')
     Image.fromarray((atlas * 255 + 0.5).astype(np.uint8)).save(png)
     encode(png, 'decals', 'uastc', True)
+
+# --- двері: стара фарбована фанера (ambientCG PaintedWood004) — перефарбовано у вицвілу кремову, облуплення лишаються
+pw = load(f'{A}/PaintedWood004/PaintedWood004_1K-JPG_Color.jpg', 1024)
+paint_mask = norm01(pw[..., 1] - pw[..., 0])  # світло-зелена фарба vs коричневе дерево під нею
+door = srgb(0.70, 0.66, 0.56)[None, None, :] * paint_mask[..., None] * (0.92 + 0.16 * norm01(lum(pw)))[..., None] \
+    + srgb(0.36, 0.27, 0.18)[None, None, :] * (1 - paint_mask[..., None])
+save('door_c', door, 'etc1s', True, 1024)
+save('door_n', load(f'{A}/PaintedWood004/PaintedWood004_1K-JPG_NormalGL.jpg', 1024), 'etc1s', False, 512)
