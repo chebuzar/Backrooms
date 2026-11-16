@@ -13,6 +13,7 @@ import { Input } from '../input/input';
 import { AudioEngine, type SpatialVoice } from '../audio/audio';
 import { humLoop, footstepCarpet, typeClick, paperRustle, seamDrone } from '../audio/synth';
 import { SoundBank } from '../audio/bank';
+import { Figure } from '../world/monsters/figure';
 import { HUD } from '../ui/hud';
 import { Ambience } from './ambience';
 import { Interactions } from './interact';
@@ -61,6 +62,8 @@ export class Game {
   private dimT = 0;
   /** Записані звуки (CC0): кроки, двері, папір, ліхтарик, тканина, удари, фон. */
   readonly sfx = new SoundBank();
+  /** «Фигура» рівня 0 (лише присутність). */
+  figure: Figure | null = null;
   flashlightOn = false;
   /** Заряд батареї ліхтарика 0..1 (≈ 12 хв світла); на низькому заряді світло блимає. */
   battery = 1;
@@ -101,6 +104,18 @@ export class Game {
     this.physics = await Physics.create();
     this.assets = new Assets(this.gfx.renderer);
     const lvl = await buildLevel0(this.assets, this.physics, onProgress);
+    try {
+      const gl = await this.assets.model('assets/models/figure.glb');
+      this.figure = new Figure(gl.scene, lvl.layout, this.physics, lvl.lamps, {
+        onVanish: (x, z, seen) => {
+          // коротка «оплата» напруги: глухий удар там, де вона стояла, і здригання камери, якщо гравець її бачив
+          const hit = this.sfx.pick('hit_');
+          if (hit) this.audio.play3D(hit, x, 1.5, z, { gain: seen ? 0.55 : 0.25, ref: 4, wet: 0.6, rate: 0.85 });
+          if (seen) { this.rig.shake = Math.max(this.rig.shake, 0.6); look.fear.value = Math.min(1, look.fear.value + 0.5); }
+        }
+      });
+      lvl.scene.add(this.figure.root);
+    } catch { /* без моделі гра йде без Фигуры */ }
     this.level = lvl;
     this.setScene(lvl.scene);
     const s = lvl.layout.spawn;
@@ -366,6 +381,8 @@ export class Game {
     this.cameraOverride?.(this.camera, dt);
     if (lvl) {
       lvl.update(this.time, dt, this.camera);
+      this.figure?.update(dt, this.camera, this.mode === 'play');
+      look.fear.value = Math.max(0, look.fear.value - dt * 0.12);
       // живе згасання запеченого світла біля ламп, що мерехтять/згасли (оновлюємо кілька разів на секунду — дешево)
       this.dimT -= dt;
       if (this.dimT <= 0) { this.dimT = 0.05; lvl.lamps.fillDeficits(this.camera.position.x, this.camera.position.z, lampDeficits.array as THREE.Vector4[]); }

@@ -19,6 +19,7 @@
 - `models/wetsign.glb` — «Wet Floor Sign 01» — Fran Calvente, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/WetFloorSign_01
 - `models/ammo.glb` — «Ammo Box» — DanKit, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/ammo_box
 - `models/cigs.glb` — «Cigarette Pack» — Ulrich Büch, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/cigarette_pack
+- `models/old-gas-mask.glb` — «Old Gas Mask» — Michał Wiśniewski, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/old_gas_mask
 
 ## Текстури Poly Haven
 
