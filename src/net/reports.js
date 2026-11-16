@@ -1,12 +1,10 @@
 // «Каждый игрок — тестировщик»: анонимные отчёты о работе игры и сообщения об ошибках.
 // Без личных данных: только устройство (платформа, видеочип), настройки графики, скорость кадров, рывки,
 // ошибки страницы, где в игре это случилось. Игрок может выключить отправку в настройках.
-// Пока сервер не настроен (REPORT_URL пуст), отчёты копятся локально (до 30) и уйдут, когда он появится.
+// Без связи отчёты копятся локально (до 30) и уйдут, когда она появится. Приёмник — сервер игры (server/).
+import { SERVER, LIVE_REPORTS } from './config.js';
 
-const CFG = {
-  url: (import.meta.env && import.meta.env.VITE_REPORT_URL) || '',     // адрес приёмника отчётов
-  key: (import.meta.env && import.meta.env.VITE_REPORT_KEY) || ''      // публичный ключ (если нужен)
-};
+const CFG = { url: LIVE_REPORTS ? SERVER : '', key: '' };
 const QKEY = 'zk_reports_q';
 const VERSION = (import.meta.env && import.meta.env.VITE_BUILD) || 'dev';
 

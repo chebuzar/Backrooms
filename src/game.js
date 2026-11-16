@@ -21,6 +21,9 @@ import { makeWrist, poseWrist, drawRadar } from './world/wrist.js';
 import { createMinimap, drawMinimap, trackTrail, resetMinimap } from './ui/minimap.js';
 import { playCutscene } from './ui/cutscene.js';
 import { frameStatsReset, frameStat, sendPerf, sendBug, reportsConfigured } from './net/reports.js';
+import { account, auth, logout as accLogout, pull as accPull, pushLater, pushNow, mergeSave, syncState, onSync } from './net/account.js';
+import { pushState, pushEnable, pushDisable } from './net/push.js';
+import { getLang } from './i18n/index.js';
 import { makeDust, updateDust } from './render/dust.js';
 import { preloadMonsters, makeMonsterMesh } from './world/monster-models.js';
 import { updateLockers } from './world/lockers.js';
@@ -40,7 +43,7 @@ const SAVE = Object.assign({ max: -1, cont: 0, notes: [], ach: [], anom: [], doc
 if (!Array.isArray(SAVE.docs)) SAVE.docs = [];
 if (!Array.isArray(SAVE.anom)) SAVE.anom = [];
 SAVE.set = Object.assign({}, DEF, SAVE.set || {});
-const persist = () => store.save(SAVE);
+const persist = () => { store.save(SAVE); pushLater(SAVE); };
 
 // ---------- рендер ----------
 const canvas = $('c');
@@ -1429,7 +1432,7 @@ async function showEnding() {
 // ---------- меню и экраны ----------
 const show = (id) => $(id).classList.add('on');
 const hide = (id) => $(id).classList.remove('on');
-const PANELS = ['menu', 'settings', 'journal', 'ach', 'help', 'about', 'pause', 'dead', 'ending', 'reader', 'prologue', 'levels', 'online', 'chatBox', 'bug'];
+const PANELS = ['menu', 'settings', 'journal', 'ach', 'help', 'about', 'pause', 'dead', 'ending', 'reader', 'prologue', 'levels', 'online', 'chatBox', 'bug', 'account'];
 function hideAllPanels() { PANELS.forEach(hide); }
 function showHUD() { show('hud'); show('controls'); hudStatic(); }
 function hideHUD() { hide('hud'); hide('controls'); input.joyId = null; input.lookId = null; joyReset(); }
@@ -1437,6 +1440,7 @@ let backTo = 'menu';
 function openPanel(id, from) { backTo = from; hide(from); render(id); show(id); }
 function render(id) {
   if (id === 'settings') syncSettings();
+  if (id === 'account') renderAccount();
   if (id === 'levels') renderLevels();
   if (id === 'online') { if (!game.coop) { $('onStart').hidden = false; $('onRoom').hidden = true; status(''); } else renderRoom(); }
   if (id === 'journal') {
@@ -1512,6 +1516,7 @@ function refreshMenu() {
   $('contSub').textContent = SAVE.cont > 0 ? `уровень ${SAVE.cont}` : '';
   $('subNotes').textContent = `${SAVE.notes.length}/${NOTES.length}`;
   $('subAch').textContent = `${SAVE.ach.length}/${ACH.length}`;
+  { const a = account(); $('subAcc').textContent = a ? a.name : tr('acc.guest'); }
   $('verRec').textContent = SAVE.max >= 0 ? `рекорд: уровень ${SAVE.max}` : 'рекорда пока нет';
 }
 function toMenu() {
@@ -1555,7 +1560,10 @@ function syncSettings() {
   const s = SAVE.set;
   $('sSens').value = s.sens; $('vSens').textContent = Number(s.sens).toFixed(1);
   $('sVol').value = s.vol; $('vVol').textContent = s.vol;
-  for (const [id, v] of [['segQ', s.q], ['segD', s.diff], ['segV', s.vib ? '1' : '0'], ['segR', s.rep === false ? '0' : '1']]) $(id).querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.v === v));
+  const ps = pushState();
+  $('pushHint').textContent = ps === 'on' || ps === 'off' ? tr('push.hint') : tr({ 'ios-install': 'push.ios', denied: 'push.denied', unsupported: 'push.unsup' }[ps]);
+  $('segN').classList.toggle('dis', ps !== 'on' && ps !== 'off');
+  for (const [id, v] of [['segQ', s.q], ['segD', s.diff], ['segV', s.vib ? '1' : '0'], ['segR', s.rep === false ? '0' : '1'], ['segN', ps === 'on' ? '1' : '0']]) $(id).querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.v === v));
   // что определилось: «Устройство: Apple · мощное. Авто = Ультра»
   const di = $('devInfo');
   if (di) {
@@ -1567,6 +1575,12 @@ window.addEventListener('langchange', () => syncSettings());
 $('sSens').addEventListener('input', (e) => { SAVE.set.sens = +e.target.value; persist(); syncSettings(); });
 $('sVol').addEventListener('input', (e) => { SAVE.set.vol = +e.target.value; sound.setVol(SAVE.set.vol / 100); persist(); syncSettings(); });
 $('segR').addEventListener('click', (e) => { const v = e.target.dataset.v; if (!v) return; SAVE.set.rep = v === '1'; persist(); syncSettings(); });
+$('segN').addEventListener('click', async (e) => {
+  const v = e.target.dataset.v; if (!v) return;
+  const r = v === '1' ? await pushEnable(getLang()) : await pushDisable();
+  toast(tr({ on: 'push.on', off: 'push.off', denied: 'push.denied', unsupported: 'push.unsup', 'ios-install': 'push.ios' }[r] || 'push.err'));
+  syncSettings();
+});
 $('segQ').addEventListener('click', (e) => { const v = e.target.dataset.v; if (!v) return; SAVE.set.q = v; persist(); applyQuality(); syncSettings(); });
 $('segD').addEventListener('click', (e) => { const v = e.target.dataset.v; if (!v) return; SAVE.set.diff = v; persist(); syncSettings(); });
 $('segV').addEventListener('click', (e) => { const v = e.target.dataset.v; if (!v) return; SAVE.set.vib = v === '1'; persist(); syncSettings(); vib(30); });
@@ -1712,7 +1726,7 @@ if (TOUCH_EV) {
 }
 addEventListener('keydown', (e) => {
   input.keys[e.code] = true;
-  if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT')) { input.keys[e.code] = false; return; }
+  if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA')) { input.keys[e.code] = false; return; }
   if (e.code === 'Escape' && game.kpOpen) { closeKeypad(); return; }
   if (e.code === 'Escape') {
     if (game.mode === 'reading' || (game.overlay && $('reader').classList.contains('on'))) closeNote();
@@ -2130,6 +2144,47 @@ $('bugSend').addEventListener('click', async () => {
   toast(reportsConfigured() && navigator.onLine ? tr('bug.thanks') : tr('bug.queued'));
   openPanel('pause', 'bug');
 });
+
+// ---------- аккаунт: имя + пароль, облачное сохранение (src/net/account.js, сервер — server/) ----------
+const accMsg = (k, err) => { const m = $('accMsg'); m.textContent = k ? tr(k) : ''; m.classList.toggle('err', !!err); };
+const syncLabel = (st) => tr({ saving: 'acc.syncing', offline: 'acc.offline', expired: 'acc.e.expired' }[st] || 'acc.synced');
+function renderAccount() {
+  const a = account();
+  $('accForm').hidden = !!a; $('accIn').hidden = !a;
+  if (a) { $('accWho').textContent = a.name; $('accSync').textContent = syncLabel(syncState()); }
+  refreshMenu();
+}
+onSync((st) => {
+  if (st === 'expired') toast(tr('acc.e.expired'));
+  if ($('account').classList.contains('on')) renderAccount(); else if (st === 'expired') refreshMenu();
+});
+// облако ↔ это устройство: объединить без потерь (всё найденное из обоих) и сохранить обе копии
+async function cloudMerge() {
+  const cloud = await accPull();
+  if (cloud === false) return false;
+  const merged = mergeSave(JSON.parse(JSON.stringify(SAVE)), cloud);
+  for (const k of Object.keys(merged)) SAVE[k] = merged[k];
+  store.save(SAVE); pushLater(SAVE); await pushNow();
+  refreshMenu();
+  return true;
+}
+async function doAuth(kind) {
+  const name = $('accName').value.trim(), pass = $('accPass').value;
+  if (name.length < 3) return accMsg('acc.e.name', true);
+  if (pass.length < 6) return accMsg('acc.e.password', true);
+  sound.ui(); $('accLogin').disabled = $('accReg').disabled = true; accMsg('acc.syncing');
+  const r = await auth(kind, name, pass);
+  $('accLogin').disabled = $('accReg').disabled = false;
+  if (!r.ok) return accMsg('acc.e.' + (['name', 'password', 'taken', 'wrong', 'slow'].includes(r.err) ? r.err : 'net'), true);
+  $('accPass').value = ''; accMsg('');
+  await cloudMerge();
+  toast(tr(kind === 'register' ? 'acc.ok.reg' : 'acc.ok.in'));
+  renderAccount();
+}
+$('accForm').addEventListener('submit', (e) => { e.preventDefault(); doAuth('login'); });
+$('accReg').addEventListener('click', () => doAuth('register'));
+$('accOut').addEventListener('click', async () => { sound.ui(); await accLogout(); renderAccount(); });
+if (account()) cloudMerge();
 
 // ---------- панель замеров (?perf в адресе) ----------
 // Показывает на реальном устройстве, на что уходит время кадра: логика игры, отправка кадра в видеочип,

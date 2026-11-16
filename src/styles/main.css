@@ -54,8 +54,11 @@ button:focus-visible{outline:2px solid var(--lamp);outline-offset:2px}
   .mwrap{flex-direction:row;align-items:center;width:100%;max-width:920px;gap:32px}
   .brand{flex:1}
   .mlist{flex:0 0 310px}
-  .mlist button{padding:7px 12px;font-size:13px}
+  .mwrap{padding-top:calc(10px + var(--st));padding-bottom:calc(10px + var(--sb))}
+  .mlist{max-height:100%;overflow:auto}
+  .mlist button{padding:clamp(4px,calc((100dvh - 300px) / 22),7px) 12px;font-size:13px}
   .tag{display:none}
+  .ver{right:auto;left:calc(28px + var(--sl))}
 }
 
 .panel{z-index:22;align-items:center;justify-content:center;padding:calc(10px + var(--st)) calc(10px + var(--sr)) calc(10px + var(--sb)) calc(10px + var(--sl));background:rgba(4,3,1,.74);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
@@ -271,3 +274,13 @@ body.nohud #hud, body.nohud #controls, body.nohud #toasts, body.nohud #obj{visib
 /* сообщение об ошибке */
 #bugText{width:100%;box-sizing:border-box;min-height:110px;background:#0d0b07;color:var(--ink);border:1px solid #5a503a;border-radius:4px;padding:10px;font:inherit;font-size:15px;resize:vertical}
 #bug .pbox{display:flex;flex-direction:column;gap:12px}
+
+/* аккаунт */
+.accf[hidden]{display:none}
+.accf{display:flex;flex-direction:column;gap:12px;margin-top:6px}
+.accf .inp{flex:none;width:100%;box-sizing:border-box;font-size:16px}
+.accf .row{gap:10px;flex-wrap:wrap}
+.accwho{font-size:18px;margin:4px 0}
+.accwho b{color:var(--lamp);font-weight:600}
+#accMsg:empty{display:none}
+#accMsg.err{color:#e0806a}

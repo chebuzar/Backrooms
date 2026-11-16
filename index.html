@@ -46,6 +46,7 @@ setTimeout(function(){if(!window.__zkReady)window.__zkFail(window.__zkT?window._
       <button data-go="levels" type="button"><span data-i18n="menu.levels">Уровни</span> <span class="sub" data-i18n="menu.levelsSub">выбор</span></button>
       <button data-go="journal" type="button"><span data-i18n="menu.journal">Журнал</span> <span class="sub" id="subNotes"></span></button>
       <button data-go="ach" type="button"><span data-i18n="menu.ach">Достижения</span> <span class="sub" id="subAch"></span></button>
+      <button data-go="account" type="button"><span data-i18n="menu.account">Аккаунт</span> <span class="sub" id="subAcc"></span></button>
       <button data-go="settings" type="button" data-i18n="menu.settings">Настройки</button>
       <button data-go="help" type="button" data-i18n="menu.help">Как играть</button>
       <button data-go="about" type="button" data-i18n="menu.about">Об игре</button>
@@ -63,7 +64,9 @@ setTimeout(function(){if(!window.__zkReady)window.__zkFail(window.__zkT?window._
     <span class="lbl" data-i18n="set.diff">Сложность</span><div class="seg" id="segD"><button type="button" data-v="easy" data-i18n="set.d.easy">Лёгкая</button><button type="button" data-v="normal" data-i18n="set.d.normal">Обычная</button><button type="button" data-v="nightmare" data-i18n="set.d.nightmare">Кошмар</button></div>
     <span class="lbl" data-i18n="set.vib">Вибрация</span><div class="seg" id="segV"><button type="button" data-v="1" data-i18n="set.on">Вкл</button><button type="button" data-v="0" data-i18n="set.off">Выкл</button></div>
     <span class="lbl" data-i18n="set.rep">Отчёты о работе игры</span><div class="seg" id="segR"><button type="button" data-v="1" data-i18n="set.on">Вкл</button><button type="button" data-v="0" data-i18n="set.off">Выкл</button></div>
+    <span class="lbl" data-i18n="set.push">Уведомления о больших обновлениях</span><div class="seg" id="segN"><button type="button" data-v="1" data-i18n="set.on">Вкл</button><button type="button" data-v="0" data-i18n="set.off">Выкл</button></div>
   </div>
+  <p class="hint" id="pushHint"></p>
   <p class="hint dev" id="devInfo"></p>
   <p class="hint" data-i18n="set.hint">Если игра тормозит, поставь графику «Низкая». Сложность меняется со следующего уровня.</p>
 </div></div>
@@ -134,6 +137,23 @@ setTimeout(function(){if(!window.__zkReady)window.__zkFail(window.__zkT?window._
     <p data-i18n="about.p1">«Закулисье» — небольшой хоррор о бесконечных жёлтых комнатах. Модели, текстуры, свет и звуки созданы кодом прямо в браузере, поэтому каждый лабиринт новый.</p>
     <p data-i18n="about.p2">10 уровней: от жёлтых комнат до бассейнов, цирка и склада, концовка, бесконечный режим и игра с друзьями онлайн с голосовым чатом.</p>
     <p style="color:var(--dim)" id="wLine"><span data-w="a" data-i18n="about.w.a">Иногда</span> <span data-w="s" data-i18n="about.w.s">стены</span> <span data-w="p" data-i18n="about.w.p">помнят</span> <span data-w="i" data-i18n="about.w.i">имена</span>.</p>
+  </div>
+</div></div>
+
+<div id="account" class="layer panel"><div class="pbox narrow">
+  <header><h2 data-i18n="acc.title">Аккаунт</h2><button class="back" type="button" data-i18n="common.back">Назад</button></header>
+  <form id="accForm" class="accf" autocomplete="on">
+    <p class="hint" data-i18n="acc.why">Войди, чтобы прогресс хранился в облаке.</p>
+    <input id="accName" class="inp" name="username" maxlength="20" autocomplete="username" autocapitalize="off" spellcheck="false" data-i18n-attr="placeholder:acc.name" placeholder="Имя (3–20 символов)">
+    <input id="accPass" class="inp" name="password" type="password" maxlength="100" autocomplete="current-password" data-i18n-attr="placeholder:acc.pass" placeholder="Пароль (от 6 символов)">
+    <div class="row left"><button id="accLogin" class="btn primary" type="submit" data-i18n="acc.login">Войти</button><button id="accReg" class="btn" type="button" data-i18n="acc.reg">Создать аккаунт</button></div>
+    <p class="hint" id="accMsg" aria-live="polite"></p>
+    <p class="hint" data-i18n="acc.note">Пароль хранится в зашифрованном виде.</p>
+  </form>
+  <div id="accIn" class="accf" hidden>
+    <p class="accwho"><span data-i18n="acc.as">Ты вошёл как</span> <b id="accWho"></b></p>
+    <p class="hint" id="accSync" aria-live="polite"></p>
+    <div class="row left"><button id="accOut" class="btn" type="button" data-i18n="acc.logout">Выйти из аккаунта</button></div>
   </div>
 </div></div>
 

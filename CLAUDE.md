@@ -107,6 +107,13 @@ npm run shot -- --level 4 --eval "__zk.look(1.57)" # довільний JS пе�
 - Коміти — англійською, атомарні, з поясненням «чому».
 - Не комітити `.shots/`, `dist/`, `node_modules/`.
 
+## Сервер гри (`server/`, хостинг Ample — акаунт власника)
+
+- Один файл `server/server.mjs` (Node 22, `pg`, `web-push`), керована Postgres від Ample. Адреса — `src/net/config.js` (`SERVER`). Розгортання: workspace Ample → `ample_deploy` (змінні `ADMIN_KEY`, `VAPID_PUBLIC`, `VAPID_PRIVATE` зберігаються в Ample; **у git не класти**; якщо ключа адміна немає — згенерувати новий і передеплоїти з `env`).
+- Що вміє: `/auth/register|login|logout` (ім'я 3–20 + пароль ≥6, scrypt), `/save` GET/PUT (хмарна копія `SAVE`; клієнт `src/net/account.js` об'єднує без втрат: списки — об'єднання, рівні — максимум, налаштування — з пристрою), `/perf` і `/bugs` (звіти гравців, `src/net/reports.js`), `/push/subscribe|unsubscribe`, `/admin/reports` і `/admin/delete` (заголовок `x-admin-key`).
+- Автотести (Playwright → `navigator.webdriver`) і dev-сервер **не** шлють звіти на справжній сервер (`LIVE_REPORTS`), хіба `?reports`.
+- **Сповіщення — лише великі релізи**: планова задача Ample `release-check` кожні 15 хв викликає `POST /tasks/release`; сервер читає `public/release.json` з `main` і розсилає push, тільки коли змінився `id`. Тому `id` у `release.json` міняти **лише після завершення всього плану робіт** (рішення власника), не при дрібних оновленнях. Сервіс-воркер `public/sw.js` лише показує сповіщення (не кешує). На iPhone/iPad push працює тільки з гри, доданої «На екран Додому».
+
 ## Деплой
 
 Push у `main` → `.github/workflows/deploy.yml`: lint → build (`BASE_PATH=/Backrooms/`) → smoke (Chromium + WebKit) → GitHub Pages.
