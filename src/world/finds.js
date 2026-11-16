@@ -315,9 +315,10 @@ function buildFinds(lvl, list, seed, glowTex) {
   out.textures = ['foil', 'flag', 'paper', 'screen', 'soda'].map((k) => mats[k]);
   for (const f of list) {
     const b = BUILD[f.kind](r, mats);
-    // высокие модели ужимаются под потолок уровня (карусель и модуль в 2,7-метровых комнатах)
-    if (b.height && lvl.HH && b.height > lvl.HH - 0.12) {
-      const k = (lvl.HH - 0.12) / b.height; b.group.scale.setScalar(k); b.radius *= k;
+    // высокие модели ужимаются под потолок в своём месте (в 9-метровом атриуме — в полный рост)
+    const ceil = lvl.ceilAt ? lvl.ceilAt((f.tx + 0.5) * S, (f.ty + 0.5) * S) : lvl.HH;
+    if (b.height && ceil && b.height > ceil - 0.12) {
+      const k = (ceil - 0.12) / b.height; b.group.scale.setScalar(k); b.radius *= k;
       b.colliders = b.colliders.map(([cx, cz, cr]) => [cx * k, cz * k, cr * k]);
     }
     const x = (f.tx + 0.5) * S, z = (f.ty + 0.5) * S;

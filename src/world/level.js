@@ -406,15 +406,16 @@ function genGrid(th, level, seed, o = {}) {
 
 // ---------------------------------------------------------------------------
 class GB {
-  constructor() { this.pos = []; this.nor = []; this.uv = []; this.bk = []; this.idx = []; this.vc = 0; }
-  grid(o, u, v, n, us, vs, uvf, bakef) {
+  constructor() { this.pos = []; this.nor = []; this.uv = []; this.bk = []; this.ch = []; this.idx = []; this.vc = 0; }
+  // ch — высота потолка над этой гранью (для копоти под потолком); 0 — общая высота уровня
+  grid(o, u, v, n, us, vs, uvf, bakef, ch = 0) {
     const base = this.vc, out = [0, 0, 0];
     for (let j = 0; j < vs.length; j++) for (let i = 0; i < us.length; i++) {
       const fu = us[i], fv = vs[j];
       const x = o[0] + u[0] * fu + v[0] * fv, y = o[1] + u[1] * fu + v[1] * fv, z = o[2] + u[2] * fu + v[2] * fv;
       this.pos.push(x, y, z); this.nor.push(n[0], n[1], n[2]);
       const t = uvf(fu, fv, x, y, z); this.uv.push(t[0], t[1]);
-      bakef(x, y, z, n, out); this.bk.push(out[0], out[1], out[2]);
+      bakef(x, y, z, n, out); this.bk.push(out[0], out[1], out[2]); this.ch.push(ch);
       this.vc++;
     }
     const nu = us.length;
@@ -430,6 +431,7 @@ class GB {
     g.setAttribute('normal', new THREE.Float32BufferAttribute(this.nor, 3));
     g.setAttribute('uv', new THREE.Float32BufferAttribute(this.uv, 2));
     g.setAttribute('bake', new THREE.Float32BufferAttribute(this.bk, 3));
+    g.setAttribute('chh', new THREE.Float32BufferAttribute(this.ch, 1));
     g.setIndex(this.idx);
     g.computeBoundingSphere();
     return g;
@@ -538,11 +540,11 @@ function pbrMat(s, uni = BAKE, hh = H, dense = false) {
     sh.uniforms.uDense = { value: dense ? 1 : 0 }; sh.uniforms.uLampE = LAMPE;
     sh.uniforms.uPat = { value: s.pat || 0 }; sh.uniforms.uPatT = { value: s.pat ? wallpaperPattern() : grimeTex() };
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nattribute vec3 bake;\nvarying vec3 vBake;\nvarying vec3 vWP;\nvarying vec3 vWN;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\n\tvBake = bake; vWP = (modelMatrix * vec4(position, 1.0)).xyz; vWN = normal;');
+      .replace('#include <common>', '#include <common>\nattribute vec3 bake;\nattribute float chh;\nvarying vec3 vBake;\nvarying vec3 vWP;\nvarying vec3 vWN;\nvarying float vCH;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\n\tvBake = bake; vWP = (modelMatrix * vec4(position, 1.0)).xyz; vWN = normal; vCH = chh;');
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
-varying vec3 vBake;\nvarying vec3 vWP;\nvarying vec3 vWN;
+varying vec3 vBake;\nvarying vec3 vWP;\nvarying vec3 vWN;\nvarying float vCH;
 uniform float uBake;\nuniform float uAmbK;\nuniform float uTexK;
 uniform sampler2D uGrime;\nuniform vec4 uGr;\nuniform float uWet;\nuniform float uHH;\nuniform float uPat;\nuniform sampler2D uPatT;\nuniform float uDense;\nuniform vec3 uLampE;
 float gStain = 0.0;`)
@@ -558,15 +560,15 @@ float gStain = 0.0;`)
 \t  gStain = st; diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.62, 0.55, 0.42), st * uGr.y);
 \t  if (!flat_ && uPat > 0.0) { float pt = texture2D(uPatT, vec2(gp.x, vWP.y) * 2.78).r; diffuseColor.rgb *= 1.0 - uPat * (1.0 - pt); }
 \t  if (!flat_) {
-\t    float y = vWP.y; float n = texture2D(uGrime, vec2(gp.x * 0.6, y * 0.05)).g;
+\t    float y = vWP.y; float HHc = vCH > 0.5 ? vCH : uHH; float n = texture2D(uGrime, vec2(gp.x * 0.6, y * 0.05)).g;
 \t    // грязь у пола и копоть под потолком
 \t    float foot = 1.0 - smoothstep(0.0, 0.22 + 0.35 * big, y + 0.02);
 \t    diffuseColor.rgb *= 1.0 - uGr.z * 0.45 * foot;
-\t    float top = smoothstep(uHH - 0.5 - 0.3 * big, uHH, y);
+\t    float top = smoothstep(HHc - 0.5 - 0.3 * big, HHc, y);
 \t    diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.85, 0.78, 0.6), top * uGr.z * 0.6);
 \t    // подтёки от потолка: вертикальные полосы
 \t    float sx = texture2D(uGrime, vec2(gp.x * 0.9, 0.5)).g;
-\t    float streak = smoothstep(0.62, 0.8, sx) * smoothstep(uHH - 2.2 * (0.4 + big), uHH, y + n * 0.4);
+\t    float streak = smoothstep(0.62, 0.8, sx) * smoothstep(HHc - 2.2 * (0.4 + big), HHc, y + n * 0.4);
 \t    gStain = max(gStain, streak * 0.8);
 \t    diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.66, 0.6, 0.48), streak * uGr.w);
 \t  }
@@ -603,6 +605,11 @@ function buildLevel(th, G, opts = {}) {
   const floorY = (t) => (t === 6 ? -PD : 0);
   const noCeil = !!th.noCeil, LY = noCeil ? HH - 0.5 : HH - 0.04;
 
+  // --- высота потолка по зонам: гигантский атриум, колонные залы — высокие; лабиринты и офисы — тесные
+  const TALL = th.tall === false ? {} : { atrium: 9, halls: 4.6 };
+  const cellH = new Float32Array(mw * mh).fill(HH);
+  if (G.zones && !noCeil) for (const z of G.zones) { const h = TALL[z.type]; if (!h) continue; for (let y = Math.max(0, z.y0); y <= Math.min(mh - 1, z.y1); y++) for (let x = Math.max(0, z.x0); x <= Math.min(mw - 1, z.x1); x++) if (g[y * mw + x] !== 4) cellH[y * mw + x] = h; }
+  const CHt = (tx, ty) => (tx < 0 || ty < 0 || tx >= mw || ty >= mh ? HH : cellH[ty * mw + tx]);
   // --- лампы
   const lamps = [];
   for (let ty = 1; ty < mh; ty += 3) for (let tx = 1; tx < mw; tx += 3) {
@@ -610,7 +617,9 @@ function buildLevel(th, G, opts = {}) {
     if (t !== 0 && t !== 5 && t !== 6) continue;
     const dead = r() < th.dead;
     const emerg = !dead && th.props === 'emergency' && r() < 0.3;
-    lamps.push({ x: tx * S + S / 2, z: ty * S + S / 2, dead, emerg, on5: t === 5 });
+    const ch = CHt(tx, ty);
+    // y — высота лампы; hk — лампы под высоким потолком мощнее, чтобы пол был освещён так же
+    lamps.push({ x: tx * S + S / 2, z: ty * S + S / 2, dead, emerg, on5: t === 5, y: noCeil ? LY : ch - 0.04, hk: Math.pow(ch / HH, 1.15) });
   }
   const LC = th.lampCol, EC = [1, 0.14, 0.08];
 
@@ -637,9 +646,9 @@ function buildLevel(th, G, opts = {}) {
     const ox = x + nx * 0.1, oz = z + nz * 0.1;
     for (const L of lamps) {
       if (L.dead || L.on5) continue;
-      const dx = L.x - x, dy = LY - y, dz = L.z - z, hd2 = dx * dx + dz * dz;
+      const dx = L.x - x, dy = L.y - y, dz = L.z - z, hd2 = dx * dx + dz * dz;
       if (hd2 > 110) continue;
-      const col = L.emerg ? EC : LC, pw = (L.emerg ? 0.5 : 1) * lampI;
+      const col = L.emerg ? EC : LC, pw = (L.emerg ? 0.5 : 1) * lampI * L.hk;
       if (ny < -0.5) {
         if (hd2 < 40 && vis(L.x, L.z, ox, oz)) { const k = pw * 0.32 / (1 + hd2 * 0.38) / lampI ** 0.5; R += col[0] * k; Gc += col[1] * k; B += col[2] * k; }
         continue;
@@ -694,9 +703,9 @@ function buildLevel(th, G, opts = {}) {
   const ceilBake = (x, y, z, n, o) => { lightAt(x, y, z, 0, -1, 0, o); mul(o, 0.72 + 0.28 * aoXZ(x, z, -9, -9)); };
   const rFloorBake = (x, y, z, n, o) => { roomLight(x, y, z, o); mul(o, aoXZ(x, z, -9, -9)); };
   const rCeilBake = (x, y, z, n, o) => { roomLight(x, y, z, o); mul(o, 0.6 + 0.3 * aoXZ(x, z, -9, -9)); };
-  const wallBake = (ex, ey, y0) => (x, y, z, nn, out) => {
+  const wallBake = (ex, ey, y0, top = HH) => (x, y, z, nn, out) => {
     lightAt(x, y, z, nn[0], nn[1], nn[2], out);
-    mul(out, aoXZ(x + nn[0] * 0.02, z + nn[2] * 0.02, ex, ey) * (0.55 + 0.45 * smooth((y - y0) / 0.5)) * (0.8 + 0.2 * smooth((HH - y) / 0.4)));
+    mul(out, aoXZ(x + nn[0] * 0.02, z + nn[2] * 0.02, ex, ey) * (0.55 + 0.45 * smooth((y - y0) / 0.5)) * (0.8 + 0.2 * smooth((top - y) / 0.4)));
   };
   const faceOf = (tx, ty, dx, dy, y0) => {
     const x0 = tx * S, z0 = ty * S, x1 = x0 + S, z1 = z0 + S;
@@ -711,7 +720,8 @@ function buildLevel(th, G, opts = {}) {
     const room = t === 4, x0 = tx * S, z0 = ty * S, z1 = z0 + S, fy = floorY(t);
     const fb = room ? gRF : t === 6 ? gP : gF;
     fb.grid([x0, fy, z1], [S, 0, 0], [0, 0, -S], [0, 1, 0], FU, FU, (fu, fv, x, y, z) => [x / S, -z / S], room ? rFloorBake : floorBake);
-    if (!noCeil || room) (room ? gRC : gC).grid([x0, HH, z0], [S, 0, 0], [0, 0, S], [0, -1, 0], FU, FU, (fu, fv, x, y, z) => [x / S, z / S], room ? rCeilBake : ceilBake);
+    const CH = room ? HH : CHt(tx, ty);
+    if (!noCeil || room) (room ? gRC : gC).grid([x0, CH, z0], [S, 0, 0], [0, 0, S], [0, -1, 0], FU, FU, (fu, fv, x, y, z) => [x / S, z / S], room ? rCeilBake : ceilBake);
     if (t === 5) continue;
     for (const [dx, dy] of DIRS) {
       const nt = tile(tx + dx, ty + dy);
@@ -721,10 +731,15 @@ function buildLevel(th, G, opts = {}) {
         gPS.grid(o, u, [0, PD, 0], n, WU, [0, 0.5, 1], (fu, fv) => [fu, fv * PD / S], wallBake(tx + dx, ty + dy, -PD));
         continue;
       }
+      // уступ: сосед открыт, но потолок у него ниже — стенка от его потолка до нашего
+      if (!room && !noCeil && (nt === 0 || nt === 5 || nt === 6) && CHt(tx + dx, ty + dy) < CH - 0.01) {
+        const lo = CHt(tx + dx, ty + dy), [o2, u2, n2] = faceOf(tx, ty, dx, dy, lo), dh = CH - lo;
+        gW.grid(o2, u2, [0, dh, 0], n2, WU, [0, 0.25, 0.5, 0.75, 1], P.wall ? (fu, fv) => [fu, (lo + fv * dh) / S] : (fu, fv) => [fu, fv], wallBake(tx + dx, ty + dy, lo, CH), CH);
+      }
       if (!solidSight(nt) || nt === 5) continue;
       const [o, u, n] = faceOf(tx, ty, dx, dy, fy);
-      const hgt = HH - fy;
-      const vs = [0, 0.05, 0.16, 0.42, 0.72, 0.92, 1];
+      const hgt = CH - fy;
+      const vs = hgt > 3.5 ? [0, 0.02, 0.06, 0.12, 0.2, 0.3, 0.42, 0.55, 0.68, 0.8, 0.9, 0.96, 1] : [0, 0.05, 0.16, 0.42, 0.72, 0.92, 1];
       const b = room ? gRW : nt === 2 ? gD : gW;
       const uvf = (b === gW && P.wall) ? (fu, fv) => [fu, fv * hgt / S] : (b === gW && tallRepeat) ? (fu, fv) => [fu, fv * hgt / H] : (fu, fv) => [fu, fv];
       if (b === gW && skirt) {
@@ -732,10 +747,10 @@ function buildLevel(th, G, opts = {}) {
         const so = [o[0] + n[0] * 0.014, fy, o[2] + n[2] * 0.014];
         gSk.grid(so, u, [0, 0.13, 0], n, WU, [0, 1], (fu, fv) => [fu * 2, fv * 0.12], wallBake(tx + dx, ty + dy, fy));
       }
-      if (b === gW) wallFaces.push({ o, u, n, bake: wallBake(tx + dx, ty + dy, fy) });
+      if (b === gW) wallFaces.push({ o, u, n, hh: CH, bake: wallBake(tx + dx, ty + dy, fy, CH) });
       b.grid(o, u, [0, hgt, 0], n, WU, vs, uvf, room
         ? (x, y, z, nn, out) => { roomLight(x, y, z, out); mul(out, aoXZ(x + nn[0] * 0.02, z + nn[2] * 0.02, tx + dx, ty + dy) * (0.6 + 0.4 * smooth(y / 0.5))); }
-        : wallBake(tx + dx, ty + dy, fy));
+        : wallBake(tx + dx, ty + dy, fy, CH), b === gW ? CH : 0);
     }
   }
   const wallT = tex(TX.wallCanvas(th, r), { clampT: !tallRepeat });
@@ -768,7 +783,7 @@ function buildLevel(th, G, opts = {}) {
   const inst = (list, geo, mat, y) => {
     if (!list.length) return null;
     const im = new THREE.InstancedMesh(geo, mat, list.length);
-    list.forEach((l, i) => { m4.makeTranslation(l.x, y, l.z); im.setMatrixAt(i, m4); im.setColorAt(i, WHITE); });
+    list.forEach((l, i) => { m4.makeTranslation(l.x, typeof y === 'function' ? y(l) : y, l.z); im.setMatrixAt(i, m4); im.setColorAt(i, WHITE); });
     im.instanceMatrix.needsUpdate = true; if (im.instanceColor) im.instanceColor.needsUpdate = true;
     return add(im);
   };
@@ -779,10 +794,11 @@ function buildLevel(th, G, opts = {}) {
     const bulb = new THREE.SphereGeometry(0.16, 14, 10);
     lampIM = inst(alive, bulb, lampMat, LY); inst(em, bulb, emMat, LY); inst(dd, bulb, deadMat, LY);
   } else {
-    inst(lit, frameGeo, frameMat, HH - 0.012);
-    lampIM = inst(alive, lampGeo, lampMat, HH - 0.03);
-    inst(em, lampGeo, emMat, HH - 0.03);
-    inst(dd, lampGeo, deadMat, HH - 0.03);
+    const fy_ = (l) => l.y + 0.028, ly_ = (l) => l.y + 0.01;
+    inst(lit, frameGeo, frameMat, fy_);
+    lampIM = inst(alive, lampGeo, lampMat, ly_);
+    inst(em, lampGeo, emMat, ly_);
+    inst(dd, lampGeo, deadMat, ly_);
   }
   const flick = { i: -1, t: 0, burst: false };
 
@@ -875,12 +891,12 @@ function buildLevel(th, G, opts = {}) {
     const geos = [], PW = 0.72, out = [0, 0, 0];
     for (const z of halls) for (let ty = z.y0 + 2; ty <= z.y1 - 1; ty += 3) for (let tx = z.x0 + 2; tx <= z.x1 - 1; tx += 3) {
       if (![tile(tx, ty), tile(tx - 1, ty), tile(tx, ty - 1), tile(tx - 1, ty - 1)].every((t) => t === 0) || near(tx, ty)) continue;
-      const b = box(PW, HH, PW, tx * S, HH / 2, ty * S), pos = b.attributes.position, nor = b.attributes.normal, uv = b.attributes.uv, bk = new Float32Array(pos.count * 3);
+      const ph = CHt(tx, ty), b = box(PW, ph, PW, tx * S, ph / 2, ty * S), pos = b.attributes.position, nor = b.attributes.normal, uv = b.attributes.uv, bk = new Float32Array(pos.count * 3);
       for (let i = 0; i < pos.count; i++) {
         const nx = nor.getX(i), ny = nor.getY(i), nz = nor.getZ(i), y = pos.getY(i);
         lightAt(pos.getX(i) + nx * 0.05, y, pos.getZ(i) + nz * 0.05, nx, ny, nz, out);
         const k = 0.55 + 0.45 * smooth(y / 0.5); bk[i * 3] = out[0] * k; bk[i * 3 + 1] = out[1] * k; bk[i * 3 + 2] = out[2] * k;
-        if (Math.abs(ny) < 0.5) uv.setXY(i, uv.getX(i) * PW / S, uv.getY(i) * HH / S);
+        if (Math.abs(ny) < 0.5) uv.setXY(i, uv.getX(i) * PW / S, uv.getY(i) * ph / S);
       }
       b.setAttribute('bake', new THREE.BufferAttribute(bk, 3));
       geos.push(b);
@@ -1349,6 +1365,7 @@ function buildLevel(th, G, opts = {}) {
 
   return {
     root, g, mw, mh, tile, lamps, items, colliders, secret, floorList, lockers, HH, circus, puddles,
+    ceilAt: (x, z) => CHt(Math.floor(x / S), Math.floor(z / S)),
     glowT, zones: G.zones, zoneAt: (x, z) => (G.zones ? zoneAt(G.zones, Math.floor(x / S), Math.floor(z / S)) : null),
     spawn: { x: (G.spawn.tx + 0.5) * S, z: (G.spawn.ty + 0.5) * S, yaw: G.spawn.yaw },
     door: { x: dfx, z: dfz, nx: dnx, nz: dnz }, exits: EX.map((E) => ({ x: E.x, z: E.z, nx: E.nx, nz: E.nz })),

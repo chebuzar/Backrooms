@@ -125,7 +125,7 @@ export function buildDetails(faces, set, r, hh, uBake, uAmbK, avoid = () => fals
       const x = f.o[0] + f.u[0] * fr, z = f.o[2] + f.u[2] * fr;
       if (avoid(x, z)) continue;
       used++;
-      (items[k] = items[k] || []).push({ x, z, y0: f.o[1], n: f.n, bake: f.bake, rot: (r() - 0.5) });
+      (items[k] = items[k] || []).push({ x, z, y0: f.o[1], hh: f.hh || hh, n: f.n, bake: f.bake, rot: (r() - 0.5) });
     }
   }
   const dummy = new THREE.Object3D();
@@ -150,7 +150,7 @@ export function buildDetails(faces, set, r, hh, uBake, uAmbK, avoid = () => fals
     const ib = new Float32Array(list.length * 3);
     list.forEach((it, i) => {
       const K = KIND[k] || { d: 0.15, y: 0.12 };
-      const yy = k === 'ext' ? it.y0 + 0.12 : it.y0 + (K.y < 0 ? hh + K.y : K.y);
+      const yy = k === 'ext' ? it.y0 + 0.12 : it.y0 + (K.y < 0 ? it.hh + K.y : K.y);
       const off = k === 'ext' ? 0.09 : K.d / 2 + 0.004;
       dummy.position.set(it.x + it.n[0] * off, yy, it.z + it.n[2] * off);
       dummy.rotation.set(0, Math.atan2(it.n[0], it.n[2]), K.tilt ? it.rot * K.tilt * 2 : 0);

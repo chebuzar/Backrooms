@@ -192,7 +192,7 @@ function updateLampLights(dt, P) {
     lampLights.forEach((L, i) => {
       const b = best[i];
       L.userData.on = !!b && i < hi;
-      if (b) { L.position.set(b[1].x, (lvl.HH || 2.7) - 0.25, b[1].z); L.color.setRGB(col[0], col[1], col[2]); L.userData.emerg = b[1].emerg; }
+      if (b) { L.position.set(b[1].x, (b[1].y || lvl.HH || 2.7) - 0.21, b[1].z); L.color.setRGB(col[0], col[1], col[2]); L.userData.emerg = b[1].emerg; }
     });
   }
   for (const L of lampLights) L.intensity = L.userData.on ? LOOK.dyn.I * P * (L.userData.emerg ? 0.4 : 1) * (game.th.lampI || 1) : 0;
