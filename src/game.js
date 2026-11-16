@@ -86,7 +86,7 @@ let dust = null;
 
 // Настройки «картинки» в одном месте (подбираются по скриншотам; в отладке — __zk.LOOK).
 // h — внутренняя высота кадра в пикселях: стиль старой камеры, крупный пиксель, заодно быстрее на телефонах.
-const LOOK = { vhsPixel: false, vhs: 0.25, dyn: { n: 3, I: 2.2, dist: 9 }, amb0: 0.25, ambK: 1.3, wallAmb: 0.22, bake: 1.0, h: { low: 300, med: 400, high: 480 }, bloom: [0.55, 0.5, 0.88], exposure: 1.05 };
+const LOOK = { vhsPixel: false, vhs: 0.25, dyn: { n: 3, I: 2.2, dist: 9 }, amb0: 0.25, ambK: 1.3, wallAmb: 0.22, bake: 1.0, h: { low: 300, med: 400, high: 480 }, bloom: [0.6, 0.45, 1.15], exposure: 1.05 };
 renderer.toneMappingExposure = LOOK.exposure;
 const composerRT = new THREE.WebGLRenderTarget(16, 16, { type: THREE.HalfFloatType, samples: 4 });
 const composer = new EffectComposer(renderer, composerRT);
@@ -339,6 +339,13 @@ function lights(dt, allowBlack) {
     } else game.mfOn = true;
   }
   game.power = p;
+  // Адаптация глаз (как автоэкспозиция камеры в Dimension 9): в темноте за пару секунд привыкаем, на ярком — слепит и
+  // постепенно успокаивается. Цель — обратная яркости света вокруг; скорость: к темноте медленнее, к свету быстрее.
+  if (allowBlack) {
+    const want = clamp(1 / Math.max(0.35, p * 0.9 + 0.1), 0.85, 2.2), cur = game.adapt || 1;
+    game.adapt = cur + (want - cur) * Math.min(1, dt * (want > cur ? 0.45 : 1.6));
+  } else game.adapt = 1;
+  renderer.toneMappingExposure = LOOK.exposure * game.adapt;
   const P = p * th.power;
   BAKE.value = Math.PI * P * LOOK.bake * (th.bakeK || 1); AMBK.value = LOOK.wallAmb;
   amb.intensity = LOOK.amb0 + LOOK.ambK * P + (pl.nv ? 2.2 : 0);
