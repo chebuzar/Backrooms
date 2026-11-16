@@ -3,6 +3,7 @@
 import * as THREE from 'three/webgpu';
 import type { RendererHandle } from '../render/renderer';
 import { PostPipeline, look } from '../render/post';
+import { lampDeficits } from '../world/materials';
 import { PROFILES, QualityGovernor, autoQuality, type QualityProfile } from '../render/quality';
 import type { DeviceInfo } from '../core/device';
 import { Physics } from '../physics/physics';
@@ -56,6 +57,7 @@ export class Game {
   private loading: Promise<void> | null = null;
   private humVoices: { voice: SpatialVoice; lamp: number }[] = [];
   private humT = 0;
+  private dimT = 0;
   flashlightOn = false;
   hud!: HUD;
   readonly ambience = new Ambience(this.audio);
@@ -330,6 +332,9 @@ export class Game {
     this.cameraOverride?.(this.camera, dt);
     if (lvl) {
       lvl.update(this.time, dt, this.camera);
+      // живе згасання запеченого світла біля ламп, що мерехтять/згасли (оновлюємо кілька разів на секунду — дешево)
+      this.dimT -= dt;
+      if (this.dimT <= 0) { this.dimT = 0.05; lvl.lamps.fillDeficits(this.camera.position.x, this.camera.position.z, lampDeficits.array as THREE.Vector4[]); }
       // ліхтарик у руці: трохи нижче й правіше очей, світить туди, куди дивишся
       const fl = lvl.flashlight, c = this.camera;
       fl.intensity += ((this.flashlightOn ? 26 : 0) - fl.intensity) * Math.min(1, dt * 18);

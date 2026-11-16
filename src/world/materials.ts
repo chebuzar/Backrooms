@@ -3,7 +3,7 @@
 // у світових координатах (маски — теж справжні текстури), без жодного візерунка, «намальованого» кодом (правило власника).
 import * as THREE from 'three/webgpu';
 import {
-  texture, uv, uniform, vec2, vec3, float, mix, smoothstep, clamp,
+  texture, uv, uniform, uniformArray, Loop, vec2, vec3, float, mix, smoothstep, clamp,
   positionWorld, normalMap, normalWorld, Fn
 } from 'three/tsl';
 import type { Assets } from '../assets/loader';
@@ -11,6 +11,25 @@ import type { Assets } from '../assets/loader';
 export const LMAX = 4.0;
 /** Загальна яскравість запеченого світла (згасання/аварійне світло). */
 export const bakeLevel = uniform(1.0);
+
+/**
+ * «Живе згасання»: до 16 ламп біля гравця, які зараз світять слабше, ніж під час запікання (мерехтять, згасли, їх «вимкнув» монстр).
+ * xyz = (x, z, нестача 0..1), w — не використовується. Запечене світло довкола такої лампи темніє — разом із самою лампою.
+ */
+export const LAMP_SLOTS = 16;
+export const lampDeficits = uniformArray(Array.from({ length: LAMP_SLOTS }, () => new THREE.Vector4()), 'vec4');
+
+/** Множник запеченого світла в точці: 1 — як запечено, менше — довкола ламп, яких «бракує». */
+const liveDim = Fn(() => {
+  const loss = float(0).toVar();
+  Loop(LAMP_SLOTS, ({ i }) => {
+    const l = lampDeficits.element(i) as unknown as THREE.Node<'vec4'>; // типи @types/three ще не знають swizzle для елемента масиву
+    const d2 = positionWorld.x.sub(l.x).pow(2).add(positionWorld.z.sub(l.y).pow(2));
+    // частка лампи в освітленості точки: майже повна під нею, згасає на 2–4 м (так світло й запікалось)
+    loss.addAssign(l.z.mul(float(1).div(float(1).add(d2.div(3.2)))));
+  });
+  return clamp(float(1).sub(loss.mul(0.9)), 0.04, 1);
+});
 
 
 type Tex = THREE.Texture;
@@ -48,7 +67,7 @@ const WALL_M = 1.06, CEIL_M = 3.6, CARPET_M = 1.5;
 export function makeLevel0Materials(t: Level0Textures) {
   const decodeLM = (lm: Tex) => {
     const s = texture(lm, uv(1)).rgb;
-    return s.mul(s).mul(LMAX).mul(bakeLevel);
+    return s.mul(s).mul(LMAX).mul(bakeLevel).mul(liveDim());
   };
   // великі маски в світових координатах (справжня текстура цвілі як «шум» розподілу): зона шпалер, волога, пошкодження
   const maskAt = (p: THREE.Node<'vec2'>, k: number, off: number) => texture(t.mold, p.mul(k).add(off)).r;
@@ -151,7 +170,7 @@ export function probeLit(src: THREE.Material, E: number): BakedMaterial {
   m.metalness = s.metalness ?? 0;
   if (s.normalScale) m.normalScale.copy(s.normalScale);
   m.transparent = s.transparent; m.alphaTest = s.alphaTest; m.side = s.side;
-  m.lmNode = vec3(E * 0.75).mul(normalWorld.y.mul(0.4).add(0.6)).mul(bakeLevel);
+  m.lmNode = vec3(E * 0.75).mul(normalWorld.y.mul(0.4).add(0.6)).mul(bakeLevel).mul(liveDim());
   return m;
 }
 

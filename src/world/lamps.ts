@@ -75,4 +75,25 @@ export class Lamps {
   }
 
   levelOf(i: number): number { return this.level[i] ?? 0; }
+
+  /** Рівень лампи під час запікання (Blender): on — 1, flicker — 0.75, off — 0. */
+  private baked(i: number): number { const s = this.panels[i]?.state; return s === 'on' ? 1 : s === 'flicker' ? 0.75 : 0; }
+
+  /** Заповнити слоти «живого згасання» лампами біля точки, що зараз світять слабше, ніж запечено. */
+  fillDeficits(x: number, z: number, out: THREE.Vector4[]): void {
+    const cand: [number, number, number][] = [];
+    this.panels.forEach((p, i) => {
+      const def = this.baked(i) - (this.level[i] ?? 0) * this.master.value;
+      if (def <= 0.02) return;
+      const d = (p.x - x) ** 2 + (p.z - z) ** 2;
+      if (d < 26 * 26) cand.push([d, i, def]);
+    });
+    cand.sort((a, b) => a[0] - b[0]);
+    out.forEach((v, k) => {
+      const c = cand[k];
+      if (!c) { v.set(0, 0, 0, 0); return; }
+      const p = this.panels[c[1]] as LightPanel;
+      v.set(p.x, p.z, Math.min(1, c[2]), 0);
+    });
+  }
 }
