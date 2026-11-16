@@ -2,7 +2,7 @@ import js from '@eslint/js';
 import globals from 'globals';
 
 export default [
-  { ignores: ['dist/**', 'node_modules/**', 'src/render/n8ao/**', 'server/node_modules/**'] },
+  { ignores: ['dist/**', '.shots/**', 'node_modules/**', 'src/render/n8ao/**', 'server/node_modules/**'] },
   js.configs.recommended,
   {
     files: ['**/*.js', '**/*.mjs'],
@@ -16,5 +16,5 @@ export default [
       'no-empty': ['error', { allowEmptyCatch: true }]
     }
   },
-  { files: ['scripts/**', 'server/**', '*.config.js'], languageOptions: { globals: { ...globals.node } } }
+  { files: ['scripts/**', 'server/**', '*.config.js'], ignores: ['scripts/libs-check/**'], languageOptions: { globals: { ...globals.node } } }
 ];
