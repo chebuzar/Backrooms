@@ -119,7 +119,17 @@ export function makeLevel0Materials(t: Level0Textures) {
     base.color = srgb(0.36, 0.28, 0.17);
     base.roughness = 0.5; base.metalness = 0;
     base.lmNode = lmNode;
-    return { wall, floor, ceil, base, wallLow: wall } as Record<'wall' | 'floor' | 'ceil' | 'base' | 'wallLow', THREE.MeshStandardNodeMaterial>;
+    // модульний кіт: дрібні деталі будівлі (фарба, пластик, метал) — однотонні, освітлення з тієї ж карти світла
+    const kit = (c: [number, number, number], rough: number, metal = 0) => {
+      const m = new BakedMaterial();
+      m.color = srgb(...c); m.roughness = rough; m.metalness = metal; m.lmNode = lmNode;
+      return m;
+    };
+    return {
+      wall, floor, ceil, base, wallLow: wall,
+      tbar: kit([0.78, 0.76, 0.7], 0.45, 0.3), plenum: kit([0.025, 0.022, 0.02], 0.95),
+      plastic: kit([0.78, 0.74, 0.62], 0.38), metal: kit([0.42, 0.44, 0.4], 0.5, 0.35), frame: kit([0.52, 0.43, 0.29], 0.55)
+    } as Record<string, THREE.MeshStandardNodeMaterial>;
   };
 }
 

@@ -26,6 +26,7 @@ ap.add_argument("--size", type=int, default=512)
 ap.add_argument("--samples", type=int, default=192)
 ap.add_argument("--no-bake", action="store_true")
 ap.add_argument("--power", type=float, default=22.0)
+ap.add_argument("--resume", action="store_true", help="не перепікати шматки, для яких уже є lm_*.png")
 args = ap.parse_args(argv)
 
 L = json.load(open(args.layout))
@@ -76,7 +77,13 @@ def material(name, rgb, emit=None):
 # альбедо, близькі до справжніх текстур: від них залежить колір відбитого світла (жовтий «суп» Закулисья)
 A = THEME["albedo"]
 MATS = {k: material(k, tuple(A[k])) for k in ("wall", "base", "floor", "ceil", "wallLow")}
-SLOT = {"wall": 0, "base": 1, "floor": 2, "ceil": 3, "wallLow": 4}
+# модульний кіт (альбедо для правильного відбитого світла; у грі — свої матеріали з тими ж назвами)
+for k, c in (("tbar", (0.62, 0.6, 0.55)), ("plenum", (0.03, 0.03, 0.03)), ("plastic", (0.62, 0.58, 0.48)),
+             ("metal", (0.3, 0.32, 0.29)), ("frame", (0.4, 0.32, 0.2))):
+    MATS[k] = material(k, c)
+SLOT = {k: i for i, k in enumerate(("wall", "base", "floor", "ceil", "wallLow", "tbar", "plenum", "plastic", "metal", "frame"))}
+DECOR = L.get("decor", [])
+DOOR_H = 2.05
 
 
 def chunk_bounds(ix, iz):
@@ -110,7 +117,7 @@ class MeshBuilder:
         for poly, m in zip(me.polygons, self.mat):
             poly.material_index = m
         ob = bpy.data.objects.new(name, me)
-        for k in ("wall", "base", "floor", "ceil", "wallLow"):
+        for k in SLOT:
             me.materials.append(MATS[k])
         scene.collection.objects.link(ob)
         return ob
@@ -210,6 +217,113 @@ for f in _pf:
 print(f"WALL FACES: {len(_wf)} wall pieces, {len(_pf)} plinth pieces")
 
 
+
+def box(mb, cx, cy, cz, sx, sy, sz, yaw, mat, skip_back=True):
+    """Осьова коробка (розміри в локальних осях: sx — уздовж поверхні, sy — висота, sz — товщина від поверхні),
+    повернута на yaw навколо Y; задня грань (до стіни) не потрібна. Координати гри (x, y, z) → Blender."""
+    ca, sa = math.cos(yaw), math.sin(yaw)
+
+    def W(lx, ly, lz):  # локальні → світові (lz — уздовж нормалі)
+        x = cx + lx * ca + lz * sa
+        z = cz - lx * sa + lz * ca
+        return (x, -z, cy + ly)
+    hx, hy = sx / 2, sy / 2
+    faces = [
+        ([(-hx, -hy, sz), (hx, -hy, sz), (hx, hy, sz), (-hx, hy, sz)], (sx, sy)),            # лицьова
+        ([(hx, -hy, 0), (hx, -hy, sz), (hx, hy, sz), (hx, hy, 0)], (sz, sy)),                 # права
+        ([(-hx, -hy, sz), (-hx, -hy, 0), (-hx, hy, 0), (-hx, hy, sz)], (sz, sy)),             # ліва
+        ([(-hx, hy, sz), (hx, hy, sz), (hx, hy, 0), (-hx, hy, 0)], (sx, sz)),                 # верх
+        ([(-hx, -hy, 0), (hx, -hy, 0), (hx, -hy, sz), (-hx, -hy, sz)], (sx, sz)),             # низ
+    ]
+    if not skip_back:
+        faces.append(([(hx, -hy, 0), (-hx, -hy, 0), (-hx, hy, 0), (hx, hy, 0)], (sx, sy)))
+    for pts, (u, v) in faces:
+        mb.quad([W(*p) for p in pts], [(0, 0), (u, 0), (u, v), (0, v)], mat)
+
+
+def in_chunk(x, z, ix, iz):
+    cx0, cx1, cz0, cz1 = chunk_bounds(ix, iz)
+    return cx0 <= x < cx1 and cz0 <= z < cz1
+
+
+def add_decor(mb, ix, iz):
+    T = L.get("wallThickness", 0.14)
+    for d in DECOR:
+        if not in_chunk(d["x"], d["z"], ix, iz) or d["t"] == "hole":
+            continue
+        t, x, y, z, yaw = d["t"], d["x"], d["y"], d["z"], d["yaw"]
+        if t == "outlet":  # радянська розетка: пластина + «чашка» з двома отворами
+            box(mb, x, y, z, 0.075, 0.075, 0.012, yaw, "plastic")
+            box(mb, x, y, z + 0, 0.045, 0.045, 0.02, yaw, "plastic")
+        elif t == "switch":
+            box(mb, x, y, z, 0.08, 0.08, 0.014, yaw, "plastic")
+            box(mb, x, y + 0.006, z, 0.02, 0.032, 0.024, yaw, "plastic")
+        elif t == "vent":  # решітка: рамка + темна ніша + жалюзі
+            w = d["w"]
+            h = w * 0.5
+            box(mb, x, y, z, w, h, 0.018, yaw, "metal")
+            ca, sa = math.cos(yaw), math.sin(yaw)
+            box(mb, x, y, z, w - 0.04, h - 0.04, 0.019, yaw, "plenum")
+            n = max(4, int(h / 0.035))
+            for k in range(n):
+                yy = y - h / 2 + 0.03 + k * (h - 0.06) / max(1, n - 1)
+                box(mb, x + 0.024 * sa * 0, yy, z, w - 0.05, 0.008, 0.026, yaw, "metal")
+        elif t == "panel":  # електрощиток
+            box(mb, x, y, z, 0.42, 0.6, 0.12, yaw, "metal")
+            box(mb, x + 0.15 * math.cos(yaw), y, z - 0.15 * math.sin(yaw), 0.02, 0.06, 0.135, yaw, "metal")
+        elif t == "door":  # рама: два одвірки, перемичка стіни над прорізом, наличники з обох боків
+            g = d["w"]
+            horiz = abs(math.sin(yaw)) < 0.5  # стіна вздовж X
+            ax, az = (1, 0) if horiz else (0, 1)  # уздовж прорізу
+            nyaw = 0 if horiz else math.pi / 2     # нормаль стіни для box(): +Z для стін уздовж X
+            # перемичка (стіна над дверима) — матеріал стіни
+            for side in (1, -1):
+                cxs = x + (0 if horiz else side * T / 2)
+                czs = z + (side * T / 2 if horiz else 0)
+                face_yaw = (0 if side > 0 else math.pi) if horiz else (math.pi / 2 if side > 0 else -math.pi / 2)
+                box(mb, cxs, (DOOR_H + H) / 2, czs, g, H - DOOR_H, 0.0005, face_yaw, "wall")
+                # наличники: два вертикальні й верхній
+                for e in (-1, 1):
+                    box(mb, cxs + ax * e * (g / 2 + 0.035), DOOR_H / 2, czs + az * e * (g / 2 + 0.035), 0.07, DOOR_H, 0.018, face_yaw, "frame")
+                box(mb, cxs, DOOR_H + 0.035, czs, g + 0.14, 0.07, 0.018, face_yaw, "frame")
+            # одвірки: облицювання торців стіни в прорізі, лицем до центру прорізу
+            for e in (-1, 1):
+                if horiz:
+                    box(mb, x + e * g / 2, DOOR_H / 2, z, T + 0.02, DOOR_H, 0.015, -e * math.pi / 2, "frame")
+                else:
+                    box(mb, x, DOOR_H / 2, z + e * g / 2, T + 0.02, DOOR_H, 0.015, 0 if e < 0 else math.pi, "frame")
+            # нижня площина перемички (видна знизу)
+            hx, hz = (g / 2, T / 2) if horiz else (T / 2, g / 2)
+            mb.quad([(x - hx, -(z - hz), DOOR_H), (x + hx, -(z - hz), DOOR_H), (x + hx, -(z + hz), DOOR_H), (x - hx, -(z + hz), DOOR_H)],
+                    [(0, 0), (2 * hx, 0), (2 * hx, 2 * hz), (0, 2 * hz)], "frame")
+
+
+def ceiling_tiles(mb, ix, iz):
+    """Стеля з плит 0.6 м (зсув 0.3 по Z, як у грі) з дірками на місці вирваних плит. Сітку профілів дає справжня текстура стелі."""
+    cx0, cx1, cz0, cz1 = chunk_bounds(ix, iz)
+
+    def P(x, y, z):
+        return (x, -z, y)
+    holes = [(d["x"], d["z"]) for d in DECOR if d["t"] == "hole" and in_chunk(d["x"], d["z"], ix, iz)
+             and cx0 + 0.3 <= d["x"] <= cx1 - 0.3 and cz0 + 0.3 <= d["z"] <= cz1 - 0.3]
+    # смуги стелі по рядах плит; дірки вирізаємо
+    zs = sorted(set([cz0, cz1] + [k * 0.6 - 0.3 for k in range(int(cz0 / 0.6), int(cz1 / 0.6) + 2) if cz0 < k * 0.6 - 0.3 < cz1]))
+    for c, dd in zip(zs[:-1], zs[1:]):
+        xs = [cx0]
+        for hx, hz in sorted(holes):
+            if c - 1e-3 <= hz - 0.3 and hz + 0.3 <= dd + 1e-3:
+                xs += [hx - 0.3, hx + 0.3]
+        xs.append(cx1)
+        for a, b in zip(xs[0::2], xs[1::2]):
+            if b - a > 1e-3:
+                mb.quad([P(a, H, c), P(b, H, c), P(b, H, dd), P(a, H, dd)], [(a, c), (b, c), (b, dd), (a, dd)], "ceil")
+    for hx, hz in holes:  # темна порожнина над вирваною плитою
+        a, b, c, dd, top = hx - 0.3, hx + 0.3, hz - 0.3, hz + 0.3, H + 0.4
+        mb.quad([P(a, top, c), P(b, top, c), P(b, top, dd), P(a, top, dd)], [(0, 0), (1, 0), (1, 1), (0, 1)], "plenum")
+        for (x1, z1, x2, z2) in ((a, c, b, c), (b, c, b, dd), (b, dd, a, dd), (a, dd, a, c)):
+            mb.quad([P(x1, H, z1), P(x2, H, z2), P(x2, top, z2), P(x1, top, z1)], [(0, 0), (1, 0), (1, 1), (0, 1)], "plenum")
+
+
 def build_chunk(ix, iz):
     cx0, cx1, cz0, cz1 = chunk_bounds(ix, iz)
     mb = MeshBuilder()
@@ -227,7 +341,11 @@ def build_chunk(ix, iz):
     for a, b in zip(xs[:-1], xs[1:]):
         for c, d in zip(zs[:-1], zs[1:]):
             mb.quad([P(a, 0, d), P(b, 0, d), P(b, 0, c), P(a, 0, c)], [(a, d), (b, d), (b, c), (a, c)], "floor")
-            mb.quad([P(a, H, c), P(b, H, c), P(b, H, d), P(a, H, d)], [(a, c), (b, c), (b, d), (a, d)], "ceil")
+            if THEME["id"] != "yellow":
+                mb.quad([P(a, H, c), P(b, H, c), P(b, H, d), P(a, H, d)], [(a, c), (b, c), (b, d), (a, d)], "ceil")
+    if THEME["id"] == "yellow":
+        ceiling_tiles(mb, ix, iz)
+    add_decor(mb, ix, iz)
     for kind, f in WALL_FACES.get((ix, iz), []):
         if kind == "wall":
             if PAINT_H > BASE_H + 0.01:
@@ -301,7 +419,9 @@ for key in todo:
     ob = chunks[key]
     ix, iz = key
     name = f"{ix}_{iz}"
-    if not args.no_bake:
+    if args.resume and os.path.exists(os.path.join(args.out, f"lm_{name}.png")):
+        print(f"SKIP {name} (already baked)")
+    elif not args.no_bake:
         img = bpy.data.images.new(f"lm_{name}", args.size, args.size, float_buffer=True)
         for m in MATS.values():
             nt = m.node_tree
@@ -322,8 +442,8 @@ for key in todo:
         valid = (px[:, :, 3] > 0.5).astype(np.float32)[..., None]
         acc = np.zeros_like(rgb)
         wsum = np.zeros_like(valid)
-        for dy in (-1, 0, 1):
-            for dx in (-1, 0, 1):
+        for dy in (-2, -1, 0, 1, 2):
+            for dx in (-2, -1, 0, 1, 2):
                 acc += np.roll(np.roll(rgb * valid, dy, 0), dx, 1)
                 wsum += np.roll(np.roll(valid, dy, 0), dx, 1)
         smooth = np.where(wsum > 0, acc / np.maximum(wsum, 1e-6), rgb)

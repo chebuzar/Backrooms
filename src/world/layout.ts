@@ -25,7 +25,7 @@ export const THEMES: Record<Preset, Theme> = {
   yellow: {
     id: 'yellow', height: 2.7, paintH: 0, plinth: true, pillar: 0.56,
     lamp: { w: 1.2, d: 0.6, spacing: 2, color: [1.0, 0.95, 0.8], power: 22, offP: 0.06, flickerP: 0.05 },
-    albedo: { wall: [0.58, 0.47, 0.2], wallLow: [0.58, 0.47, 0.2], base: [0.3, 0.23, 0.12], floor: [0.26, 0.19, 0.09], ceil: [0.68, 0.66, 0.58] }
+    albedo: { wall: [0.58, 0.47, 0.2], wallLow: [0.58, 0.47, 0.2], base: [0.3, 0.23, 0.12], floor: [0.34, 0.26, 0.13], ceil: [0.84, 0.82, 0.74] }
   },
   // радянська база: нижня частина стін — зелена олійна фарба, верх — побілка; лінолеум; холодні лампи денного світла
   base: {

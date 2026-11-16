@@ -72,7 +72,7 @@ export class PostPipeline {
 
     let bloomTex: ReturnType<typeof bloom> | null = null;
     if (profile.bloom > 0) {
-      bloomTex = bloom(aa ?? vec4(lit, 1), look.bloomStrength.value, 0.55, look.bloomThreshold.value);
+      bloomTex = bloom(aa ?? vec4(lit, 1), look.bloomStrength.value, 0.32, look.bloomThreshold.value);
       bloomTex.strength = look.bloomStrength;
       bloomTex.threshold = look.bloomThreshold;
       bloomTex.setResolutionScale(profile.bloom);

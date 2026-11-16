@@ -49,8 +49,8 @@ export async function buildLevel0(assets: Assets, physics: Physics, onProgress: 
     gltf.scene.traverse((o) => {
       const mesh = o as THREE.Mesh;
       if (!mesh.isMesh) return;
-      const name = (mesh.material as THREE.Material).name as keyof typeof mats;
-      mesh.material = mats[name] ?? mats.wall;
+      const name = (mesh.material as THREE.Material).name;
+      mesh.material = (mats[name] ?? mats.wall) as THREE.Material;
       mesh.receiveShadow = true;
       mesh.castShadow = true;
     });
