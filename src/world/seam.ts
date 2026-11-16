@@ -16,10 +16,10 @@ export class Seam {
     const halfW = float(0.006).add(this.open.mul(0.08)).add(jag.abs());
     const d = abs(u.x.sub(0.5).add(jag.mul(0.5)));
     const core = smoothstep(halfW, halfW.mul(0.2), d);
-    const glow = smoothstep(halfW.mul(9.0), float(0), d).mul(0.35);
+    const glow = smoothstep(halfW.mul(6.0), float(0), d).mul(0.12);
     const ends = smoothstep(0.0, 0.18, u.y).mul(smoothstep(1.0, 0.82, u.y));
     const pulse = sin(time.mul(0.9)).mul(0.15).add(0.85).add(fract(time.mul(0.37)).mul(0.05));
-    const intensity = core.mul(6.0).add(glow).mul(ends).mul(pulse);
+    const intensity = core.mul(3.2).add(glow).mul(ends).mul(pulse);
     mat.colorNode = mix(vec3(0.55, 0.8, 1.0), vec3(1.0), core).mul(intensity);
     const plane = new THREE.Mesh(new THREE.PlaneGeometry(0.9, height * 0.86), mat);
     plane.position.set(0, height * 0.46, 0);
@@ -29,12 +29,12 @@ export class Seam {
     const frostMat = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
     const fu = uv().sub(0.5).mul(vec3(1.0, 0.55, 1).xy);
     const fr = fu.length();
-    frostMat.colorNode = vec3(0.12, 0.28, 0.5).mul(smoothstep(0.5, 0.0, fr)).mul(sin(time.mul(0.6)).mul(0.1).add(0.9));
+    frostMat.colorNode = vec3(0.03, 0.08, 0.16).mul(smoothstep(0.45, 0.0, fr)).mul(sin(time.mul(0.6)).mul(0.1).add(0.9));
     const frost = new THREE.Mesh(new THREE.PlaneGeometry(2.4, height * 0.95), frostMat);
     frost.position.set(0, height * 0.47, -0.002);
     frost.renderOrder = 4;
     this.group.add(frost);
-    this.light = new THREE.PointLight(0x8fc4ff, 3.2, 8, 2);
+    this.light = new THREE.PointLight(0x7fb8ff, 1.6, 7, 2);
     this.light.position.set(0, height * 0.5, 0.25);
     this.group.add(this.light);
     this.group.position.set(x, 0, z);
@@ -42,6 +42,6 @@ export class Seam {
   }
 
   update(t: number): void {
-    this.light.intensity = (3.0 + Math.sin(t * 0.9) * 0.4 + (Math.sin(t * 13.7) > 0.97 ? 1.2 : 0)) * (1 + this.open.value * 3);
+    this.light.intensity = (1.5 + Math.sin(t * 0.9) * 0.25 + (Math.sin(t * 13.7) > 0.97 ? 1.2 : 0)) * (1 + this.open.value * 3);
   }
 }
