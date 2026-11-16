@@ -30,13 +30,13 @@ export const THEMES: Record<Preset, Theme> = {
   // радянська база: нижня частина стін — зелена олійна фарба, верх — побілка; лінолеум; холодні лампи денного світла
   base: {
     id: 'base', height: 3.0, paintH: 1.5, plinth: false, pillar: 0.6,
-    lamp: { w: 1.25, d: 0.22, spacing: 3, color: [0.86, 0.95, 1.0], power: 26, offP: 0.14, flickerP: 0.1 },
+    lamp: { w: 1.25, d: 0.22, spacing: 3, color: [0.86, 0.95, 1.0], power: 40, offP: 0.14, flickerP: 0.1 },
     albedo: { wall: [0.62, 0.62, 0.58], wallLow: [0.12, 0.26, 0.17], base: [0.1, 0.1, 0.1], floor: [0.36, 0.24, 0.12], ceil: [0.5, 0.5, 0.48] }
   },
   // підземна парковка: сирий бетон, натрієві лампи, більшість не світить
   parking: {
     id: 'parking', height: 3.2, paintH: 1.1, plinth: false, pillar: 0.7,
-    lamp: { w: 1.25, d: 0.16, spacing: 4, color: [1.0, 0.62, 0.3], power: 30, offP: 0.42, flickerP: 0.16 },
+    lamp: { w: 1.25, d: 0.16, spacing: 4, color: [1.0, 0.62, 0.3], power: 48, offP: 0.42, flickerP: 0.16 },
     albedo: { wall: [0.4, 0.39, 0.36], wallLow: [0.32, 0.36, 0.4], base: [0.2, 0.2, 0.2], floor: [0.22, 0.21, 0.2], ceil: [0.36, 0.35, 0.33] }
   }
 };
@@ -272,7 +272,7 @@ function planParking(r: Rng, cols: number, rows: number): Plan {
 
 export function generateLayout(o: LayoutOptions): Layout {
   const preset = o.preset ?? 'yellow', theme = THEMES[preset];
-  const dflt = preset === 'yellow' ? 60 : preset === 'base' ? 48 : 44;
+  const dflt = preset === 'yellow' ? 60 : 40;
   const cols = o.cols ?? dflt, rows = o.rows ?? dflt, cell = o.cell ?? 1.2, height = o.height ?? theme.height;
   const r = rng(o.seed);
   const plan = preset === 'yellow' ? planYellow(r, cols, rows, o.zones) : preset === 'base' ? planBase(r, cols, rows) : planParking(r, cols, rows);
