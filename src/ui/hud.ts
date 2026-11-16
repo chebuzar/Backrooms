@@ -21,7 +21,7 @@ export class HUD {
     const el = document.createElement('div');
     el.className = 'hud';
     el.innerHTML = `
-      <div class="osd"><span class="rec"><i></i>REC</span><span class="tc">0:00:00</span><span class="sp">SP</span></div>
+      <div class="osd"><span class="rec"><i></i>REC</span><span class="tc">0:00:00</span><span class="sp">SP</span><span class="bat" hidden><b></b><b></b><b></b><b></b></span></div>
       <div class="obj" aria-live="polite"></div>
       <div class="dot"></div>
       <div class="prompt"></div>
@@ -37,6 +37,17 @@ export class HUD {
   }
 
   show(on: boolean): void { this.el.classList.toggle('shown', on); }
+
+  /** Батарея ліхтарика в рамці камери: 4 поділки; −1 — сховати. */
+  setBattery(v: number): void {
+    const b = this.el.querySelector<HTMLElement>('.bat');
+    if (!b) return;
+    b.hidden = v < 0;
+    if (v < 0) return;
+    const n = Math.ceil(v * 4);
+    b.querySelectorAll('b').forEach((x, i) => x.classList.toggle('on', i < n));
+    b.classList.toggle('low', v < 0.15);
+  }
 
   /** Лічильник плівки: години:хвилини:секунди запису. */
   setTime(sec: number): void {

@@ -101,7 +101,8 @@ export class Input {
     if (this.touch?.active) {
       const t = this.touch;
       if (t.stickX || t.stickY) { x = t.stickX; y = t.stickY; this.lastDevice = 'touch'; }
-      run = run || t.run;
+      // як у мобільних іграх: стік до краю вперед — біг (кнопка бігу теж працює)
+      run = run || t.run || (t.stickY > 0.93 && Math.hypot(t.stickX, t.stickY) > 0.97);
       crouch = crouch || t.crouch;
     }
 
