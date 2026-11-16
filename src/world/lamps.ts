@@ -20,12 +20,13 @@ export class Lamps {
   /** Загальна яскравість ламп (сюжетні затемнення). */
   readonly master = uniform(1.0);
 
-  constructor(readonly panels: LightPanel[], ceilingY: number) {
+  constructor(readonly panels: LightPanel[], ceilingY: number, look: { color?: [number, number, number] } = {}) {
     const n = panels.length;
     this.level = new Float32Array(n);
     this.base = new Float32Array(n);
     this.attr = new THREE.InstancedBufferAttribute(this.level, 1);
-    const geo = new THREE.BoxGeometry(1.16, 0.02, 0.56);
+    const pw = panels[0]?.w ?? 1.2, pd = panels[0]?.d ?? 0.6;
+    const geo = new THREE.BoxGeometry(pw - 0.04, 0.02, pd - 0.04);
     geo.translate(0, -0.01, 0);
     const mat = new THREE.MeshBasicNodeMaterial();
     const lv = instancedBufferAttribute(this.attr) as unknown as THREE.Node<'float'>;
@@ -34,12 +35,13 @@ export class Lamps {
     const tubes = max(smoothstep(0.14, 0.0, abs(u.y.sub(0.33))), smoothstep(0.14, 0.0, abs(u.y.sub(0.67))));
     const edge = smoothstep(0.0, 0.06, u.x).mul(smoothstep(1.0, 0.94, u.x)).mul(smoothstep(0.0, 0.1, u.y)).mul(smoothstep(1.0, 0.9, u.y));
     const glow = float(0.55).add(tubes.mul(0.75)).mul(edge.mul(0.7).add(0.3));
-    const warm = vec3(1.0, 0.94, 0.78);
+    const lc = look.color ?? [1.0, 0.94, 0.78];
+    const warm = vec3(lc[0], lc[1], lc[2]);
     // вимкнена лампа — сірий пластик із жовтим нальотом
     mat.colorNode = mix(vec3(0.16, 0.15, 0.12), warm.mul(glow).mul(7.0), lv.mul(this.master));
     this.mesh = new THREE.InstancedMesh(geo, mat, n);
     // рамка тонша й вища за розсіювач: знизу видно світну панель в алюмінієвому обідку
-    const frameGeo = new THREE.BoxGeometry(1.24, 0.012, 0.64);
+    const frameGeo = new THREE.BoxGeometry(pw + 0.04, 0.012, pd + 0.04);
     frameGeo.translate(0, -0.006, 0);
     const frameMat = probeLit(new THREE.MeshStandardMaterial({ color: 0xc9c5b8, roughness: 0.45, metalness: 0.2 }), 1.6);
     this.frame = new THREE.InstancedMesh(frameGeo, frameMat, n);
