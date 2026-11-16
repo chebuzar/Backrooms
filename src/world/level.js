@@ -868,6 +868,26 @@ function buildLevel(th, G, opts = {}) {
       add(new THREE.Mesh(mergeGeometries(scr), new THREE.MeshBasicMaterial({ map: tex(TX.screenCanvas(), { repeat: false }), color: new THREE.Color(1.3, 1.3, 1.3) })));
     }
   }
+  // Колонны в больших залах (как в Dimension 9): квадратные, в тех же обоях и с тем же запечённым светом, что стены.
+  if (th.dense && P.wall && G.zones) {
+    const halls = G.zones.filter((z) => z.type === 'atrium' || z.type === 'halls');
+    const near = (tx, ty) => (G.finds || []).some((f) => Math.abs(f.tx - tx) < 5 && Math.abs(f.ty - ty) < 5) || (G.exits || []).some((e) => Math.abs(e.tx - tx) < 3 && Math.abs(e.ty - ty) < 3);
+    const geos = [], PW = 0.72, out = [0, 0, 0];
+    for (const z of halls) for (let ty = z.y0 + 2; ty <= z.y1 - 1; ty += 3) for (let tx = z.x0 + 2; tx <= z.x1 - 1; tx += 3) {
+      if (![tile(tx, ty), tile(tx - 1, ty), tile(tx, ty - 1), tile(tx - 1, ty - 1)].every((t) => t === 0) || near(tx, ty)) continue;
+      const b = box(PW, HH, PW, tx * S, HH / 2, ty * S), pos = b.attributes.position, nor = b.attributes.normal, uv = b.attributes.uv, bk = new Float32Array(pos.count * 3);
+      for (let i = 0; i < pos.count; i++) {
+        const nx = nor.getX(i), ny = nor.getY(i), nz = nor.getZ(i), y = pos.getY(i);
+        lightAt(pos.getX(i) + nx * 0.05, y, pos.getZ(i) + nz * 0.05, nx, ny, nz, out);
+        const k = 0.55 + 0.45 * smooth(y / 0.5); bk[i * 3] = out[0] * k; bk[i * 3 + 1] = out[1] * k; bk[i * 3 + 2] = out[2] * k;
+        if (Math.abs(ny) < 0.5) uv.setXY(i, uv.getX(i) * PW / S, uv.getY(i) * HH / S);
+      }
+      b.setAttribute('bake', new THREE.BufferAttribute(bk, 3));
+      geos.push(b);
+      colliders.push({ x0: tx * S - PW / 2, x1: tx * S + PW / 2, z0: ty * S - PW / 2, z1: ty * S + PW / 2 });
+    }
+    if (geos.length) add(new THREE.Mesh(mergeGeometries(geos), mWall));
+  }
   if (th.props === 'cars') {
     // колонны в узлах сетки и брошенные машины
     const pil = [];
