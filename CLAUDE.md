@@ -144,7 +144,7 @@
 4. **Публікація** — `python3 -I scripts/levels/publish-level.py .assets-src/levels/level0 public/assets/levels/level0` (gltfpack Meshopt без квантування + KTX2 UASTC для карт світла).
 - Матеріали (`src/world/materials.ts`): `BakedMaterial` (перевизначає `setupLightMap` → `IrradianceNode`), процедурні візерунок шпалер / сітка стелі (зсув 0.3 по Z під лампи) / вологі плями; предмети без карти світла — `probeLit` + `probeAt` (освітленість від найближчих ламп).
 - Лампи — один `InstancedMesh` (`lamps.ts`), стан і мерехтіння через instanced-атрибут. «Шов» — `seam.ts`. Предмети рівня 0 — `placeProps` у `level0.ts` (Poly Haven, CC0).
-- Текстури рівня: `python3 -I scripts/assets/make-textures.py` (ambientCG → KTX2 у `public/assets/tex/level0`).
+- Текстури рівня 0: `python3 -I scripts/assets/make-level0-textures.py` (справжні CC0 ShareTextures/ambientCG → обробка → KTX2 у `public/assets/tex/level0`); джерела — `ASSETS.md`. Контрольні кадри: `node tests/e2e/views.mjs webkit <назва>` → `.shots/views-<назва>-webkit.png`.
 
 ## Монстри (ШІ й моделі)
 - ШІ — `src/ai/brain.ts` (зір зі світлом/ліхтариком/присідом, слух з приглушенням стінами, пам'ять, стани patrol → suspicious → investigate → chase → search → lost, правила `movesWhenUnseen`, `fearsLight`, `cutsOff`) + `src/ai/nav.ts` (recast navmesh з того ж планування). Тести — `tests/unit/ai.test.ts`.
