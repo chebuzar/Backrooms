@@ -57,3 +57,55 @@ export async function render(seconds: number, fn: (ctx: OfflineAudioContext) => 
   fn(ctx).connect(ctx.destination);
   return ctx.startRendering();
 }
+
+/** Удар клавіші друкарської машинки: металевий клац + глухий стук каретки. */
+export function typeClick(ctx: BaseAudioContext, seed: number): AudioBuffer {
+  const sr = ctx.sampleRate, n = Math.floor(sr * 0.09);
+  const b = ctx.createBuffer(1, n, sr), d = b.getChannelData(0);
+  const r = rng(seed * 31 + 5);
+  const f = 2400 + r() * 900;
+  let hp = 0, prev = 0;
+  for (let i = 0; i < n; i++) {
+    const t = i / sr;
+    const noise = r() * 2 - 1;
+    hp = 0.6 * (hp + noise - prev); prev = noise;
+    d[i] = (hp * Math.exp(-t * 160) * 0.7 + Math.sin(2 * Math.PI * f * t) * Math.exp(-t * 220) * 0.25 + Math.sin(2 * Math.PI * 140 * t) * Math.exp(-t * 60) * 0.35) * 0.6;
+  }
+  return b;
+}
+
+/** Шелест паперу: кілька коротких сплесків смугового шуму. */
+export function paperRustle(ctx: BaseAudioContext, seed: number): AudioBuffer {
+  const sr = ctx.sampleRate, n = Math.floor(sr * 0.6);
+  const b = ctx.createBuffer(1, n, sr), d = b.getChannelData(0);
+  const r = rng(seed * 97 + 3);
+  const bursts = Array.from({ length: 5 }, () => [r() * 0.45, 0.02 + r() * 0.06, 0.4 + r() * 0.6] as const);
+  let bp1 = 0, bp2 = 0;
+  for (let i = 0; i < n; i++) {
+    const t = i / sr;
+    const noise = r() * 2 - 1;
+    bp1 += (noise - bp1) * 0.5; bp2 += (bp1 - bp2) * 0.5;
+    let env = 0;
+    for (const [s, w, a] of bursts) env += a * Math.exp(-Math.pow((t - s) / w, 2));
+    d[i] = (bp1 - bp2) * env * 0.9;
+  }
+  return b;
+}
+
+/** Низький гул «Шва»: 31 Гц з повільними биттями й шипінням. Петля. */
+export function seamDrone(ctx: BaseAudioContext, seconds = 6): AudioBuffer {
+  const sr = ctx.sampleRate, n = Math.floor(sr * seconds);
+  const b = ctx.createBuffer(2, n, sr);
+  const r = rng(77);
+  for (let c = 0; c < 2; c++) {
+    const d = b.getChannelData(c);
+    let lp = 0;
+    for (let i = 0; i < n; i++) {
+      const t = i / sr;
+      lp += (r() * 2 - 1 - lp) * 0.02;
+      const beat = 0.6 + 0.4 * Math.sin(2 * Math.PI * (1 / seconds) * t * 2);
+      d[i] = (Math.sin(2 * Math.PI * 31 * t) * 0.5 + Math.sin(2 * Math.PI * (62 + c * 0.5) * t) * 0.25 + Math.sin(2 * Math.PI * 233 * t) * 0.03) * beat * 0.5 + lp * 0.6;
+    }
+  }
+  return b;
+}

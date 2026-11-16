@@ -4,7 +4,7 @@ import * as THREE from 'three/webgpu';
 import {
   pass, mrt, output, normalView, velocity, packNormalToRGB, unpackRGBToNormal, sample, uniform, Fn,
   vec2, vec3, vec4, float, screenUV, screenCoordinate, mix, smoothstep, dot, clamp, fract, sin, length,
-  agxToneMapping, sRGBTransferOETF, max, time
+  neutralToneMapping, sRGBTransferOETF, max, time
 } from 'three/tsl';
 import { ao } from 'three/addons/tsl/display/GTAONode.js';
 import { traa } from 'three/addons/tsl/display/TRAANode.js';
@@ -17,15 +17,15 @@ const texOf = (n: unknown) => (n as { getTextureNode(): THREE.TextureNode }).get
 
 /** Параметри «камери», які змінює гра (страх, пошкодження, затемнення). */
 export const look = {
-  exposure: uniform(1.0),
+  exposure: uniform(1.9),
   aoStrength: uniform(1.0),
-  bloomStrength: uniform(0.55),
-  bloomThreshold: uniform(0.9),
-  grain: uniform(0.045),
+  bloomStrength: uniform(0.32),
+  bloomThreshold: uniform(1.05),
+  grain: uniform(0.022),
   vignette: uniform(0.42),
   aberration: uniform(0.0025),
   distortion: uniform(0.06),
-  saturation: uniform(0.92),
+  saturation: uniform(1.0),
   /** Подих страху: посилює аберацію, віньєтку й зерно (0..1). */
   fear: uniform(0.0),
   /** Затемнення екрана (0 — нема, 1 — чорний). */
@@ -90,8 +90,8 @@ export class PostPipeline {
       // хроматична аберація до країв
       const ab = c.mul(look.aberration.add(look.fear.mul(0.006))).mul(r2.mul(4).add(0.4));
       const col = vec3(S(uvd.add(ab)).r, S(uvd).g, S(uvd.sub(ab)).b).toVar();
-      // експозиція й тональна компресія AgX (м'які світла, глибокі тіні)
-      col.assign(agxToneMapping(col.mul(look.exposure), float(1)));
+      // експозиція й тональна компресія Khronos Neutral: зберігає відтінок (насичений жовтий не «буріє»)
+      col.assign(neutralToneMapping(col.mul(look.exposure), float(1)));
       // грейдинг: тіні трохи в холодну зелень, світла в теплий жовтий (флуоресцентні лампи)
       const lum = dot(col, vec3(0.2126, 0.7152, 0.0722));
       col.addAssign(vec3(-0.008, 0.004, 0.01).mul(float(1).sub(smoothstep(0, 0.4, lum))));
