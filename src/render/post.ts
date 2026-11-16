@@ -39,7 +39,7 @@ export class PostPipeline {
   readonly pipeline: THREE.RenderPipeline;
   private profile: QualityProfile | null = null;
 
-  constructor(private readonly renderer: THREE.WebGPURenderer, private readonly scene: THREE.Scene, private readonly camera: THREE.PerspectiveCamera) {
+  constructor(private readonly renderer: THREE.WebGPURenderer, public scene: THREE.Scene, private readonly camera: THREE.PerspectiveCamera) {
     this.pipeline = new THREE.RenderPipeline(renderer);
     this.pipeline.outputColorTransform = false; // тон і sRGB робимо самі у фінальному проході
   }
