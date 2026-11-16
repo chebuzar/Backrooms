@@ -1,20 +1,21 @@
 import js from '@eslint/js';
+import tseslint from 'typescript-eslint';
 import globals from 'globals';
 
-export default [
-  { ignores: ['dist/**', '.shots/**', 'node_modules/**', 'src/render/n8ao/**', 'server/node_modules/**'] },
+export default tseslint.config(
+  { ignores: ['dist/**', 'node_modules/**', 'server/node_modules/**', '.shots/**', 'scripts/libs-check/**', 'scripts/asset-view/**'] },
   js.configs.recommended,
+  ...tseslint.configs.recommended,
   {
-    files: ['**/*.js', '**/*.mjs'],
-    languageOptions: {
-      ecmaVersion: 2022,
-      sourceType: 'module',
-      globals: { ...globals.browser }
-    },
+    files: ['**/*.ts'],
+    languageOptions: { globals: { ...globals.browser } },
     rules: {
-      'no-unused-vars': ['warn', { args: 'none', caughtErrors: 'none' }],
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', caughtErrors: 'none' }],
+      '@typescript-eslint/consistent-type-imports': 'error',
       'no-empty': ['error', { allowEmptyCatch: true }]
     }
   },
-  { files: ['scripts/**', 'server/**', '*.config.js'], ignores: ['scripts/libs-check/**'], languageOptions: { globals: { ...globals.node } } }
-];
+  // скрипти Node; код у page.evaluate(...) виконується в браузері, тому й браузерні глобали
+  { files: ['scripts/**', 'server/**', '*.config.*'], languageOptions: { globals: { ...globals.node, ...globals.browser } } },
+  { files: ['**/*.js', '**/*.mjs'], rules: { '@typescript-eslint/no-unused-vars': ['warn', { caughtErrors: 'none' }], 'no-empty': ['error', { allowEmptyCatch: true }] } }
+);

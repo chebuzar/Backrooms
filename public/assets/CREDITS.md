@@ -1,34 +1,9 @@
-# Ассеты и лицензии
+# Ассети й ліцензії
 
-Все текстуры — **CC0 1.0** (общественное достояние), ambientCG.com. Атрибуция не обязательна, но указываем источник.
-
-- `Asphalt031` — https://ambientcg.com/view?id=Asphalt031
-- `Carpet011` — https://ambientcg.com/view?id=Carpet011
-- `Carpet012` — https://ambientcg.com/view?id=Carpet012
-- `Carpet016` — https://ambientcg.com/view?id=Carpet016
-- `Concrete031` — https://ambientcg.com/view?id=Concrete031
-- `Concrete034` — https://ambientcg.com/view?id=Concrete034
-- `Concrete046` — https://ambientcg.com/view?id=Concrete046
-- `OfficeCeiling001` — https://ambientcg.com/view?id=OfficeCeiling001
-- `PaintedMetal012` — https://ambientcg.com/view?id=PaintedMetal012
-- `Tiles107` — https://ambientcg.com/view?id=Tiles107
-- `Tiles132A` — https://ambientcg.com/view?id=Tiles132A
-- `Wallpaper001A` — https://ambientcg.com/view?id=Wallpaper001A
-- `Wallpaper001C` — https://ambientcg.com/view?id=Wallpaper001C
-- `Wood066` — https://ambientcg.com/view?id=Wood066
-
-## 3D-модели
-
-**CC0 1.0**, Quaternius (quaternius.com). Сконвертированы из FBX в GLB скриптом `scripts/convert-models.mjs`.
-
-- `models/human.glb` — «Animated Man» (Animated Human.fbx): Idle, Walk, Run, Punch, Death
-- `models/zombie.glb` — «Animated Zombie» (ZombieSmooth.fbx): Idle, Walk, Run, Crawl, Bite
+Усі сторонні ассети гри з автором, джерелом і ліцензією. Скрипти `fetch-model` / `fetch-sound` дописують рядки самі.
 
 ## Code
 
-- **N8AO** (screen-space ambient occlusion) by N8python — CC0 1.0. Vendored three.js pass in `src/render/n8ao/` (the pmndrs `N8AOPostPass` is omitted). https://github.com/N8python/n8ao
-- **detect-gpu** by pmndrs — MIT. GPU benchmark data bundled with the game. https://github.com/pmndrs/detect-gpu
-
-## Sounds
-
-- `assets/sfx/*.mp3` — **Meta Open Sound** (Oculus Audio Pack) by Meta, **CC0 1.0**. https://github.com/facebookincubator/Meta-open-sound — converted from OGG to MP3, peak-normalized to −1 dBFS. Sources: CREAMnstr_CreatureCreepy*, DSGNDron_DroneCreepy*, DSGNImpt_ImpactCreepyReverb*, MUSCStr_StringsCreepy*, MUSCKeyd_PipeOrganCreepy, METLFric_ScratchCreepyReverb*, CHAINMvmt_ChainsCreepy, VOXWhsp_WhispersCreepy*, VOXFem/VOXMale_GroanCreepy, VOXScrm_FemaleScream, HMNBrth_*Breathing, DOORKnck_OfficeDoorKnock, DOORMetl_HatchClose, DOORWood_OfficeDoorClose, MACHMisc_MachineHum_LOOP, MECHSwtch_SwitchSmallOn/Off, CLOCKTick_ClockCreepyReverb.
+- **three.js** — MIT. https://github.com/mrdoob/three.js
+- **Rapier** (`@dimforge/rapier3d-compat`) — Apache-2.0. https://github.com/dimforge/rapier
+- **recast-navigation-js** — MIT. https://github.com/isaac-mason/recast-navigation-js
