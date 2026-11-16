@@ -74,8 +74,15 @@ npm run shot -- --level 4 --eval "__zk.look(1.57)" # довільний JS пе�
 | `nipplejs` | віртуальний джойстик для iPad/iPhone | ні (є свій джойстик у `game.js`) |
 | `howler` | звуки й атмосфера | ні (звук синтезується WebAudio у `sound.js`) |
 | `postprocessing` (pmndrs) | horror-ефекти: шум, зерно, глітч, віньєтка | ні (свій шейдер FX + `three/addons` EffectComposer) |
-| `three-mesh-bvh` | колізії, щоб не проходити крізь стіни | ні (колізії по сітці клітинок + прямокутники) |
+| `three-mesh-bvh` | швидкі промені/колізії по мешах | встановлена 0.9.x, у грі ще не підключена (колізії поки по сітці клітинок + прямокутники) |
 | `@pmndrs/detect-gpu` | сила відеокарти пристрою → профіль графіки | встановлена (6.0.x; база замірів вбудована в збірку через `import.meta.glob`, без unpkg) |
+| `@dimforge/rapier3d-compat` | фізика (предмети, що падають/котяться) | встановлена 0.21, у грі ще не підключена |
+| `recast-navigation` + `@recast-navigation/three` | навмеш і пошук шляху монстра | встановлені 0.44, у грі ще не підключені |
+| `yuka` | ШІ монстрів: зір, слух, стани, рух | встановлена 0.7.8, у грі ще не підключена (зараз свій ШІ в `Entity.update`) |
+| `stats-gl` | FPS і час GPU на екрані | встановлена 4.x, у грі ще не підключена (план: лише з `?debug`) |
+| `lil-gui` | панель налаштувань у режимі `?debug` | встановлена 0.21, у грі ще не підключена |
+
+Шість бібліотек вище власник попросив встановити наперед (16.11.2026). Вони в `dependencies`, але **в збірку гри не потрапляють, доки їх не імпортує код** — тому сайт не важчає. Підключати в гру — окремою задачею, з перевіркою швидкодії й Safari. `npm run libs` перевіряє, що всі шість працюють поверх three 0.160 у Chromium і WebKit.
 
 ### Профілі графіки (`src/core/device.js` + `PROFILES` у `game.js`)
 - При запуску визначаються платформа (`apple` — iPhone/iPad/Mac, `android`, `other`), форм-фактор і рівень GPU 0–3 (detect-gpu; запасний варіант — за назвою GPU). Програмний рендер (SwiftShader, CI, контейнер) — рівень 0 → «Низька».
@@ -90,11 +97,33 @@ npm run shot -- --level 4 --eval "__zk.look(1.57)" # довільний JS пе�
   - Монстр: `yuka` (ШІ: сприйняття, стани, рух), `recast-navigation-js` (навмеш, пошук шляху), `three-mesh-bvh` (колізії/raycast).
   - Звук і керування: `Tone.js` (синтез, ефекти), `standardized-audio-context` (особливості WebAudio в Safari), `howler.js`, `nipplejs`.
   - Інше: `modern-web-guidance` (поради Chrome для меню/UI), `WaveFunctionCollapse` (ідеї генерації рівнів, C#).
-  - Сумісність із three 0.160: `postprocessing` лише **6.35–6.36.x** (новіші вимагають three ≥ 0.168); `n8ao` 2.x і `three-good-godrays` працюють поверх нього (підбирати версію під postprocessing 6.36); `three-mesh-bvh` 0.9.x (three ≥ 0.159); `troika-three-text`, `recast-navigation` — будь-яка three; `three-gpu-pathtracer` новий потребує three ≥ 0.187 — лише як окремий інструмент, не в грі. Відкинуті: `realism-effects` (покинутий з 2024, важкий), `resonance-audio` (архів), `rapier.js` (переїхав; колізії вистачає своїх + BVH).
+  - Сумісність із three 0.160: `postprocessing` лише **6.35–6.36.x** (новіші вимагають three ≥ 0.168); `n8ao` 2.x і `three-good-godrays` працюють поверх нього (підбирати версію під postprocessing 6.36); `three-mesh-bvh` 0.9.x (three ≥ 0.159); `troika-three-text`, `recast-navigation` — будь-яка three; `three-gpu-pathtracer` новий потребує three ≥ 0.187 — лише як окремий інструмент, не в грі. Відкинуті: `realism-effects` (покинутий з 2024, важкий), `resonance-audio` (архів). Rapier — лише пакет `@dimforge/rapier3d-compat` (WASM вбудований, працює в Safari).
 - Перед встановленням бібліотеки — коротко пояснити власнику, навіщо вона потрібна. Встановлювати через npm лише ту, що потрібна зараз.
 - Гра має добре працювати в **Safari на iPad та iPhone**.
 - На iPhone/iPad **звук вмикається після першого дотику** до екрана (AudioContext створюється/відновлюється в обробнику жесту).
 - Після змін — запускати проєкт і перевіряти, що все працює без помилок (`npm run check`, скріншоти `npm run shot`).
+
+## Інструменти (ассети, скіли, MCP, API)
+
+Встановлено 16.11.2026 за проханням власника. Системні програми (Blender, KTX-Software, Meshy CLI) ставить **скрипт налаштування хмарного середовища** `backrooms` під час створення контейнера; якщо чогось немає — `which blender ktx meshy` і доставити тими самими командами (Blender 4.5 LTS з download.blender.org у `/opt/blender`; KTX-Software v4.4.2 зібрати з вихідного коду в `/opt/ktx`; `npm i -g meshy-cli@0.8`).
+
+| Команда | Що робить |
+|---|---|
+| `npm run optimize-asset -- <модель> [--name x] [--ratio 0.5] [--tex 2048] [--view]` | модель (GLB/glTF, а через Blender — FBX/OBJ/DAE/STL/PLY/BLEND) → очистка → спрощення (meshoptimizer) → текстури KTX2 (UASTC для нормалей/ORM, ETC1S для кольору) → `gltfpack -cc` (Meshopt) → `public/assets/models/<x>.glb`. `--view` — одразу скріншоти |
+| `npm run asset-view -- <файл.glb>` | відкриває модель у three 0.160 (KTX2Loader + MeshoptDecoder) у Chromium і WebKit → `.shots/asset-*.png`, кількість трикутників, стиснуті текстури |
+| `npm run fetch-model -- search <слова>` | пошук CC0-моделей у Poly Haven і Sketchfab |
+| `npm run fetch-model -- polyhaven <id> \| sketchfab <uid> [--name x] [--raw]` | завантажити → оптимізувати → **сам дописує автора й ліцензію в `CREDITS.md`**. Лише CC0 (інші ліцензії відмовляє). Сирі файли — `.assets-src/` (не в git) |
+| `npm run fetch-sound -- search <слова>` / `-- <id\|слова> [--name x]` | CC0-звук із Freesound (HQ-прев'ю MP3) → `public/assets/sfx/`, пік −1 dBFS (ffmpeg), запис у `CREDITS.md` |
+| `npm run blender-test` | Blender без вікна: будує тестову кімнату, запікає світло (Cycles), експортує GLB |
+| `blender -b -P scripts/blender/bake.py -- --in scene.blend --out x.glb [--size 1024] [--samples 128]` | запікання світла в текстури для будь-якої сцени/моделі |
+| `npm run libs` | перевірка шести ігрових бібліотек у Chromium + WebKit |
+| `npx gltf-transform …`, `npx gltfpack …`, `ktx`/`toktx` | інструменти напряму |
+
+- **Гра поки не вміє вантажити KTX2/Meshopt**: коли перша оптимізована модель піде в гру, підключити до `GLTFLoader` у `monster-models.js` `KTX2Loader` (транскодер з `three/examples/jsm/libs/basis`, скопіювати в `public/`) і `MeshoptDecoder` — як у `scripts/asset-view/main.js`.
+- **Ключі API** (Sketchfab, Freesound, Meshy): у коді й git їх немає і бути не може (репозиторій публічний). Скрипти беруть `SKETCHFAB_API_KEY` / `FREESOUND_API_KEY` / `MESHY_API_KEY` зі змінних середовища; у хмарі Claude ключі збережені як *network secrets* середовища `backrooms` (шлюз сам підставляє їх у запити до api.sketchfab.com, freesound.org, api.meshy.ai), тому без змінної скрипти шлють заглушку `proxy-injected`. Вбудований `fetch` у Node іде через шлюз лише з `NODE_USE_ENV_PROXY=1` (уже в npm-скриптах і в `.mcp.json`). `.env` — у `.gitignore`.
+- **Скіли** (`.claude/skills/`): `meshy-3d-generation` (генерація/текстури/ріг/анімація 3D через Meshy CLI; **кожна генерація платна — спершу питати власника й називати ціну**), `frontend-design` (дизайн меню та інтерфейсу; стиль гри — наш, див. референси). `game-3d-assets` (opusgamelabs) свідомо не встановлено: радить вставляти ключі в чат і переробляє камеру на вигляд від третьої особи.
+- **MCP** (`.mcp.json`): `meshy` (`@meshy-ai/meshy-mcp-server`, ключ — `${MESHY_API_KEY}`). Підхоплюється лише в новій сесії. `blender-mcp` не встановлено: потрібен Blender з вікном, тут лише headless — працюємо скриптами `scripts/blender/`.
+- Нові ассети — **лише CC0** і з рядком у `CREDITS.md` (fetch-скрипти роблять це самі; для Meshy-моделей дописати вручну: «згенеровано Meshy AI»). Увага: на безкоштовному тарифі Meshy моделі мають ліцензію CC BY 4.0, а не CC0 — перед першою генерацією для гри уточнити тариф у власника.
 
 ## Правила
 
