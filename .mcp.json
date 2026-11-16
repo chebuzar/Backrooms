@@ -53,6 +53,14 @@
         "--chromeArg=--no-sandbox"
       ],
       "env": {}
+    },
+    "spector": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "/opt/spector/mcp/dist/index.js"
+      ],
+      "env": {}
     }
   }
 }

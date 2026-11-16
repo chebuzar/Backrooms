@@ -2220,6 +2220,8 @@ function perfFrame(frame, upd, ren) {
 // Включается на dev-сервере или по ?debug в адресе. Используется автотестами (scripts/shot.mjs).
 if (import.meta.env.DEV || new URLSearchParams(location.search).has('debug')) {
   const faceTo = (x, z) => Math.atan2(-(x - pl.x), -(z - pl.z));
+  // Для інструментів налагодження three.js (плагін parallax-threejs: /checkpoint, /diff, /sweep).
+  Object.assign(window, { scene, renderer, camera });
   window.__zk = {
     game, pl, SAVE, renderer, scene, camera, sound, THREE, wrist, LOOK, bloom, amb, U, applyQuality, aoPass, composer, renderPass, net, take: (it) => take(it), get rp() { return rp; }, ending: () => showEnding(), prologue: () => newGame(),
     get lvl() { return lvl; },
