@@ -34,7 +34,8 @@
 
 ## Монстри (ШІ й моделі)
 - ШІ — `src/ai/brain.ts` (зір зі світлом/ліхтариком/присідом, слух з приглушенням стінами, пам'ять, стани patrol → suspicious → investigate → chase → search → lost, правила `movesWhenUnseen`, `fearsLight`, `cutsOff`) + `src/ai/nav.ts` (recast navmesh з того ж планування). Тести — `tests/unit/ai.test.ts`.
-- Моделі (план): тіла **MakeHuman/MPFB2** (CC0; аддон встановлюється в Blender з `.assets-src/makehuman/mpfb.zip`, приклад — `scripts/blender/mh_test.py`, скелет `game_engine` 53 кістки) + анімації **Quaternius UAL** (CC0, `.assets-src/packs/ual`), перенесення — `src/world/monsters/retarget.ts` (`MH_TO_UAL`).
+- Моделі: генератор `blender -b -P scripts/blender/make_monster.py -- --preset watcher --out .assets-src/monsters/watcher.glb`. Встановлення в новому контейнері: аддон — `blender -b --command extension install-file -r user_default -e .assets-src/makehuman/mpfb.zip` (zip із `mpfb2/src/mpfb`, репозиторій makehumancommunity/mpfb2), ассети — розпакувати `makehuman_system_assets_cc0.zip` (files2.makehumancommunity.org/asset_packs/…, 281 МБ) у `~/.config/blender/4.5/extensions/.user/user_default/mpfb/data`.
+- Тіла **MakeHuman/MPFB2** (CC0; аддон встановлюється в Blender з `.assets-src/makehuman/mpfb.zip`, приклад — `scripts/blender/mh_test.py`, скелет `game_engine` 53 кістки) + анімації **Quaternius UAL** (CC0, `.assets-src/packs/ual`), перенесення — `src/world/monsters/retarget.ts` (`MH_TO_UAL`).
 - Джерела без ключів — таблиця в `docs/PLAN.md`.
 
 ## Команди
