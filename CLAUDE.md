@@ -56,6 +56,7 @@
 - Конвеєр: `npm run optimize-asset` (Blender → simplify → KTX2 → Meshopt → `public/assets/models`), `npm run asset-view`, `npm run fetch-model`, `npm run fetch-sound`, `scripts/blender/bake.py` (запікання світла), `npm run blender-test`.
 - Інструменти середовища (Blender 4.5, KTX-Software, Meshy CLI, Spector MCP, `../refs`) ставить скрипт налаштування середовища `backrooms`.
 - MCP: `context7` (документація — перевіряти API r187), `playwright`, `chrome-devtools` (профілювання), `spector` (аналіз кадру WebGL), `meshy`; плагін `parallax-threejs` (міст до сцени: `set_dev_port`, `http://localhost:9222/?debug`).
+- Додано 16.11.2026 на прохання власника: плагін `claude-code-setup` (офіційний, проєктний — `.claude/settings.json`); `claude-mem` (пам'ять між сесіями, локально, провайдер — акаунт Claude, телеметрія вимкнена; веб-перегляд `http://127.0.0.1:37700`); скіл `task-observer` (`.claude/skills/task-observer`, хук `.claude/hooks/task-observer-start.sh`, журнал — `.task-observer/`, не в git); `godot-mcp` (MCP `godot`, Godot 4.5.1 у `/usr/local/bin/godot`; для цієї гри не потрібен); ACE-Step 1.5 (музика, `~/tools/ACE-Step-1.5`, лише CPU — повільно). Не встановлено: UnrealClaude (потрібен Unreal Engine 5.7), Audio2Face-3D (потрібна відеокарта NVIDIA). Усе, крім проєктних файлів, ставить скрипт налаштування середовища.
 
 ## Правила
 - Safari/iOS: звук лише після жесту; pointer lock на iOS немає; `dvh` і safe-area; перевіряти WebKit на кожну зміну рендера, звуку, керування, CSS.
@@ -71,3 +72,38 @@
 **Тестова версія (поки нова гра не в `main`)** — https://zakulisye.ample.run (статичний застосунок `zakulisye-preview`, Ample, акаунт власника). Оновлення: `npm run build`, `tar -czf <tmp>/preview.tar.gz -C dist .` (≤ 32 МБ), `ample_upload_create(archive, name=zakulisye-preview, deploy)` → `curl -T <tar> <upload_url>` → `ample_upload_get(wait)`.
 
 Push у `main` → `.github/workflows/deploy.yml`: lint → typecheck → test → build (`BASE_PATH=/Backrooms/`) → smoke → GitHub Pages (https://chebuzar.github.io/Backrooms/).
+
+## task-observer (скіл rebelytics, встановлено 16.11.2026)
+```text
+(task-observer activation block — template of v3.11.0)
+Before the first tool call of any session, and before writing or
+proposing a plan, invoke the task-observer skill AND run its Session
+Start Protocol: loading the skill without running the protocol activates
+nothing. Any turn that will involve a tool call counts; do not classify
+the session as "too simple" from its opening message. A step you did not
+run goes to session-starts.log; the reply carries it, in one line before
+the answer, only when the user can act on it (a failed probe, a review or
+staged update due, an activation gap). If the skill does not resolve on
+this turn, tell
+the user in your first reply, never only in a log; say which probe told
+you so (the skill listing, or the skill directory on disk), re-check the listing on every later turn that makes a tool call,
+and run the protocol the first time it resolves — a "not installed"
+verdict holds for one turn. Listed on disk but refused by the Skill tool
+("Unknown skill"): read its SKILL.md directly and run the protocol.
+
+After completing each task, list the observation records written this
+session in the same turn and append a one-line summary from that listing
+to checkpoints.log (ids and titles, or "none logged" followed by one line
+per user correction and per incident in the task, each with why it is not
+an observation) — never from memory of writing them. The reply names only
+what was logged, in one line; "none logged" stays in the file. This is the
+backstop: it catches a session in which the skill never ran.
+
+The task-observer workspace for this project is:
+  /home/user/Backrooms/.task-observer
+Every path the skill uses derives from that root, never from the current
+working directory.
+
+A subagent dispatched by a session that runs this protocol does not run
+it and does not write to the log; it reports its findings to its caller.
+```
