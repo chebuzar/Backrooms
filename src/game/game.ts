@@ -6,7 +6,7 @@ import { PostPipeline, look } from '../render/post';
 import { lampDeficits } from '../world/materials';
 import { PROFILES, QualityGovernor, autoQuality, type QualityProfile } from '../render/quality';
 import type { DeviceInfo } from '../core/device';
-import { Physics } from '../physics/physics';
+import { Physics, G } from '../physics/physics';
 import { Player } from './player';
 import { CameraRig } from './camera-rig';
 import { Input } from '../input/input';
@@ -94,6 +94,11 @@ export class Game {
   get battery(): number { return this.bat.level; }
   set battery(v: number) { this.bat.level = v; }
   private persistT = 0;
+  /** Ліхтарик упритул до стіни: відстань до поверхні перед ним і плавний множник яскравості. */
+  private flashNear = 10;
+  private flashK = 1;
+  private flashT = 0;
+  private readonly fwd = new THREE.Vector3();
   /** Зум камери 2× (V / кнопка 📹): плавний перехід 0..1. */
   zoom = false;
   private zoomK = 0;
@@ -706,7 +711,16 @@ export class Game {
       // низький заряд: тьмяніє, жовтіє й час від часу «провалюється»
       const low = this.battery < 0.15 ? this.battery / 0.15 : 1;
       const dip = this.battery < 0.15 && Math.sin(this.time * 23.0) * Math.sin(this.time * 7.3) > 0.55 ? 0.15 : 1;
-      fl.intensity += ((this.flashlightOn ? 26 * (0.35 + 0.65 * low) * dip : 0) - fl.intensity) * Math.min(1, dt * 18);
+      // «автодіафрагма»: зблизька (стіна, двері, меблі) світло слабшає ~ квадрату відстані — пляма не вибілює кадр;
+      // від 1.4 м і далі — як і було
+      if ((this.flashT -= dt) <= 0) {
+        this.flashT = 0.05;
+        const d = this.fwd.set(0, 0, -1).applyQuaternion(c.quaternion);
+        this.flashNear = this.physics.raycast(c.position.x, c.position.y, c.position.z, d.x, d.y, d.z, 3, G.STATIC | G.DOOR | G.PROP) ?? 10;
+      }
+      const nearK = Math.min(1, Math.max(0.1, (this.flashNear / 1.4) ** 2));
+      this.flashK += (nearK - this.flashK) * Math.min(1, dt * 8);
+      fl.intensity += ((this.flashlightOn ? 26 * (0.35 + 0.65 * low) * dip * this.flashK : 0) - fl.intensity) * Math.min(1, dt * 18);
       this.hud.setBattery(this.flashlightOn || this.battery < 0.3 ? this.battery : -1, this.battery);
       const spill = fl.children[0] as THREE.SpotLight | undefined;
       if (spill) spill.intensity = fl.intensity * 0.12;
