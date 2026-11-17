@@ -250,3 +250,20 @@ export function tapeHiss(ctx: BaseAudioContext, seconds = 4): AudioBuffer {
   }
   return b;
 }
+
+/** Дзвоник радянського телефона: молоточок 25 Гц б'є по двох чашках — 1.2 с дзвону, 3.8 с тиші (петля 5 с). */
+export function phoneRing(ctx: BaseAudioContext): AudioBuffer {
+  const sr = ctx.sampleRate, n = Math.floor(sr * 5);
+  const b = ctx.createBuffer(1, n, sr), d = b.getChannelData(0);
+  const partials = [[1480, 1], [1520, 0.8], [2230, 0.45], [3310, 0.25], [4400, 0.12]];
+  for (let i = 0; i < n; i++) {
+    const t = i / sr;
+    if (t > 1.25) break;
+    const hit = t % 0.04; // удари молоточка 25 Гц
+    const env = Math.exp(-hit * 55) * Math.min(1, (1.25 - t) * 8);
+    let v = 0;
+    for (const [f, a] of partials) v += Math.sin(2 * Math.PI * (f as number) * t) * (a as number);
+    d[i] = v * env * 0.22;
+  }
+  return b;
+}

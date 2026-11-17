@@ -41,7 +41,7 @@ export class TapePlayer {
     while (this.next < tp.lines.length && (tp.lines[this.next] as [number, string])[0] <= this.t) {
       const [at, text] = tp.lines[this.next] as [number, string];
       const nextAt = (tp.lines[this.next + 1]?.[0] ?? at + 5);
-      this.say(`Савельев: ${text}`, Math.max(3, nextAt - at));
+      this.say(`${tp.speaker ?? 'Савельев: '}${text}`, Math.max(3, nextAt - at));
       this.next++;
     }
     const end = (tp.lines[tp.lines.length - 1]?.[0] ?? 0) + 4;

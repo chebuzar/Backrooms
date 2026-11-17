@@ -11,16 +11,17 @@ import { Player } from './player';
 import { CameraRig } from './camera-rig';
 import { Input } from '../input/input';
 import { AudioEngine, type SpatialVoice } from '../audio/audio';
-import { humLoop, footstepCarpet, typeClick, paperRustle, seamDrone, geigerClick } from '../audio/synth';
+import { humLoop, footstepCarpet, typeClick, paperRustle, seamDrone, geigerClick, phoneRing } from '../audio/synth';
 import { SoundBank } from '../audio/bank';
 import { Figure } from '../world/monsters/figure';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { HUD } from '../ui/hud';
 import { Ambience } from './ambience';
 import { Interactions } from './interact';
-import { DOCS, NOTES, TAPES, FINDINGS, PROLOGUE, OBJECTIVES, HINTS, LEVEL_END, LEVEL_TITLES, type Doc } from '../story/ru';
+import { DOCS, NOTES, TAPES, FINDINGS, SPECIAL, PROLOGUE, OBJECTIVES, HINTS, LEVEL_END, LEVEL_TITLES, type Doc } from '../story/ru';
 import { placeFindings, type Finding } from '../world/findings';
 import { placeLockers, type Locker } from '../world/lockers';
+import { placeSpecialRooms, type Special } from '../world/special-rooms';
 import { TapePlayer } from './tapes';
 import { Store, type Settings } from '../core/save';
 import { UI } from '../ui/screens';
@@ -123,6 +124,11 @@ export class Game {
   private findings: Finding[] = [];
   /** Шафки (рівень 1) і стан «сховався»: погляд крізь жалюзі, відхилення погляду від прямого. */
   private lockers: Locker[] = [];
+  /** Особливі кімнати рівня 0 і дзвінок телефона (доки не знімеш трубку). */
+  private specials: Special[] = [];
+  private phoneVoice: SpatialVoice | null = null;
+  private phoneAnswered = false;
+  private writingSeen = false;
   hide: { l: Locker; dyaw: number; dpitch: number; seen: boolean } | null = null;
   readonly tapes = new TapePlayer(this.audio, this.sfx, (t, sec) => this.hud.subtitle(t, sec));
   private geiger: AudioBuffer[] = [];
@@ -225,6 +231,8 @@ export class Game {
     this.findings = await placeFindings(this.assets, lvl, FINDINGS[lvl.id] ?? []);
     this.hide = null;
     this.lockers = lvl.id === 1 ? await placeLockers(this.assets, this.physics, lvl, [0.33, 0.5, 0.7]) : [];
+    this.specials = lvl.id === 0 ? await placeSpecialRooms(this.assets, this.physics, lvl, [...this.findings, ...this.pickups].map((f) => ({ x: f.x, z: f.z }))) : [];
+    this.phoneAnswered = false; this.writingSeen = false;
     this.setScene(lvl.scene);
     if (this.player) this.setupInteractions(lvl);
     this.levelAudio();
@@ -240,6 +248,10 @@ export class Game {
     const amb = this.sfx.get(`amb_l${lvl.id}`), bus = this.audio.music;
     this.ambSrc = amb && bus ? this.audio.play2D(amb, 0.32, 1, bus) : null;
     if (this.ambSrc) this.ambSrc.loop = true;
+    // телефон у порожній кімнаті дзвонить (рівень 0), доки не знімеш трубку
+    this.phoneVoice?.stop(0.05); this.phoneVoice = null;
+    const ph = this.specials.find((s) => s.id === 'phone'), ctx = this.audio.ctx;
+    if (ph && ctx && !this.phoneAnswered) this.phoneVoice = this.audio.play3D(phoneRing(ctx), ph.x, ph.y, ph.z, { loop: true, gain: 0.9, ref: 2.2, wet: 0.45 });
     const seams: (Seam | undefined)[] = [lvl.seam, lvl.rift];
     this.seamVoices.forEach((v, i) => {
       const p = seams[i]?.group.position;
@@ -445,7 +457,31 @@ export class Game {
     if (!lvl) return;
     for (const b of this.pickups) { b.obj.removeFromParent(); this.interact?.remove(b.id); }
     this.pickups = await placeBatteries(this.assets, lvl, this.store.progress.pickups);
-    for (const b of this.pickups) this.addPickup(b);
+    // нове проходження: телефон знову дзвонить, почерк знову «незнайомий»
+    this.phoneAnswered = false; this.writingSeen = false;
+    this.setupInteractions(lvl);
+    this.levelAudio();
+  }
+
+  /** Зняти трубку: дзвінок обривається, у трубці тріск і голос диспетчера блочного щита (субтитри). */
+  private answerPhone(): void {
+    if (this.phoneAnswered) return;
+    this.phoneAnswered = true;
+    this.phoneVoice?.stop(0.05); this.phoneVoice = null;
+    this.interact.remove('phone');
+    const sp = this.specials.find((s) => s.id === 'phone');
+    if (sp) this.tapes.play({ id: 'phone', title: '', meta: '', speaker: '', lines: SPECIAL.phone }, sp.x, sp.z);
+    look.fear.value = Math.min(1, look.fear.value + 0.25);
+  }
+
+  /** Почерк на стінах — його власний. */
+  private seeWriting(): void {
+    if (this.writingSeen) return;
+    this.writingSeen = true;
+    this.interact.remove('writing');
+    this.hud.subtitle(SPECIAL.writing, 5);
+    look.fear.value = Math.min(1, look.fear.value + 0.4);
+    this.rig.shake = Math.max(this.rig.shake, 0.25);
   }
 
   /** Сховатися в шафку: камера за жалюзі, рух вимкнено, ліхтарик гасне. Мисливець, що бачив це, знайде. */
@@ -493,6 +529,10 @@ export class Game {
     for (const f of this.findings) {
       this.interact.add({ id: f.id, x: f.x, y: f.y, z: f.z, reach: 1.7, prompt: f.kind === 'tape' ? HINTS.listen : HINTS.read, enabled: true,
         use: () => (f.kind === 'tape' ? this.playTape(f) : this.readDoc(f.id)) });
+    }
+    for (const sp of this.specials) {
+      if (sp.id === 'phone') this.interact.add({ id: 'phone', x: sp.x, y: sp.y, z: sp.z, reach: 1.7, enabled: true, get prompt() { return HINTS.answer; }, use: () => this.answerPhone() });
+      if (sp.id === 'writing') this.interact.add({ id: 'writing', x: sp.x, y: sp.y, z: sp.z, halfHeight: 0.4, reach: 2.4, prompt: HINTS.look, enabled: true, use: () => this.seeWriting() });
     }
     for (const l of this.lockers) {
       this.interact.add({ id: l.id, x: l.door.x, y: l.door.y, z: l.door.z, halfHeight: 0.7, reach: 1.6, prompt: HINTS.hide, enabled: true, use: () => this.enterLocker(l) });

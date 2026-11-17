@@ -140,7 +140,7 @@ export const NOTES: Record<string, Doc> = {
 };
 
 /** Магнітофонні плівки Савельєва (по одній на рівень): рядки й секунда, коли кожен звучить. */
-export interface Tape { id: string; title: string; meta: string; lines: [number, string][] }
+export interface Tape { id: string; title: string; meta: string; lines: [number, string][]; /** Хто говорить (префікс субтитрів); за замовчуванням Савельев. */ speaker?: string }
 export const TAPES: Record<string, Tape> = {
   tape1: {
     id: 'tape1', title: 'Плёнка № 1 — Савельев', meta: 'Кассета «МК-60». Запись с шумом, голос усталый.',
@@ -184,6 +184,17 @@ export const FINDINGS: Record<number, { id: string; kind: 'note' | 'tape'; at: n
   2: [{ id: 'note2a', kind: 'note', at: 0.25 }, { id: 'note2b', kind: 'note', at: 0.66 }, { id: 'tape3', kind: 'tape', at: 0.85 }]
 };
 
+/** Особливі кімнати рівня 0: що чути в трубці й що думає оператор, коли бачить свій почерк. */
+export const SPECIAL = {
+  phone: [
+    [0, '(в трубке — треск и далёкий гул)'],
+    [3, 'Голос: …Щит управления, ответьте. Четвёртый блок, ответьте.'],
+    [8, 'Голос: …Ты же был там. Почему ты ушёл со щита?'],
+    [13, '(короткие гудки)']
+  ] as [number, string][],
+  writing: 'Это мой почерк. Я не помню, как это писал.'
+};
+
 export const OBJECTIVES = {
   level0Start: 'Осмотреть стол экспедиции',
   level0Find: 'Найти «Шов» — место, где стена тоньше',
@@ -208,6 +219,8 @@ export const HINTS = {
   battery: 'Взять батарейки',
   listen: 'Слушать',
   hide: 'Спрятаться',
+  answer: 'Снять трубку',
+  look: 'Рассмотреть',
   unhide: 'Выйти'
 };
 

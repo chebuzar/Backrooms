@@ -21,6 +21,8 @@
 - `models/cigs.glb` — «Cigarette Pack» — Ulrich Büch, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/cigarette_pack
 - `models/battery.glb` — батарейки 3336Л, власна модель (`scripts/blender/make_battery.py`); текстура — кроп «Metal Plate 02» (Rob Tuytel, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/metal_plate_02), перефарбований (`scripts/assets/make-battery-tex.py`)
 - `models/tape.glb` — «Portable Cassette Player» — Mateusz Sadek, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/portable_cassette_player
+- `models/phone.glb` — радянський дисковий телефон, власна модель (`scripts/blender/make_phone.py`), однотонні матеріали
+- `models/locker.glb` — сталеві шафки роздягальні, власна модель (`scripts/blender/make_locker.py`); текстура — кроп «Metal Plate 02» (Rob Tuytel, **CC0 1.0**, Poly Haven), перефарбований (`scripts/assets/make-locker-tex.py`)
 
 ## Текстури Poly Haven
 
