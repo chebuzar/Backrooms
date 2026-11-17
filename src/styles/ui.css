@@ -164,6 +164,7 @@ input[type='range'].pencil-range:focus-visible { outline: 2px dashed var(--penci
 .title-card .tc-t { font-size: calc(var(--u) * .85); letter-spacing: .35em; text-transform: uppercase; color: #8c8574; margin-bottom: 1em; }
 .title-card .tc-s { font-size: calc(var(--u) * 1.6); letter-spacing: .08em; }
 .prologue .pl-skip { position: absolute; bottom: calc(5dvh + env(safe-area-inset-bottom)); right: 6vw; font: 400 calc(var(--u) * .8)/1 var(--type); color: #5c574b; }
+.loadline.below { top: auto; bottom: calc(6dvh + env(safe-area-inset-bottom)); }
 .loadline { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); font: 400 var(--u)/1 var(--type); color: #a8a08c; letter-spacing: .04em; }
 
 /* зум камери й навчання */

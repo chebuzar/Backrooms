@@ -160,6 +160,7 @@ export class Game {
     this.input.enabled = false;
     this.resize();
     // заздалегідь скомпілювати шейдери, щоб не було ривків при першому погляді на щось нове
+    await this.assets.gate();
     try { this.gfx.renderer.setRenderTarget(null); await this.gfx.renderer.compileAsync(lvl.scene, this.camera); } catch { /* не критично */ }
   }
 
@@ -272,15 +273,19 @@ export class Game {
     bar.className = 'loadline';
     this.loading = this.init((p) => { pct = p; bar.textContent = `Подготовка экспедиции… ${Math.round(p * 100)} %`; }).then(() => this.start());
     await this.ui.age(this.store.data.ageConfirmed);
+    this.assets?.quiet(800); // меню має з'явитися плавно й одразу — розбір рівня почекає
+    this.store.data.ageConfirmed = true; this.store.save();
+    this.audio.unlock(); // у жесті (iOS); синтез звуків — після показу меню, щоб не затримувати його
+    setTimeout(() => this.prepareAudio(), 600);
+    // меню — одразу: рівень довантажується позаду (пролог чи заставка «Продолжить» його дочекаються)
+    this.showMenu();
     if (pct < 1) {
+      bar.classList.add('below');
       bar.textContent = `Подготовка экспедиции… ${Math.round(pct * 100)} %`;
       document.getElementById('ui')?.appendChild(bar);
     }
     await this.loading;
     bar.remove();
-    this.store.data.ageConfirmed = true; this.store.save();
-    this.audio.unlock(); this.prepareAudio();
-    this.showMenu();
   }
 
   private showMenu(): void {
@@ -314,6 +319,12 @@ export class Game {
 
   /** Продовжити: якщо збережено інший рівень — завантажити його під заставкою. */
   private async continueGame(): Promise<void> {
+    if (this.loading && !this.player) {
+      // ще вантажиться: чорна заставка рівня, поки все не готово
+      this.ui.closeAll();
+      const cp0 = this.store.progress.checkpoint, c0 = cp0 ? LEVEL_TITLES[cp0.level] : undefined;
+      await this.hud.titleCard(c0?.title ?? 'Уровень 0', c0?.sub ?? 'Жёлтые комнаты', async () => { await this.loading; });
+    }
     const cp = this.store.progress.checkpoint;
     const card = cp ? LEVEL_TITLES[cp.level] : undefined;
     if (cp && card && this.level?.id !== cp.level) {
@@ -332,7 +343,8 @@ export class Game {
     this.audio.unlock(); this.prepareAudio();
     let k = 0;
     // якщо гравець був на іншому рівні — рівень 0 вантажиться під час прологу
-    const reload = this.level?.id !== 0 ? this.loadLevel(0) : this.resetPickups();
+    // рівень 0 ще міг не довантажитися після «18+» — пролог іде поверх завантаження
+    const reload = (this.loading ?? Promise.resolve()).then(() => (this.level?.id !== 0 ? this.loadLevel(0).then(() => {}) : this.resetPickups()));
     await this.hud.prologue(PROLOGUE, () => { const b = this.clicks[k++ % Math.max(1, this.clicks.length)]; if (b) this.audio.play2D(b, 0.5, 0.95 + Math.random() * 0.1); });
     await reload;
     // отямлюється на підлозі обличчям до стіни, крізь яку випав (стіл експедиції — за спиною)

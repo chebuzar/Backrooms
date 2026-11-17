@@ -1,7 +1,7 @@
 // Спільне для всіх рівнів: шматки геометрії з Blender (12×12 м) із запеченими картами світла, матеріали за іменем,
 // статичні колізії зі спільного планування.
 import * as THREE from 'three/webgpu';
-import type { Assets } from '../assets/loader';
+import { yieldTask, type Assets } from '../assets/loader';
 import type { Physics } from '../physics/physics';
 import type { Layout } from './layout';
 
@@ -20,6 +20,8 @@ export async function loadChunks(assets: Assets, dir: string, scene: THREE.Scene
     lm.colorSpace = THREE.NoColorSpace;
     lm.flipY = false;
     if (!c.lm.endsWith('.ktx2')) { lm.generateMipmaps = true; lm.minFilter = THREE.LinearMipmapLinearFilter; }
+    await assets.gate();
+    await yieldTask();
     const mats = materialsFor(lm);
     // копія: кешована модель зберігає свої іменовані матеріали для повторного входу на рівень
     const root = gltf.scene.clone(true);
