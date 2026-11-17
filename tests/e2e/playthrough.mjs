@@ -246,7 +246,6 @@ try {
       if (s1 === 'ok') {
         // рівень 2: бігти до «Слепого», поки не схопить
         const d0 = (await state()).deaths;
-        const st = await page.evaluate(() => { const s = window.__zk.game.hunt.stalker; return { x: s.pos.x, z: s.pos.z }; });
         // бігти до «Слепого» короткими відрізками, щоразу до його нової позиції (він чує біг і йде назустріч)
         const t1 = Date.now();
         while (Date.now() - t1 < 240000) {

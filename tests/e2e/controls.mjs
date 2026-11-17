@@ -40,7 +40,7 @@ if (!device) {
   for (const key of ['Tab', 'KeyJ']) {
     await page.keyboard.press(key);
     const opened = await page.waitForSelector('.journal-screen', { timeout: 3000 }).then(() => true, () => false);
-    if (key === 'Tab') await wait(1000), await page.screenshot({ path: `.shots/controls-journal-${which}.png` });
+    if (key === 'Tab') { await wait(1000); await page.screenshot({ path: `.shots/controls-journal-${which}.png` }); }
     check(`${key} — журнал документов`, opened);
     await page.keyboard.press('Escape');
     const closed = await page.waitForFunction(() => !document.querySelector('.journal-screen') && window.__zk.game.mode === 'play', null, { timeout: 3000 }).then(() => true, () => false);

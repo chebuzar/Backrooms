@@ -1,6 +1,6 @@
 // Батарейки для ліхтарика: 2–3 на рівень, поруч із сюжетними точками (документ, записка, Шов, розлом) — гравець
 // знаходить їх, коли йде туди, куди й так веде історія. Підібрані (id у збереженні) більше не з'являються.
-import * as THREE from 'three/webgpu';
+import type * as THREE from 'three/webgpu';
 import type { Assets } from '../assets/loader';
 import type { Level } from './level0';
 import { freeNear, lightProp } from './level0';
