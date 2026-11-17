@@ -10,8 +10,11 @@ const which = process.argv[2] && !process.argv[2].startsWith('--') ? process.arg
 const OUT = '.shots/playthrough';
 mkdirSync(OUT, { recursive: true });
 const srv = await startServer(process.argv.includes('--prod'));
-const { page, logs, close } = await openPage(which);
+const di = process.argv.indexOf('--device'), device = di > 0 ? process.argv[di + 1] : null;
+const { page, logs, close } = await openPage(which, { device });
 const steps = [];
+/** draw calls під час ходьби, за рівнями (ціль iPad: медіана < 150, максимум < 300). */
+const draws = {};
 let nudges = 0;
 let failed = null;
 const t0 = Date.now();
@@ -77,9 +80,10 @@ async function walkTo(tx, tz, { stop = 1.1, run = false, timeout = 600000, label
         const d = Math.atan2(Math.sin(p.yaw - want), Math.cos(p.yaw - want));
         g.input.lookX += Math.max(-0.35, Math.min(0.35, d));
         g.input.lookY += p.pitch * 0.5;
-        return { x: p.pos.x, z: p.pos.z, deaths: g.store.progress.deaths };
+        return { x: p.pos.x, z: p.pos.z, deaths: g.store.progress.deaths, lv: g.level.id, draw: g.gfx.renderer.info.render.drawCalls };
       }, [wx, wz]);
       if (s.deaths > deaths0) return 'caught';
+      (draws[s.lv] ??= []).push(s.draw);
       const dT = Math.hypot(tx - s.x, tz - s.z);
       if (dT < stop) { ok = true; break; }
       if (Math.hypot(wx - s.x, wz - s.z) < 0.55 && i < path.length - 1) i++;
@@ -280,6 +284,8 @@ try {
   await shot('exception').catch(() => {});
 }
 log('консоль без ошибок и предупреждений', logs.length === 0, { logs: logs.slice(0, 5) });
+const med = (a) => { const q = [...a].sort((x, y) => x - y); return q[Math.floor((q.length - 1) / 2)]; };
+console.log('draw calls на ходу:', JSON.stringify(Object.fromEntries(Object.entries(draws).map(([k, a]) => [k, { n: a.length, median: med(a), max: Math.max(...a) }]))));
 console.log(JSON.stringify({ browser: which, seconds: Math.round((Date.now() - t0) / 1000), nudges, failed }));
 await close(); await srv.close();
 process.exitCode = failed ? 1 : 0;
