@@ -24,7 +24,10 @@
     "blender-test": "blender -b -P scripts/blender/bake.py -- --out .shots/tools/bake-test.glb --size 512 --samples 32",
     "mcp-check": "node scripts/mcp-check.mjs",
     "e2e": "node tests/e2e/touch-reader.mjs && node tests/e2e/audio.mjs webkit",
-    "e2e:bench": "node tests/e2e/bench.mjs webkit"
+    "e2e:bench": "node tests/e2e/bench.mjs webkit",
+    "e2e:play": "node tests/e2e/playthrough.mjs webkit",
+    "e2e:memory": "node tests/e2e/memory.mjs webkit",
+    "baseline": "node tests/e2e/baseline.mjs"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.21.0",

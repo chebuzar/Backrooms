@@ -33,6 +33,15 @@ async function boot(): Promise<void> {
         look: (yaw: number, pitch = 0) => { game.player.yaw = yaw; game.player.pitch = pitch; },
         /** Поставити гравця в точку й повернути камеру (для повторюваних скріншотів). */
         tp: (x: number, z: number, yaw = 0, pitch = 0) => { game.player.teleport(x, 0, z, yaw); game.player.pitch = pitch; },
+        /** Navmesh поточного рівня для «автогравця» в автотестах (кешується за рівнем). */
+        nav: async (radius = 0.3) => {
+          const l = game.level;
+          if (!l) return null;
+          const cache = (window as unknown as { __navs?: Record<string, unknown> }).__navs ??= {};
+          const key = `${l.id}-${l.layout.seed}-${radius}`;
+          cache[key] ??= await (await import('./ai/nav')).Nav.fromLayout(l.layout, radius);
+          return cache[key];
+        },
         info: () => ({ backend: gfx.backend, quality: game.profile.name, mode: game.mode, draw: gfx.renderer.info.render.drawCalls,
           pos: game.player ? [game.player.pos.x, game.player.pos.y, game.player.pos.z].map((v) => +v.toFixed(2)) : null })
       }
