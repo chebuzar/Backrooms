@@ -187,3 +187,17 @@ export function tongueClicks(ctx: BaseAudioContext, seed: number): AudioBuffer {
   }
   return b;
 }
+
+/** Серцебиття (два глухі удари «тук-тук»), цикл 0.9 с — шар небезпеки; швидкість — через playbackRate. */
+export function heartbeat(ctx: BaseAudioContext): AudioBuffer {
+  const sr = ctx.sampleRate, n = Math.floor(sr * 0.9);
+  const b = ctx.createBuffer(1, n, sr), d = b.getChannelData(0);
+  for (const [at, amp] of [[0, 1], [0.24, 0.7]] as const) {
+    const s0 = Math.floor(at * sr);
+    for (let i = 0; i < sr * 0.22 && s0 + i < n; i++) {
+      const t = i / sr;
+      d[s0 + i] = (d[s0 + i] ?? 0) + Math.sin(2 * Math.PI * (52 - t * 60) * t) * Math.exp(-t * 22) * amp * 0.9;
+    }
+  }
+  return b;
+}

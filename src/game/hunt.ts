@@ -11,7 +11,7 @@ import type { Level } from '../world/level0';
 import type { Assets } from '../assets/loader';
 import type { Physics } from '../physics/physics';
 import type { AudioEngine, SpatialVoice } from '../audio/audio';
-import { tongueClicks } from '../audio/synth';
+import { tongueClicks, heartbeat } from '../audio/synth';
 import type { SoundBank } from '../audio/bank';
 import type { Player } from './player';
 
@@ -20,6 +20,10 @@ export interface HuntEvents { onCatch(): void; onCloser(by: number): void }
 export class Hunt {
   stalker: Stalker | null = null;
   private voice: SpatialVoice | null = null;
+  private heart: AudioBufferSourceNode | null = null;
+  private heartGain: GainNode | null = null;
+  /** Небезпека 0..1 (згладжена): погоня, близькість мисливця. */
+  danger = 0;
   private readonly view: PlayerView = { x: 0, y: 0, z: 0, vx: 0, vz: 0, light: 0, flashlightOn: false, crouched: false, looksAtMe: false, litByFlashlight: false };
   private readonly fwd = new THREE.Vector3();
 
@@ -58,6 +62,27 @@ export class Hunt {
     this.voice?.stop(0.2);
     this.voice = null;
     this.stalker = null;
+    this.danger = 0;
+    if (this.heartGain) this.heartGain.gain.value = 0;
+  }
+
+  /** Серцебиття на шині музики: гучніше й частіше з небезпекою. */
+  private heartbeat(dt: number, target: number): void {
+    const ctx = this.audio.ctx, bus = this.audio.music;
+    if (!ctx || !bus) return;
+    if (!this.heart) {
+      this.heartGain = ctx.createGain();
+      this.heartGain.gain.value = 0;
+      this.heartGain.connect(bus);
+      this.heart = ctx.createBufferSource();
+      this.heart.buffer = heartbeat(ctx);
+      this.heart.loop = true;
+      this.heart.connect(this.heartGain);
+      this.heart.start();
+    }
+    this.danger += (target - this.danger) * Math.min(1, dt * (target > this.danger ? 1.5 : 0.35));
+    (this.heartGain as GainNode).gain.value = Math.max(0, this.danger - 0.12) * 1.1;
+    this.heart.playbackRate.value = 0.85 + this.danger * 0.7;
   }
 
   /** Шум від гравця чи дверей. */
@@ -81,6 +106,9 @@ export class Hunt {
     const lampLit = probeAt(lvl.layout.lights, sp.x, sp.z) * (near === undefined ? 0 : lvl.lamps.levelOf(near));
     v.looksAtMe = clear && (v.litByFlashlight || lampLit > 0.3 || d < 2.2);
     s.update(dt, v);
+    const st = s.brain.state, dist = Math.hypot(sp.x - v.x, sp.z - v.z);
+    const close = Math.max(0, 1 - dist / 14);
+    this.heartbeat(dt, st === 'chase' ? 1 : Math.max(close * (v.looksAtMe ? 1 : 0.6), st === 'investigate' || st === 'search' ? 0.45 : 0));
     // клацання голосніші, коли він полює
     if (this.voice) {
       this.voice.setPosition(sp.x, 1.6, sp.z);
