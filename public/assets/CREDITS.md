@@ -48,3 +48,7 @@
 - `hit_*` — «Horror Hit Soundpack 1», **CC0**, OpenGameArt
 - `amb_l0`, `amb_l1`, `amb_l2` — згенеровано нами моделлю ACE-Step 1.5 (Apache-2.0)
 - гул ламп, гул Шва — синтез у грі (`src/audio/synth.ts`)
+
+## Монстри
+- `models/figure.glb`, `models/watcher.glb`, `models/blind.glb` — тіла MakeHuman/MPFB2 (системні ассети, **CC0**: шкіра old_caucasian_male, роба male_worksuit01, очі low-poly), зібрані нашим скриптом `scripts/blender/make_monster.py` (пресети figure / watcher / blind); протигаз фигуры — Poly Haven «Old Gas Mask», **CC0**
+- клацання «Слепого» й серцебиття небезпеки — синтез у грі (`src/audio/synth.ts`)
