@@ -25,7 +25,6 @@
 
 - `tex/painted_concrete` — «Painted Concrete» — Dario Barresi, Dimitrios Savva, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/painted_concrete
 - `tex/painted_plaster_wall` — «Painted Plaster Wall» — Amal Kumar, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/painted_plaster_wall
-- `tex/old_linoleum_flooring_01` — «Old Linoleum Flooring 01» — Charlotte Baglioni, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/old_linoleum_flooring_01
 - `tex/concrete_wall_008` — «Concrete Wall 008» — Dario Barresi, Charlotte Baglioni, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/concrete_wall_008
 - `tex/blue_plaster_weathered` — «Blue Plaster Weathered» — Amal Kumar, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/blue_plaster_weathered
 - `tex/garage_floor` — «Garage Floor» — Jenelle van Heerden, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/garage_floor
@@ -53,3 +52,4 @@
 - `models/figure.glb`, `models/watcher.glb`, `models/blind.glb` — тіла MakeHuman/MPFB2 (системні ассети, **CC0**: шкіра old_caucasian_male, роба male_worksuit01, очі low-poly), зібрані нашим скриптом `scripts/blender/make_monster.py` (пресети figure / watcher / blind); протигаз фигуры — Poly Haven «Old Gas Mask», **CC0**
 - клацання «Слепого» й серцебиття небезпеки — синтез у грі (`src/audio/synth.ts`)
 - `tex/metal_plate_02` — «Metal Plate 02» — Rob Tuytel, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/metal_plate_02
+- `tex/linoleum_brown` — «Linoleum Brown» — Rob Tuytel, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/linoleum_brown

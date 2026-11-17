@@ -73,7 +73,10 @@ const VIEWS = () => {
 };
 
 const report = { browser: which, device, query, bootBytes, levels: {} };
+// --levels 1,2 — лише ці рівні (швидка перевірка однієї зміни)
+const LEVELS = (opt('levels', '0,1,2')).split(',').map(Number);
 for (const lv of [0, 1, 2]) {
+  if (!LEVELS.includes(lv)) { if (lv < Math.max(...LEVELS)) continue; else break; }
   const before = net.bytes;
   if (lv > 0) {
     await page.evaluate(async (n) => { const g = window.__zk.game; await g.loadLevel(n); g.enterLevelStart(); g.play(); }, lv);

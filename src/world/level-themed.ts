@@ -23,7 +23,8 @@ interface ThemedDef {
 export const THEMED: Record<1 | 2, ThemedDef> = {
   1: {
     seed: 77, preset: 'base', dir: 'level1', next: 2, fog: [0.16, 0.19, 0.18], fogDensity: 0.035, ambient: 0x1a2220,
-    look: { scale: { wall: 2.0, low: 2.0, floor: 2.0, ceil: 2.5 }, paint: { wall: [0.62, 0.62, 0.57], low: [0.17, 0.3, 0.22] }, paintH: 1.5 }
+    look: { scale: { wall: 2.0, low: 2.0, floor: 2.0, ceil: 2.5 }, paint: { wall: [0.62, 0.62, 0.57], low: [0.36, 0.58, 0.42] }, paintH: 1.5 }
+    // панель — світліша «казенна» зелень (17.11: була майже чорна)
   },
   2: {
     seed: 12, preset: 'parking', dir: 'level2', next: 3, fog: [0.2, 0.15, 0.1], fogDensity: 0.04, ambient: 0x1e1810,
