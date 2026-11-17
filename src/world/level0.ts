@@ -7,7 +7,7 @@ import { generateLayout, type Layout } from './layout';
 import { loadLevel0Textures, makeLevel0Materials, probeLit, probeAt } from './materials';
 import { Lamps } from './lamps';
 import { Seam } from './seam';
-import { decorate } from './decor';
+import { decorate, type Decor } from './decor';
 import { buildDecals } from './decals';
 import { Doors } from './doors';
 import { loadChunks, addLayoutColliders } from './chunks';
@@ -53,19 +53,19 @@ export async function buildLevel0(assets: Assets, physics: Physics, onProgress: 
 
   const flashlight = addFlashlight(scene);
   // «Шов» — на найближчій до виходу стіні
-  const seamAt = seamPlacement(layout, layout.exit.x, layout.exit.z);
+  const decor = decorate(layout);
+  const seamAt = seamPlacement(layout, layout.exit.x, layout.exit.z, decor);
   const seam = new Seam(seamAt.x, seamAt.z, seamAt.yaw, H);
   scene.add(seam.group);
 
   // сліди часу: підтьоки, бруд, плями (атлас справжніх декалей, змішування множенням)
-  const decor = decorate(layout);
   scene.add(buildDecals(layout, decor, tex.decals));
   const doors = new Doors(layout, decor, physics, tex);
   scene.add(doors.group);
 
   // Шов прибуття: сьома експедиція проходить туди ж, куди й шість попередніх. Гравець отямлюється на підлозі
   // спиною до стіни, крізь яку випав, і за кілька секунд розріз за ним затягується — дороги назад немає.
-  const arrivalAt = seamPlacement(layout, layout.spawn.x, layout.spawn.z);
+  const arrivalAt = seamPlacement(layout, layout.spawn.x, layout.spawn.z, decor);
   const ny = arrivalAt.yaw, nx = Math.sin(ny), nz = Math.cos(ny);
   const [ax, az] = freeNear(layout, arrivalAt.x + nx * 1.25, arrivalAt.z + nz * 1.25, 0.4);
   layout.spawn.x = ax; layout.spawn.z = az; layout.spawn.yaw = ny + Math.PI;
@@ -75,9 +75,11 @@ export async function buildLevel0(assets: Assets, physics: Physics, onProgress: 
 
   // прихований розлом у найтемнішій глухій зоні: тьмяний, ледь живий — веде одразу на парковку (рівень 2)
   const riftP = layout.points.rift ?? layout.exit;
-  const riftAt = seamPlacement(layout, riftP.x, riftP.z);
+  const riftAt = seamPlacement(layout, riftP.x, riftP.z, decor);
   const rift = new Seam(riftAt.x, riftAt.z, riftAt.yaw, H);
   rift.life.value = 0.4;
+  // лампи довкола розлому мертві: щоб його знайти, треба зайти в темряву з ліхтариком
+  lamps.dimAround(riftAt.x, riftAt.z, 5.5, 0);
   scene.add(rift.group);
 
   const spots = await placeProps(assets, physics, layout, scene);
@@ -136,8 +138,10 @@ export function freeNear(l: Layout, x: number, z: number, r: number): [number, n
 }
 
 /** Точка на найближчій до (ex, ez) стіні й поворот грані, що дивиться на цю точку. */
-export function seamPlacement(l: Layout, ex: number, ez: number): { x: number; z: number; yaw: number } {
+export function seamPlacement(l: Layout, ex: number, ez: number, avoid: Decor[] = []): { x: number; z: number; yaw: number } {
   let best = { d: 1e9, x: ex, z: ez, yaw: 0 };
+  // не на дверному прорізі й не впритул до щитка/дверей (кіт вирізає там стіну — Шов висів би в повітрі)
+  const blocked = (x: number, z: number) => avoid.some((o) => (o.t === 'door' || o.t === 'panel') && Math.hypot(o.x - x, o.z - z) < o.w / 2 + 0.75);
   for (const w of l.walls) {
     if (w.kind === 'pillar') continue;
     const long = Math.max(w.w, w.d);
@@ -150,6 +154,7 @@ export function seamPlacement(l: Layout, ex: number, ez: number): { x: number; z
     const sx = alongX ? Math.max(w.x - w.w / 2 + 0.5, Math.min(ex, w.x + w.w / 2 - 0.5)) : w.x + Math.sign(ex - w.x || 1) * (w.w / 2 + 0.035);
     const sz = alongX ? w.z + Math.sign(ez - w.z || 1) * (w.d / 2 + 0.035) : Math.max(w.z - w.d / 2 + 0.5, Math.min(ez, w.z + w.d / 2 - 0.5));
     const yaw = alongX ? (ez > w.z ? 0 : Math.PI) : (ex > w.x ? Math.PI / 2 : -Math.PI / 2);
+    if (blocked(sx, sz)) continue;
     best = { d, x: sx, z: sz, yaw };
   }
   return best;

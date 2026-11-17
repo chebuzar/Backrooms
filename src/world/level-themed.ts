@@ -54,11 +54,12 @@ export async function buildThemedLevel(id: 1 | 2, assets: Assets, physics: Physi
   scene.add(lamps.mesh, lamps.frame);
   const flashlight = addFlashlight(scene, def.ambient);
 
-  const seamAt = seamPlacement(layout, layout.exit.x, layout.exit.z);
+  const decor = decorate(layout);
+  const seamAt = seamPlacement(layout, layout.exit.x, layout.exit.z, decor);
   const seam = new Seam(seamAt.x, seamAt.z, seamAt.yaw, H);
   scene.add(seam.group);
   // Шов прибуття за спиною (затягується, як і на рівні 0)
-  const arrivalAt = seamPlacement(layout, layout.spawn.x, layout.spawn.z);
+  const arrivalAt = seamPlacement(layout, layout.spawn.x, layout.spawn.z, decor);
   const ny = arrivalAt.yaw;
   const [ax, az] = freeNear(layout, arrivalAt.x + Math.sin(ny) * 1.25, arrivalAt.z + Math.cos(ny) * 1.25, 0.4);
   layout.spawn.x = ax; layout.spawn.z = az; layout.spawn.yaw = ny + Math.PI;
@@ -66,7 +67,6 @@ export async function buildThemedLevel(id: 1 | 2, assets: Assets, physics: Physi
   arrival.life.value = 0;
   scene.add(arrival.group);
 
-  const decor = decorate(layout);
   scene.add(buildDecals(layout, decor, decalsTex));
   const doors = new Doors(layout, decor, physics, { door_c: doorC, door_n: doorN });
   scene.add(doors.group);
