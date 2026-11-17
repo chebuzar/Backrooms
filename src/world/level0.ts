@@ -98,6 +98,14 @@ export function addFlashlight(scene: THREE.Scene, ambient = 0x2a2412): THREE.Spo
   flashlight.shadow.mapSize.set(1024, 1024);
   flashlight.shadow.bias = -0.0004;
   flashlight.shadow.camera.near = 0.1;
+  // тінь лише в радіусі 15 м (далі світло ліхтарика ледь помітне в тумані): у тіньовий прохід не потрапляє пів рівня.
+  // three ставить far = light.distance (28 м — для спаду світла), тож обмежуємо після нього.
+  const upd = flashlight.shadow.updateMatrices.bind(flashlight.shadow);
+  flashlight.shadow.updateMatrices = (light) => {
+    upd(light);
+    const cam = flashlight.shadow.camera as THREE.PerspectiveCamera;
+    if (cam.far !== 15) { cam.far = 15; cam.updateProjectionMatrix(); }
+  };
   scene.add(flashlight, flashlight.target);
   const spill = new THREE.SpotLight(0xffd9a8, 0, 18, 0.95, 1.0, 2);
   flashlight.add(spill);

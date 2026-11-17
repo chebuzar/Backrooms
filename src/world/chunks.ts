@@ -2,6 +2,9 @@
 // статичні колізії зі спільного планування.
 import * as THREE from 'three/webgpu';
 import { yieldTask, type Assets } from '../assets/loader';
+import { attribute } from 'three/tsl';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { BakedMaterial } from './materials';
 import type { Physics } from '../physics/physics';
 import type { Layout } from './layout';
 
@@ -33,9 +36,53 @@ export async function loadChunks(assets: Assets, dir: string, scene: THREE.Scene
       mesh.receiveShadow = true;
       mesh.castShadow = true;
     });
+    mergeKit(root, mats);
     scene.add(root);
     onProgress(done++ / manifest.chunks.length);
   }));
+}
+
+/** Однотонні деталі кіту будівлі (плінтус, рамки, пластик, метал, порожнина над стелею). */
+const KIT = ['base', 'tbar', 'plenum', 'plastic', 'metal', 'frame'];
+
+/**
+ * Дрібні однотонні деталі шматка — в один меш (один виклик малювання замість ~5): колір, шорсткість і металічність
+ * кожної деталі записуються у її вершини, освітлення — та сама запечена карта шматка. Вигляд не змінюється.
+ */
+function mergeKit(root: THREE.Object3D, mats: Record<string, THREE.Material>): void {
+  const kit = new Set(KIT.map((k) => mats[k]).filter(Boolean));
+  const parts: THREE.Mesh[] = [];
+  root.updateMatrixWorld(true);
+  root.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh && kit.has(m.material as THREE.Material)) parts.push(m); });
+  if (parts.length < 2) return;
+  const inv = new THREE.Matrix4().copy(root.matrixWorld).invert();
+  const names = Object.keys((parts[0] as THREE.Mesh).geometry.attributes).sort().join();
+  if (parts.some((p) => Object.keys(p.geometry.attributes).sort().join() !== names)) return; // різний набір атрибутів — не чіпаємо
+  const geos = parts.map((p) => {
+    const g = p.geometry.clone();
+    g.applyMatrix4(new THREE.Matrix4().multiplyMatrices(inv, p.matrixWorld));
+    const m = p.material as THREE.MeshStandardMaterial, n = (g.attributes.position as THREE.BufferAttribute).count;
+    const col = new Float32Array(n * 3), rm = new Float32Array(n * 2);
+    for (let i = 0; i < n; i++) { col.set([m.color.r, m.color.g, m.color.b], i * 3); rm.set([m.roughness, m.metalness], i * 2); }
+    g.setAttribute('kitColor', new THREE.BufferAttribute(col, 3));
+    g.setAttribute('kitRM', new THREE.BufferAttribute(rm, 2));
+    return g;
+  });
+  const merged = mergeGeometries(geos, false);
+  for (const g of geos) g.dispose();
+  if (!merged) return;
+  const src = parts[0]!.material as BakedMaterial;
+  const mat = new BakedMaterial();
+  mat.colorNode = attribute('kitColor', 'vec3');
+  const rmA = attribute('kitRM', 'vec2') as unknown as THREE.Node<'vec2'>;
+  mat.roughnessNode = rmA.x;
+  mat.metalnessNode = rmA.y;
+  mat.lmNode = src.lmNode;
+  const mesh = new THREE.Mesh(merged, mat);
+  mesh.name = 'kit';
+  mesh.castShadow = true; mesh.receiveShadow = true;
+  for (const p of parts) p.removeFromParent();
+  root.add(mesh);
 }
 
 /** Підлога, стеля, стіни й колони як статичні тіла. */

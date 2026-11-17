@@ -160,7 +160,7 @@ export function makeLevel0Materials(t: Level0Textures) {
  * Предмет без власної карти світла (меблі, речі): освітленість — «зонд» у його точці (від найближчих ламп),
  * згори трохи світліше, знизу темніше, як у кімнаті зі стельовим світлом.
  */
-export function probeLit(src: THREE.Material, E: number): BakedMaterial {
+export function probeLit(src: THREE.Material, E: number | THREE.Node<'float'>): BakedMaterial {
   const s = src as THREE.MeshStandardMaterial;
   const m = new BakedMaterial();
   for (const k of ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap', 'alphaMap', 'emissiveMap'] as const) {
@@ -173,7 +173,9 @@ export function probeLit(src: THREE.Material, E: number): BakedMaterial {
   m.metalness = s.metalness ?? 0;
   if (s.normalScale) m.normalScale.copy(s.normalScale);
   m.transparent = s.transparent; m.alphaTest = s.alphaTest; m.side = s.side;
-  m.lmNode = vec3(E * 0.75).mul(normalWorld.y.mul(0.4).add(0.6)).mul(bakeLevel).mul(liveDim());
+  // E — число (один предмет) або вузол (атрибут екземпляра: кожні двері зі своєю освітленістю в одному виклику малювання)
+  const e = typeof E === 'number' ? float(E) : E;
+  m.lmNode = vec3(e.mul(0.75)).mul(normalWorld.y.mul(0.4).add(0.6)).mul(bakeLevel).mul(liveDim());
   return m;
 }
 
