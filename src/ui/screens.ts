@@ -100,6 +100,21 @@ export class UI {
     setTimeout(() => this.focusFirst(), 60);
   }
 
+  /** Підтвердження поверх екрана (бланк із печаткою): Да / Отмена; Esc — Отмена. */
+  confirm(o: { title: string; body: string; yes: string; no: string; onYes: Handler; onNo: Handler }): void {
+    const prevBack = this.onBack;
+    const done = (fn: Handler) => { this.onBack = prevBack; this.close('confirm'); fn(); };
+    const el = this.make('confirm', 'dossier-wrap confirm', `<div class="dossier" role="alertdialog" aria-label="${esc(o.title)}">
+      <div class="head"><div>${T.menu.object}<br>${T.menu.caseNo}</div><div class="stamp">${T.menu.secret}</div></div>
+      <h1 style="font-size:calc(var(--u)*1.5)">${esc(o.title)}</h1>
+      <p class="sub" style="max-width:40ch">${esc(o.body)}</p>
+      <nav class="menu"><button class="line-btn" data-confirm-no autofocus>${esc(o.no)}</button>
+      <button class="line-btn minor" data-confirm-yes>${esc(o.yes)}</button></nav></div>`);
+    this.onBack = () => done(o.onNo);
+    this.bind(el, { '[data-confirm-yes]': () => done(o.onYes), '[data-confirm-no]': () => done(o.onNo) });
+    setTimeout(() => this.focusFirst(), 60);
+  }
+
   settings(s: Settings, deviceLine: string, onChange: (s: Settings) => void, onDone: Handler): void {
     const t = T.settings;
     const seg = (key: keyof Settings, opts: [string, string][]) => `<div class="seg" data-key="${key}">${opts

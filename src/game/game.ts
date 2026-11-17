@@ -275,7 +275,14 @@ export class Game {
     this.ui.menu({
       canContinue: !!this.store.progress.checkpoint,
       onContinue: () => void this.continueGame(),
-      onStart: () => { this.store.newGame(); this.bat.newGame(); void this.startNewGame(); },
+      onStart: () => {
+        const start = () => { this.store.newGame(); this.bat.newGame(); void this.startNewGame(); };
+        // є збереження — спершу спитати: випадкове натискання не має стирати проходження
+        if (!this.store.progress.checkpoint) { start(); return; }
+        const m = T.menu;
+        this.ui.close('menu');
+        this.ui.confirm({ title: m.confirmTitle, body: m.confirmBody, yes: m.confirmYes, no: m.confirmNo, onYes: start, onNo: () => this.showMenu() });
+      },
       onSettings: () => this.openSettings(() => this.showMenu()),
       onAbout: () => { this.ui.close('menu'); this.ui.about(() => this.showMenu()); }
     });
