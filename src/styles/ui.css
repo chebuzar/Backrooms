@@ -166,6 +166,20 @@ input[type='range'].pencil-range:focus-visible { outline: 2px dashed var(--penci
 .prologue .pl-skip { position: absolute; bottom: calc(5dvh + env(safe-area-inset-bottom)); right: 6vw; font: 400 calc(var(--u) * .8)/1 var(--type); color: #5c574b; }
 .loadline { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); font: 400 var(--u)/1 var(--type); color: #a8a08c; letter-spacing: .04em; }
 
+/* зум камери й навчання */
+.osd .zoom { opacity: 0; transition: opacity .2s; color: #f0eee4; }
+.osd .zoom.on { opacity: 1; }
+.hud .tutorial { position: absolute; left: 50%; bottom: calc(16dvh + env(safe-area-inset-bottom)); transform: translateX(-50%); display: flex; align-items: center; gap: .7em;
+  font: 700 calc(var(--u) * 1.05)/1 var(--type); color: #efe9d9; letter-spacing: .04em; text-shadow: 0 0 3px #000, 0 0 10px rgba(0,0,0,.85);
+  background: rgba(0,0,0,.38); padding: .55em 1em; border-radius: 3px; opacity: 0; transition: opacity .5s; white-space: nowrap; }
+.hud .tutorial.on { opacity: 1; }
+.hud .tutorial kbd { display: inline-block; min-width: 1.6em; padding: .2em .45em; border: 1.5px solid rgba(239,233,217,.75); border-radius: 4px; font: inherit; text-align: center; }
+.hud .tutorial .ti svg, .controls-screen .ti svg { width: 1.7em; height: 1.7em; fill: #efe9d9; vertical-align: middle; }
+.controls-screen .ti svg { fill: var(--ink); }
+.controls-screen .keys { display: grid; grid-template-columns: max-content 1fr; gap: .45em 1.2em; align-items: center; margin-bottom: 1.2em; font-size: calc(var(--u) * .95); }
+.controls-screen kbd { display: inline-block; padding: .15em .45em; border: 1.5px solid var(--ink-soft); border-radius: 4px; font: 700 .9em/1.2 var(--type); white-space: nowrap; }
+.journal-screen .empty { max-width: 40ch; color: var(--ink-soft); margin-bottom: 1.2em; }
+
 /* батарея ліхтарика в рамці «камери» */
 .osd .bat { display: inline-flex; gap: 2px; margin-left: 1.2em; padding: 2px; border: 1px solid rgba(232, 228, 210, 0.7); vertical-align: middle; }
 .osd .bat b { width: 6px; height: 9px; background: rgba(232, 228, 210, 0.15); }

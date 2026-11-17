@@ -21,7 +21,8 @@ export class HUD {
     const el = document.createElement('div');
     el.className = 'hud';
     el.innerHTML = `
-      <div class="osd"><span class="rec"><i></i>REC</span><span class="tc">0:00:00</span><span class="sp">SP</span><span class="bat" hidden><b></b><b></b><b></b><b></b></span></div>
+      <div class="osd"><span class="rec"><i></i>REC</span><span class="tc">0:00:00</span><span class="sp">SP</span><span class="bat" hidden><b></b><b></b><b></b><b></b></span><span class="zoom"></span></div>
+      <div class="tutorial" aria-live="polite"></div>
       <div class="obj" aria-live="polite"></div>
       <div class="dot"></div>
       <div class="prompt"></div>
@@ -37,6 +38,21 @@ export class HUD {
   }
 
   show(on: boolean): void { this.el.classList.toggle('shown', on); }
+
+  /** Зум камери: напис «ZOOM 2×» у рамці відеокамери. */
+  setZoom(on: boolean, label: string): void {
+    const z = this.el.querySelector('.zoom') as HTMLElement;
+    z.textContent = label;
+    z.classList.toggle('on', on);
+  }
+
+  /** Підказка навчання внизу екрана: клавіша (або іконка кнопки) + дія; null — сховати. */
+  setTutorial(t: { key?: string; icon?: string; text: string } | null): void {
+    const el = this.el.querySelector('.tutorial') as HTMLElement;
+    if (!t) { el.classList.remove('on'); return; }
+    el.innerHTML = `${t.icon ? `<span class="ti">${t.icon}</span>` : `<kbd>${esc(t.key ?? '')}</kbd>`}<span>${esc(t.text)}</span>`;
+    el.classList.remove('on'); void el.offsetWidth; el.classList.add('on');
+  }
 
   private batHold = 0;
   /** Підібрав батарейки: індикатор заряду видно ще кілька секунд. */

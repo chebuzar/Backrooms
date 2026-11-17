@@ -38,6 +38,8 @@ export interface Progress {
 interface SaveFile {
   v: 3;
   ageConfirmed: boolean;
+  /** Навчання керуванню вже показано (необов'язкове в старих записах). */
+  tutorialSeen: boolean;
   settings: Settings;
   progress: Progress;
 }
@@ -67,6 +69,7 @@ export function parseSave(raw: string | null): SaveFile {
   return {
     v: 3,
     ageConfirmed: bool(o.ageConfirmed, false),
+    tutorialSeen: bool(o.tutorialSeen, false),
     settings: {
       quality: (QUALITIES as readonly string[]).includes(s.quality as string) ? (s.quality as Settings['quality']) : d.quality,
       brightness: num(s.brightness, d.brightness, 0.6, 1.6),

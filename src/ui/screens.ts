@@ -2,6 +2,7 @@
 // Звичайні <button> і <input>: працюють мишею, дотиком, клавіатурою (стрілки/Enter/Esc) і геймпадом.
 import { T } from '../i18n/ru';
 import type { Settings } from '../core/save';
+import { ICONS, svg } from '../input/touch';
 
 type Handler = () => void;
 
@@ -170,7 +171,7 @@ export class UI {
     setTimeout(() => this.focusFirst(), 60);
   }
 
-  pause(o: { onResume: Handler; onSettings: Handler; onMenu: Handler; docs?: { id: string; title: string }[]; onDoc?: (id: string) => void }): void {
+  pause(o: { onResume: Handler; onSettings: Handler; onControls?: Handler; onMenu: Handler; docs?: { id: string; title: string }[]; onDoc?: (id: string) => void }): void {
     const p = T.pause;
     const esc = (t: string) => t.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] as string);
     // журнал: знайдені документи й записки — можна перечитати
@@ -181,10 +182,40 @@ export class UI {
       <nav class="menu">
         <button class="line-btn" data-r autofocus>${p.resume}</button>
         <button class="line-btn minor" data-s>${p.settings}</button>
+        <button class="line-btn minor" data-ctl>${p.controls}</button>
         <button class="line-btn minor" data-m>${p.toMenu}</button>
       </nav>${docs}</div>`);
-    this.bind(el, { '[data-r]': o.onResume, '[data-s]': o.onSettings, '[data-m]': o.onMenu });
+    this.bind(el, { '[data-r]': o.onResume, '[data-s]': o.onSettings, '[data-m]': o.onMenu, '[data-ctl]': () => o.onControls?.() });
     el.querySelectorAll<HTMLButtonElement>('[data-doc]').forEach((b) => b.addEventListener('click', () => o.onDoc?.(b.dataset.doc as string)));
+    setTimeout(() => this.focusFirst(), 60);
+  }
+
+  /** Журнал експедиції (Tab / J): знайдені документи й записки — перечитати. */
+  journal(docs: { id: string; title: string }[], onDoc: (id: string) => void, onClose: Handler): void {
+    const j = T.journal;
+    const list = docs.length
+      ? `<nav class="menu journal">${docs.map((d) => `<button class="line-btn minor" data-doc="${esc(d.id)}">${esc(d.title)}</button>`).join('')}</nav>`
+      : `<p class="empty">${esc(j.empty)}</p>`;
+    const el = this.make('journal', 'dossier-wrap journal-screen', `<div class="dossier">
+      <div class="head"><div>${T.menu.object}<br>${T.menu.caseNo}</div><div class="pencil">${esc(j.title.toLowerCase())}</div></div>
+      <h1 style="font-size:calc(var(--u)*1.5)">${esc(j.title)}</h1>${list}
+      <nav class="menu"><button class="line-btn" data-close ${docs.length ? '' : 'autofocus'}>${esc(j.close)}</button></nav></div>`);
+    el.querySelectorAll<HTMLButtonElement>('[data-doc]').forEach((b) => b.addEventListener('click', () => onDoc(b.dataset.doc as string)));
+    this.bind(el, { '[data-close]': onClose });
+    setTimeout(() => this.focusFirst(), 60);
+  }
+
+  /** «Управление»: клавіші (ПК) або кнопки екрана з іконками (iPad/iPhone). */
+  controls(touch: boolean, onBack: Handler): void {
+    const c = T.controls;
+    const iconOf = (k: string) => k in ICONS ? `<span class="ti">${svg(ICONS[k as keyof typeof ICONS])}</span>` : `<kbd>${k === 'stick' ? '◎' : '☝'}</kbd>`;
+    const rows = touch ? c.touch.map(([k, t]) => `${iconOf(k)}<span>${esc(t)}</span>`) : c.keys.map(([k, t]) => `<kbd>${esc(k)}</kbd><span>${esc(t)}</span>`);
+    const el = this.make('controls', 'dossier-wrap controls-screen', `<div class="dossier">
+      <div class="head"><div>${T.menu.object}<br>${T.menu.caseNo}</div><div class="pencil">${esc(c.title.toLowerCase())}</div></div>
+      <h1 style="font-size:calc(var(--u)*1.5)">${esc(c.title)}</h1>
+      <div class="keys">${rows.join('')}</div>
+      <nav class="menu"><button class="line-btn" data-b autofocus>${esc(c.back)}</button></nav></div>`);
+    this.bind(el, { '[data-b]': onBack });
     setTimeout(() => this.focusFirst(), 60);
   }
 

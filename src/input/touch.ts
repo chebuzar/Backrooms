@@ -2,7 +2,7 @@
 // права — огляд пальцем; кнопки праворуч: біг (утримання), присід, дія, ліхтарик, камера; пауза вгорі.
 import type { Input } from './input';
 
-const ICONS = {
+export const ICONS = {
   run: '<path d="M13.5 5.5a1.8 1.8 0 1 0 0-3.6 1.8 1.8 0 0 0 0 3.6ZM9.8 8.9 7 22h2.1l1.8-8 2.1 2v6h2v-7.5l-2.1-2.1.6-3A7.3 7.3 0 0 0 19 12v-2a5.5 5.5 0 0 1-4.7-2.6l-1-1.6A2.1 2.1 0 0 0 11.5 5c-.3 0-.5 0-.8.1L5 7.4V12h2V8.7l2.8-1.1Z"/>',
   crouch: '<path d="M12 5.2a1.9 1.9 0 1 0 0-3.8 1.9 1.9 0 0 0 0 3.8ZM6 21h2.2l1.4-5H13l1.6 5h2.2l-2-6.4a2 2 0 0 0-1.9-1.4h-1.6l.9-3.1 1.6 1.5H17v-2h-2.2l-2.7-2.6A2 2 0 0 0 8.9 8l-1.7 5.7a2 2 0 0 0 .4 1.8Z"/>',
   use: '<path d="M9 11.2V5.5a1.5 1.5 0 1 1 3 0V11l5 1.1a2 2 0 0 1 1.6 2.2l-.6 5A2 2 0 0 1 16 21h-5.3a2 2 0 0 1-1.6-.8l-3.5-4.5 1.4-1.4L9 15.3Z"/>',
@@ -15,7 +15,7 @@ const ICONS = {
 const UI_SELECTOR = '.reader, .screen, .prologue, .loadline, button, a, input, select, label';
 const onUI = (t: EventTarget | null) => t instanceof Element && !!t.closest(UI_SELECTOR);
 
-const svg = (p: string) => `<svg viewBox="0 0 24 24" aria-hidden="true">${p}</svg>`;
+export const svg = (p: string) => `<svg viewBox="0 0 24 24" aria-hidden="true">${p}</svg>`;
 
 export class TouchControls {
   active = false;

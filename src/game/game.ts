@@ -30,6 +30,8 @@ import { DOOR_H } from '../world/decor';
 import type { Seam } from '../world/seam';
 import { Hunt } from './hunt';
 import { Battery } from './battery';
+import { Tutorial, type TipId } from './tutorial';
+import { ICONS, svg } from '../input/touch';
 import { placeBatteries, type Pickup } from '../world/pickups';
 
 const STEP = 1 / 60;
@@ -92,6 +94,13 @@ export class Game {
   get battery(): number { return this.bat.level; }
   set battery(v: number) { this.bat.level = v; }
   private persistT = 0;
+  /** Зум камери 2× (V / кнопка 📹): плавний перехід 0..1. */
+  zoom = false;
+  private zoomK = 0;
+  private baseFov = 75;
+  /** Навчання керуванню на старті нової гри. */
+  private tutorial!: Tutorial;
+  private tried = new Set<TipId>();
   /** Батарейки, що лежать на поточному рівні. */
   private pickups: Pickup[] = [];
   hud!: HUD;
@@ -116,6 +125,13 @@ export class Game {
     this.ui = new UI(uiRoot);
     this.hud = new HUD(uiRoot);
     this.rig = new CameraRig(this.camera);
+    const tt = T.tutorial, touch = this.device.touch;
+    this.tutorial = new Tutorial([
+      { id: 'light', key: 'F', icon: touch ? svg(ICONS.light) : undefined, text: tt.light },
+      { id: 'run', key: 'Shift', icon: touch ? svg(ICONS.run) : undefined, text: tt.run },
+      { id: 'crouch', key: 'C', icon: touch ? svg(ICONS.crouch) : undefined, text: tt.crouch },
+      { id: 'use', key: 'E', icon: touch ? svg(ICONS.use) : undefined, text: tt.use }
+    ], (t) => this.hud.setTutorial(t));
     canvas.addEventListener('click', () => { if (this.mode === 'play') this.input.lockPointer(); });
     document.addEventListener('pointerlockchange', () => { if (!this.input.pointerLocked && this.mode === 'play' && !this.device.touch) this.pause(); });
     // будь-який жест «оживляє» звук (iOS)
@@ -238,7 +254,7 @@ export class Game {
 
   applySettings(s: Settings): void {
     look.exposure.value = BASE_EXPOSURE * s.brightness;
-    this.camera.fov = s.fov; this.camera.updateProjectionMatrix();
+    this.baseFov = s.fov; this.applyFov();
     this.fpsCap = s.fpsLimit === 'off' ? 0 : Number(s.fpsLimit);
     this.audio.setVolumes(s.masterVolume, s.musicVolume, s.sfxVolume);
     Object.assign(this.input.settings, { sensitivity: s.sensitivity, invertY: s.invertY, crouchToggle: s.crouchToggle });
@@ -326,6 +342,7 @@ export class Game {
     await this.arrive();
     this.play();
     this.hud.setObjective(OBJECTIVES.level0Start);
+    if (!this.store.data.tutorialSeen) { this.tried.clear(); this.tutorial.start(); }
   }
 
   /** Прибуття: темрява → гравець лежить перед Швом → розріз затягується зі звуком → гравець підводиться. */
@@ -524,9 +541,12 @@ export class Game {
     if (s) this.player.teleport(s.x, 0, s.z, s.yaw + (face ? Math.PI : 0));
     this.player.pitch = 0;
     this.stage = this.level?.id === 0 ? 'desk' : 'seam';
+    this.setZoom(false);
   }
 
   play(): void {
+    // клавіша, що закрила екран (Esc, Tab), не має одразу відкрити його знову
+    this.input.consume('pause'); this.input.consume('journal');
     this.ui.closeAll();
     this.hud.show(true);
     this.mode = 'play';
@@ -540,6 +560,7 @@ export class Game {
   pause(): void {
     if (this.mode !== 'play' || this.hud.readerOpen) return;
     this.persist();
+    this.setZoom(false);
     this.mode = 'pause';
     this.hud.show(false);
     this.input.enabled = false; this.input.touch?.show(false);
@@ -547,6 +568,7 @@ export class Game {
     this.ui.pause({
       onResume: () => this.play(),
       onSettings: () => this.openSettings(() => this.pauseMenuAgain()),
+      onControls: () => { this.ui.close('pause'); this.ui.onBack = () => { this.ui.close('controls'); this.pauseMenuAgain(); }; this.ui.controls(this.device.touch, () => { this.ui.close('controls'); this.pauseMenuAgain(); }); },
       onMenu: () => { this.ui.closeAll(); this.showMenu(); },
       docs: [...this.store.progress.docs, ...this.store.progress.notes].map((id) => ({ id, title: DOCS[id]?.title ?? id })),
       onDoc: (id) => {
@@ -559,6 +581,39 @@ export class Game {
   }
 
   private pauseMenuAgain(): void { this.mode = 'play'; this.pause(); }
+
+  /** Журнал (Tab / J): знайдені документи; Esc, Tab чи J — назад у гру. */
+  private openJournal(): void {
+    if (this.mode !== 'play' || this.hud.readerOpen) return;
+    this.setZoom(false);
+    this.mode = 'pause';
+    this.hud.show(false);
+    this.input.enabled = false; this.input.touch?.show(false);
+    if (document.pointerLockElement) document.exitPointerLock();
+    const docs = [...this.store.progress.docs, ...this.store.progress.notes].map((id) => ({ id, title: DOCS[id]?.title ?? id }));
+    this.ui.onBack = () => this.play();
+    this.ui.journal(docs, (id) => {
+      const d = DOCS[id];
+      if (!d) return;
+      this.ui.closeAll();
+      this.hud.openDoc(d, () => { this.mode = 'play'; this.openJournal(); });
+    }, () => this.play());
+  }
+
+  /** Зум 2× (як кнопка на відеокамері): поле зору звужується вдвічі за фокусною відстанню. */
+  private setZoom(on: boolean): void {
+    if (this.zoom === on) return;
+    this.zoom = on;
+    this.hud.setZoom(on, T.hud.zoom);
+    const click = this.sfx.get('metalclick');
+    if (click && this.mode === 'play') this.audio.play2D(click, 0.25, on ? 1.5 : 1.35);
+  }
+
+  private applyFov(): void {
+    const t = Math.tan((this.baseFov * Math.PI) / 360) / (1 + this.zoomK);
+    this.camera.fov = (2 * Math.atan(t) * 180) / Math.PI;
+    this.camera.updateProjectionMatrix();
+  }
 
   /** Автоматичний крок на пресет нижче (лише в режимі «Авто», не нижче «Среднего»). */
   private stepDownPreset(): void {
@@ -595,7 +650,13 @@ export class Game {
     }
     this.input.poll(dt);
     if (this.input.consume('pause') && this.mode === 'play') this.pause();
-    const [lx, ly] = this.input.takeLook();
+    if (this.input.consume('journal')) { if (this.mode === 'play') this.openJournal(); else if (this.ui.top === 'journal') this.play(); }
+    if (this.input.consume('camera') && this.mode === 'play') this.setZoom(!this.zoom);
+    const zk = this.zoom ? 1 : 0;
+    if (Math.abs(zk - this.zoomK) > 1e-4) { this.zoomK += (zk - this.zoomK) * Math.min(1, dt * 10); if (Math.abs(zk - this.zoomK) < 1e-3) this.zoomK = zk; this.applyFov(); }
+    let [lx, ly] = this.input.takeLook();
+    // у зумі погляд повертається повільніше — точніше роздивитися далеке
+    const lk = 1 / (1 + this.zoomK); lx *= lk; ly *= lk;
     this.time += dt;
     if (this.mode === 'play') {
       this.player.look(lx, ly);
@@ -609,6 +670,7 @@ export class Game {
     }
     if (this.input.consume('flashlight') && this.mode === 'play') {
       this.flashlightOn = !this.flashlightOn;
+      this.tried.add('light');
       const click = this.sfx.get('metalclick');
       if (click) this.audio.play2D(click, 0.5, this.flashlightOn ? 1.1 : 0.9);
       this.hunt.noise(this.player.pos.x, this.player.pos.y, this.player.pos.z, 0.12);
@@ -657,7 +719,13 @@ export class Game {
       const it = this.interact.update(c, f.x, f.y, f.z);
       const key = this.input.lastDevice === 'gamepad' ? 'A' : this.input.lastDevice === 'touch' ? '✋' : 'E';
       this.hud.setPrompt(it ? it.prompt : null, key);
-      if (it && this.input.consume('interact')) it.use();
+      if (it && this.input.consume('interact')) { it.use(); this.tried.add('use'); }
+      if (this.player.running) this.tried.add('run');
+      if (this.player.crouched) this.tried.add('crouch');
+      if (this.tutorial.active) {
+        this.tutorial.update(dt, (id) => this.tried.has(id));
+        if (!this.tutorial.active) { this.store.data.tutorialSeen = true; this.persist(); }
+      }
       this.store.progress.playSeconds += dt;
       if ((this.persistT -= dt) <= 0) { this.persistT = 10; this.persist(); }
       this.ambience.update(dt, this.player);

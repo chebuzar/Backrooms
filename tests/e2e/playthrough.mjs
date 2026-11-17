@@ -61,7 +61,7 @@ const closedDoorNear = () => page.evaluate(() => {
 });
 
 /** Іти до точки, тримаючи W (і Shift для бігу), повертаючи погляд «мишею»; впирається — відчиняє двері (E) чи обходить. */
-async function walkTo(tx, tz, { stop = 1.1, run = false, timeout = 600000, label = "" } = {}) {
+async function walkTo(tx, tz, { stop = 1.1, run = false, timeout = 600000, label = "", quiet = false } = {}) {
   let path = await navPath(tx, tz);
   await page.keyboard.down('KeyW');
   if (run) await page.keyboard.down('ShiftLeft');
@@ -123,7 +123,7 @@ async function walkTo(tx, tz, { stop = 1.1, run = false, timeout = 600000, label
     if (run) await page.keyboard.up('ShiftLeft');
   }
   await wait(250);
-  if (!ok) { log(`дойти: ${label}`, false, { to: [tx, tz], at: await state() }); await shot(`fail-walk-${label}`); }
+  if (!ok && !quiet) { log(`дойти: ${label}`, false, { to: [tx, tz], at: await state() }); await shot(`fail-walk-${label}`); }
   return ok ? 'ok' : 'timeout';
 }
 
@@ -247,11 +247,12 @@ try {
         // рівень 2: бігти до «Слепого», поки не схопить
         const d0 = (await state()).deaths;
         const st = await page.evaluate(() => { const s = window.__zk.game.hunt.stalker; return { x: s.pos.x, z: s.pos.z }; });
-        for (let a = 0; a < 6; a++) {
-          const r2 = await walkTo(st.x, st.z, { run: true, stop: 0.4, timeout: 30000, label: 'к Слепому' });
-          if (r2 === 'caught') break;
-          const p = await page.evaluate(() => { const s = window.__zk.game.hunt.stalker; return { x: s.pos.x, z: s.pos.z }; });
-          Object.assign(st, p);
+        // бігти до «Слепого» короткими відрізками, щоразу до його нової позиції (він чує біг і йде назустріч)
+        const t1 = Date.now();
+        while (Date.now() - t1 < 240000) {
+          const st = await page.evaluate(() => { const s = window.__zk.game.hunt.stalker; return { x: s.pos.x, z: s.pos.z }; });
+          const r2 = await walkTo(st.x, st.z, { run: true, stop: 0.6, timeout: 6000, label: 'к Слепому', quiet: true });
+          if (r2 === 'caught' || (await state()).deaths > d0) break;
         }
         const died = await page.waitForFunction((d) => window.__zk.game.store.progress.deaths > d, d0, { timeout: 20000 }).then(() => true, () => false);
         log('Слепой схватил', died);
