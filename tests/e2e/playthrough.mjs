@@ -156,7 +156,7 @@ async function useAt(x, y, z, label, { stop = 1.4, run = false } = {}) {
   await aim(x, y, z);
   await wait(300);
   const s = await state();
-  if (!log(`подсказка E: ${label}`, !!s.prompt, { prompt: s.prompt, at: [s.x?.toFixed(2), s.z?.toFixed(2)], target: [x, y, z].map((v) => +v.toFixed(2)), approach: ap })) { await shot(`fail-${label}`); return 'noprompt'; }
+  if (!log(`подсказка E: ${label}`, !!s.prompt, { prompt: s.prompt, mode: s.mode, input: s.input, at: [s.x?.toFixed(2), s.z?.toFixed(2)], target: [x, y, z].map((v) => +v.toFixed(2)), approach: ap })) { await shot(`fail-${label}`); return 'noprompt'; }
   await page.keyboard.press('KeyE');
   await wait(700);
   return 'ok';

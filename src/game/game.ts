@@ -26,6 +26,7 @@ import { Assets } from '../assets/loader';
 import { buildLevel0, type Level } from '../world/level0';
 import { buildThemedLevel } from '../world/level-themed';
 import { disposeScene } from '../world/chunks';
+import { DOOR_H } from '../world/decor';
 import type { Seam } from '../world/seam';
 import { Hunt } from './hunt';
 
@@ -360,13 +361,11 @@ export class Game {
       const rp = rift.group.position;
       this.interact.add({ id: 'rift', x: rp.x, y: 1.3, z: rp.z, reach: 1.5, prompt: HINTS.enterSeam, enabled: true, use: () => void this.enterSeam(rift, 2) });
     }
-    // двері: по точці взаємодії з кожного боку прорізу; підказка міняється з відчинено/зачинено
+    // двері: ціль — центр полотна (рухається разом із ним), ловиться будь-де по висоті; з будь-якого боку
     for (const d of lvl.doors.list) {
-      d.sides.forEach(([x, y, z], i) => {
-        const doors = lvl.doors;
-        this.interact.add({ id: `${d.id}-${i}`, x, y, z, reach: 1.7, enabled: true,
-          get prompt() { return d.target > 0.1 ? HINTS.doorShut : HINTS.doorOpen; }, use: () => doors.toggle(d) });
-      });
+      const doors = lvl.doors;
+      this.interact.add({ id: d.id, get x() { return d.cx; }, y: DOOR_H / 2, get z() { return d.cz; }, halfHeight: 0.9, reach: 1.8, enabled: true,
+        get prompt() { return d.target > 0.1 ? HINTS.doorShut : HINTS.doorOpen; }, use: () => doors.toggle(d) });
     }
     const doorSound = (name: string, d: { pivot: THREE.Object3D }, gain: number) => {
       const b = this.sfx.pick(name);

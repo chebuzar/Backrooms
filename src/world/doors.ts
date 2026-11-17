@@ -20,8 +20,11 @@ export interface Door {
   dir: number;
   width: number;
   baseYaw: number;
-  /** Точки взаємодії з обох боків прорізу. */
+  /** Точки з обох боків прорізу (центр прорізу ± 0.22 м). */
   sides: [number, number, number][];
+  /** Центр полотна зараз (рухається разом із ним) — ціль погляду для «Открыть/Закрыть». */
+  cx: number;
+  cz: number;
 }
 
 export class Doors {
@@ -63,7 +66,7 @@ export class Doors {
       const collider = physics.addBox(0, 0, 0, w / 2, (DOOR_H - 0.03) / 2, 0.02, 0, G.DOOR);
       const nx = horiz ? 0 : 1, nz = horiz ? 1 : 0;
       const door: Door = {
-        id: `door${k}`, pivot, collider, angle, target: angle, dir, width: w, baseYaw,
+        id: `door${k}`, pivot, collider, angle, target: angle, dir, width: w, baseYaw, cx: d.x, cz: d.z,
         sides: [[d.x + nx * 0.22, 1.05, d.z + nz * 0.22], [d.x - nx * 0.22, 1.05, d.z - nz * 0.22]]
       };
       this.apply(door);
@@ -82,6 +85,7 @@ export class Doors {
     d.pivot.rotation.y = yaw;
     // центр полотна у світі: від завіси вздовж локальної X на половину ширини
     const cx = d.pivot.position.x + Math.cos(yaw) * d.width / 2, cz = d.pivot.position.z - Math.sin(yaw) * d.width / 2;
+    d.cx = cx; d.cz = cz;
     d.collider.setTranslation({ x: cx, y: (DOOR_H - 0.03) / 2 + 0.01, z: cz });
     const s = Math.sin(yaw / 2), c = Math.cos(yaw / 2);
     d.collider.setRotation({ x: 0, y: s, z: 0, w: c });
