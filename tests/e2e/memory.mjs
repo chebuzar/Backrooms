@@ -9,7 +9,8 @@ const { page, logs, close } = await openPage(which);
 await gotoGame(page, 'q=high');
 await page.click('.age [data-go]');
 await page.waitForFunction(() => document.querySelector('.menu'), null, { timeout: 30000 });
-await page.evaluate(() => window.__zk.game.play());
+// той самий ракурс, що й після повернення; авто-пресет вимкнено (інакше він сам перебудовує постобробку під повільний headless)
+await page.evaluate(() => { const g = window.__zk.game; g.autoScale = false; g.enterLevelStart(); g.play(); });
 const snap = async (label) => {
   await wait(2500); // кілька кадрів: усе, що потрібно рівню, вже на GPU
   const m = await page.evaluate(INFO_JS);
@@ -17,7 +18,8 @@ const snap = async (label) => {
   return m;
 };
 const rows = [await snap('L0')];
-for (const lv of [1, 2, 0]) {
+// два кола: витік росте з кожним колом, разове кешування — ні
+for (const lv of [1, 2, 0, 1, 2, 0]) {
   await page.evaluate(async (n) => { const g = window.__zk.game; await g.loadLevel(n); g.enterLevelStart(); g.play(); }, lv);
   rows.push(await snap(`L${lv}`));
 }

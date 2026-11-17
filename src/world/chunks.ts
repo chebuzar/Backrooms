@@ -59,6 +59,8 @@ export function disposeScene(scene: THREE.Scene): void {
       mat.dispose();
     }
     if ((o as THREE.Light).isLight) (o as THREE.Light).dispose();
+    // буфери екземплярів (лампи) і текстура кісток (монстри)
+    if ((o as THREE.InstancedMesh).isInstancedMesh || (o as THREE.SkinnedMesh).isSkinnedMesh) (o as THREE.InstancedMesh).dispose();
   });
   scene.clear();
 }

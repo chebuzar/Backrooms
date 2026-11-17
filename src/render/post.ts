@@ -42,16 +42,30 @@ const TONEMAP = TM === 'neutral' ? neutralToneMapping : TM === 'agx' ? agxToneMa
 export class PostPipeline {
   readonly pipeline: THREE.RenderPipeline;
   private profile: QualityProfile | null = null;
+  /** Вузли з власними буферами (render targets): звільняються при перебудові. */
+  private owned: { dispose(): void }[] = [];
+  private scenePass: ReturnType<typeof pass> | null = null;
 
   constructor(private readonly renderer: THREE.WebGPURenderer, public scene: THREE.Scene, private readonly camera: THREE.PerspectiveCamera) {
     this.pipeline = new THREE.RenderPipeline(renderer);
     this.pipeline.outputColorTransform = false; // тон і sRGB робимо самі у фінальному проході
   }
 
+  /** Інша сцена (новий рівень) — той самий конвеєр, без перебудови й нових буферів. */
+  setScene(scene: THREE.Scene, profile: QualityProfile): void {
+    this.scene = scene;
+    if (this.scenePass && this.profile === profile) this.scenePass.scene = scene;
+    else this.apply(profile);
+  }
+
   apply(profile: QualityProfile): void {
     this.profile = profile;
+    for (const n of this.owned) n.dispose();
+    this.owned = [];
     const { scene, camera } = this;
     const scenePass = pass(scene, camera);
+    this.scenePass = scenePass;
+    this.owned.push(scenePass);
     scenePass.setMRT(mrt({ output, normal: packNormalToRGB(normalView), velocity }));
     const normalTex = scenePass.getTexture('normal');
     normalTex.type = THREE.UnsignedByteType; // нормалям вистачає 8 біт — удвічі менше пам'яті й трафіку
@@ -67,16 +81,19 @@ export class PostPipeline {
       aoPass.useTemporalFiltering = profile.traa; // шум GTAO гасить TRAA
       aoPass.radius.value = 0.6;
       aoPass.thickness.value = 1.2;
+      this.owned.push(aoPass);
       const aoValue = aoPass.getTextureNode().sample(screenUV).r;
       lit = lit.mul(mix(float(1), aoValue, look.aoStrength));
     }
     const aa = profile.traa ? traa(vec4(lit, 1), depthNode, velocityNode, camera) : null;
+    if (aa) this.owned.push(aa);
     const beauty = aa ? texOf(aa) : null;
     const S0 = (uv: V2) => (beauty ? beauty.sample(uv).rgb : colorNode.sample(uv).rgb);
 
     let bloomTex: ReturnType<typeof bloom> | null = null;
     if (profile.bloom > 0) {
       bloomTex = bloom(aa ?? vec4(lit, 1), look.bloomStrength.value, 0.32, look.bloomThreshold.value);
+      this.owned.push(bloomTex);
       bloomTex.strength = look.bloomStrength;
       bloomTex.threshold = look.bloomThreshold;
       bloomTex.setResolutionScale(profile.bloom);

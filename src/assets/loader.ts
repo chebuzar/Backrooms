@@ -15,6 +15,8 @@ export class Assets {
   onProgress: ((p: number) => void) | null = null;
   private pending = 0;
   private done = 0;
+  /** Текстури поточного рівня (карти світла, поверхні): вони живуть у TSL-вузлах, тож звільняємо їх списком. */
+  private levelTextures = new Set<THREE.Texture>();
 
   constructor(renderer: THREE.WebGPURenderer) {
     this.ktx2 = new KTX2Loader().setTranscoderPath(`${base}libs/basis/`);
@@ -33,6 +35,20 @@ export class Assets {
   }
 
   texture(path: string): Promise<THREE.Texture> {
-    return this.ktx2.loadAsync(`${base}${path}`);
+    return this.ktx2.loadAsync(`${base}${path}`).then((t) => { this.levelTextures.add(t); return t; });
+  }
+
+  /**
+   * Звільнити все, що належало рівню: його текстури (GPU) і закешовані шматки геометрії (assets/levels/…).
+   * Моделі предметів і монстрів лишаються в кеші — вони спільні для рівнів.
+   */
+  releaseLevel(): void {
+    for (const t of this.levelTextures) t.dispose();
+    this.levelTextures.clear();
+    for (const [k, p] of this.cache) {
+      if (!k.startsWith('assets/levels/')) continue;
+      this.cache.delete(k);
+      void p.then((g) => g.scene.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh) m.geometry.dispose(); }), () => {});
+    }
   }
 }

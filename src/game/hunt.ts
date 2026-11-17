@@ -19,6 +19,7 @@ export interface HuntEvents { onCatch(): void; onCloser(by: number): void }
 
 export class Hunt {
   stalker: Stalker | null = null;
+  private nav: Nav | null = null;
   private voice: SpatialVoice | null = null;
   private heart: AudioBufferSourceNode | null = null;
   private heartGain: GainNode | null = null;
@@ -35,6 +36,7 @@ export class Hunt {
     const kind: StalkerKind | null = lvl.id === 1 ? 'watcher' : lvl.id === 2 ? 'blind' : null;
     if (!kind) return;
     const [nav, gl] = await Promise.all([Nav.fromLayout(lvl.layout), assets.model(`assets/models/${kind}.glb`)]);
+    this.nav = nav;
     const L = lvl.layout;
     // «дім» — клітинка на ~60 % найдовшого шляху від старту: далеко, але не в глухому куті
     let far = 0;
@@ -62,6 +64,8 @@ export class Hunt {
     this.voice?.stop(0.2);
     this.voice = null;
     this.stalker = null;
+    this.nav?.destroy();
+    this.nav = null;
     this.danger = 0;
     if (this.heartGain) this.heartGain.gain.value = 0;
   }

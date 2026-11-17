@@ -156,6 +156,7 @@ export class Game {
       this.physics.world.forEachCollider((c) => { if (c !== keep) list.push(c); });
       for (const c of list) this.physics.world.removeCollider(c as never, false);
       disposeScene(old.scene);
+      this.assets.releaseLevel();
       this.level = null;
       this.figure = null;
     }
@@ -200,8 +201,7 @@ export class Game {
 
   private setScene(s: THREE.Scene): void {
     this.scene = s;
-    this.post.scene = s;
-    this.post.apply(this.profile);
+    this.post.setScene(s, this.profile);
   }
 
   private prepareAudio(): void {

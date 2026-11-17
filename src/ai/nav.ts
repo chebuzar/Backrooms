@@ -59,6 +59,12 @@ export class Nav implements NavLike {
     return new Nav(res.navMesh, new NavMeshQuery(res.navMesh));
   }
 
+  /** Звільнити пам'ять WASM (navmesh і запити) — при переході на інший рівень. */
+  destroy(): void {
+    this.query.destroy();
+    this.navMesh.destroy();
+  }
+
   path(from: V3, to: V3): V3[] {
     const r = this.query.computePath(from, to, { halfExtents: { x: 1, y: 2, z: 1 } });
     return r.success ? r.path.map((p) => ({ x: p.x, y: p.y, z: p.z })) : [];
