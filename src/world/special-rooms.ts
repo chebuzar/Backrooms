@@ -40,7 +40,6 @@ function writingTexture(lines: (readonly [string, number])[]): THREE.CanvasTextu
 
 export async function placeSpecialRooms(assets: Assets, physics: Physics, lvl: Level, taken: { x: number; z: number }[]): Promise<Special[]> {
   const L = lvl.layout, H = L.height, out: Special[] = [];
-  const avoid = lvl.doors.list.map((d) => ({ t: 'door' as const, x: d.cx, y: 0, z: d.cz, yaw: 0, w: d.width + 0.6 }));
   const busy = [...taken, ...Object.values(lvl.spots).map((s) => ({ x: s.x, z: s.z }))];
 
   // 1) стільці — вежа до стелі посеред кімнати
