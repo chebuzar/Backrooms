@@ -100,6 +100,8 @@ export class Game {
   private flashK = 1;
   private flashT = 0;
   private readonly fwd = new THREE.Vector3();
+  /** «Схопив»: ліхтарик на пів секунди світить на обличчя монстра знизу. */
+  private flashOverride: { from: THREE.Vector3; at: THREE.Vector3; intensity: number } | null = null;
   /** Зум камери 2× (V / кнопка 📹): плавний перехід 0..1. */
   zoom = false;
   private zoomK = 0;
@@ -529,15 +531,33 @@ export class Game {
     this.ending = true;
     this.input.enabled = false;
     const s = this.hunt.stalker, p = this.player.pos;
-    if (s) { this.player.yaw = Math.atan2(-(s.pos.x - p.x), -(s.pos.z - p.z)); this.player.pitch = 0.12; }
+    if (s) { this.player.yaw = Math.atan2(-(s.pos.x - p.x), -(s.pos.z - p.z)); this.player.pitch = 0.05; }
     const b = this.sfx.pick('hit_');
     if (b) this.audio.play2D(b, 1, 0.7);
-    this.rig.shake = 1.3; look.fear.value = 1;
-    const t0 = performance.now();
+    look.fear.value = 1;
+    // різкий поворот до нього → на пів секунди його обличчя впритул (освітлене ліхтариком) → темрява
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))); // камера вже дивиться на нього
+    s?.grabFace(this.camera);
+    this.flashlightOn = true;
+    // ліхтарик вислизає з руки й на пів секунди світить на обличчя знизу (те саме світло — без нових джерел і перекомпіляції)
+    const fw = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion);
+    const from = this.camera.position.clone().addScaledVector(fw, 0.1).add(new THREE.Vector3(0.05, -0.38, 0));
+    const at = this.camera.position.clone().addScaledVector(fw, 0.42);
+    this.flashOverride = { from, at, intensity: 1.4 };
+    this.rig.shake = 0.35;
+    // обличчя — щонайменше 0.52 с і 10 намальованих кадрів (навіть якщо пристрій саме пригальмував), потім темрява за 0.26 с
+    let t0 = performance.now(), frames = 0, fading = false;
     await new Promise<void>((done) => {
-      const step = () => { const k = Math.min(1, (performance.now() - t0) / 900); look.fade.value = k * k; if (k < 1) requestAnimationFrame(step); else done(); };
+      const step = () => {
+        const t = performance.now() - t0;
+        if (!fading) { frames++; look.fade.value = 0; if (t >= 520 && frames >= 10) { fading = true; t0 = performance.now(); } }
+        else look.fade.value = Math.min(1, t / 260);
+        if (!fading || t < 260) requestAnimationFrame(step); else done();
+      };
       step();
     });
+    this.flashOverride = null;
+    this.rig.shake = 0;
     this.store.progress.deaths++;
     this.bat.afterDeath();
     this.persist();
@@ -755,6 +775,8 @@ export class Game {
       if (spill) spill.intensity = fl.intensity * 0.12;
       fl.position.set(0.18, -0.16, 0.05).applyQuaternion(c.quaternion).add(c.position);
       fl.target.position.set(0, -0.08, -6).applyQuaternion(c.quaternion).add(c.position);
+      const fo = this.flashOverride;
+      if (fo) { fl.position.copy(fo.from); fl.target.position.copy(fo.at); fl.intensity = fo.intensity; }
       this.humT -= dt;
       if (this.humT <= 0 && this.humVoices.length) {
         this.humT = 0.4;

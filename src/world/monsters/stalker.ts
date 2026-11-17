@@ -52,6 +52,8 @@ export class Stalker {
   private seenAt: V3 | null = null;
   private wasSeen = true;
   private catchCd = 0;
+  /** Щойно схопив гравця (обличчя впритул) — до reset(). */
+  grabbed = false;
   /** Швидкість в останньому кадрі, м/с. */
   speedNow = 0;
   private stepT = 0;
@@ -85,6 +87,30 @@ export class Stalker {
     this.place();
   }
 
+  /** «Схопив»: поставити голову монстра впритул перед камерою (≈0.4 м), обличчям до гравця, у позі нападу. */
+  grabFace(cam: THREE.Camera): void {
+    this.grabbed = true;
+    const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
+    fwd.y = 0; fwd.normalize();
+    this.yaw = Math.atan2(cam.position.x - (cam.position.x + fwd.x), cam.position.z - (cam.position.z + fwd.z));
+    this.applyPose(this.kind === 'watcher'
+      // «Наблюдатель»: руки тягнуться до камери, голова схилена набік — дивиться впритул чорними очима
+      ? { upperarm_l: [-1.2, 0, -0.5], upperarm_r: [-1.2, 0, 0.5], lowerarm_l: [-0.5, 0, 0], lowerarm_r: [-0.5, 0, 0], neck_01: [-0.15, 0, 0.3], head: [-0.2, 0, 0.35] }
+      // «Слепой»: згорблений, але голова задерта — порожні очниці просто в об'єктив
+      : { spine_01: [0.25, 0, 0], spine_02: [0.2, 0, 0], neck_01: [-0.35, 0, 0], head: [-0.25, 0, 0.12], upperarm_l: [-1.0, 0, -0.6], upperarm_r: [-1.0, 0, 0.6] });
+    this.root.rotation.y = this.yaw;
+    this.root.position.set(cam.position.x + fwd.x * 0.6, 0, cam.position.z + fwd.z * 0.6);
+    this.root.updateMatrixWorld(true);
+    const head = this.bones.get('head')?.b;
+    if (head) {
+      const hp = head.getWorldPosition(new THREE.Vector3());
+      const want = new THREE.Vector3(cam.position.x + fwd.x * 0.4, cam.position.y - 0.04, cam.position.z + fwd.z * 0.4);
+      this.root.position.add(want.sub(hp));
+      this.root.updateMatrixWorld(true);
+    }
+    this.pos.x = this.root.position.x; this.pos.z = this.root.position.z;
+  }
+
   /** Повернути на «домашню» точку (після того, як гравця схопили). */
   reset(): void {
     Object.assign(this.pos, this.home);
@@ -92,6 +118,8 @@ export class Stalker {
     this.brain.state = 'patrol';
     Object.assign(this.brain.mem, { last: null, confidence: 0, age: 0, suspicion: 0 });
     this.brain.noticed = false;
+    this.grabbed = false;
+    this.root.position.y = 0; // після «схопив» (голову підіймали до камери)
     this.catchCd = 4;
     this.seenAt = null;
     this.lamps.dimAround(this.pos.x, this.pos.z, 6, 1);
