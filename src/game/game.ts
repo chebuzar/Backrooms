@@ -129,6 +129,8 @@ export class Game {
     this.player = new Player(this.physics, s.x, 0, s.z);
     this.player.yaw = s.yaw;
     this.player.onFootstep = (e) => this.footstep(e.x, e.y, e.z, e.loudness);
+    // взаємодії потребують гравця: при першому завантаженні рівня його ще не було (loadLevel їх пропустив)
+    this.setupInteractions(lvl);
     this.applySettings(this.store.settings);
     this.input.enabled = false;
     this.resize();
