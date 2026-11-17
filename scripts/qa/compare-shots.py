@@ -3,7 +3,7 @@
   python3 -I scripts/qa/compare-shots.py <тека A> [<тека B>] [--sheet out.png] [--only L0]
 Одна тека — лише аркуш кадрів. Дві — для кожного однойменного кадру: середня різниця (0..255), частка пікселів
 з різницею > 24, яскравість A/B; аркуш: рядок = кадр, ліворуч A, праворуч B. Код 1, якщо кадр «поплив» сильно
-(середня різниця > 12 або змінилось > 25 % пікселів) — тоді дивитися очима.
+(після усереднення зерна: середня різниця > 6 або змінилось > 8 % пікселів) — тоді дивитися очима.
 """
 import sys
 from pathlib import Path
@@ -30,12 +30,14 @@ for n in names:
     if not (B / n).exists():
         print(f'{n}: немає в B'); continue
     b = Image.open(B / n).convert('RGB').resize(a.size)
-    d = ImageChops.difference(a, b).convert('L')
+    # зменшення в 4 рази усереднює плівкове зерно (воно випадкове в кожному кадрі) — лишаються справжні зміни
+    small = (max(1, a.width // 4), max(1, a.height // 4))
+    d = ImageChops.difference(a.resize(small, Image.BOX), b.resize(small, Image.BOX)).convert('L')
     mean = ImageStat.Stat(d).mean[0]
     hist = d.histogram()
     changed = sum(hist[25:]) / max(1, sum(hist))
     la, lb = ImageStat.Stat(a.convert('L')).mean[0], ImageStat.Stat(b.convert('L')).mean[0]
-    flag = mean > 12 or changed > 0.25
+    flag = mean > 6 or changed > 0.08
     bad += flag
     note = f'diff {mean:5.1f}  changed {changed * 100:4.1f}%  luma {la:5.1f} -> {lb:5.1f}' + ('  <<< ДИВИТИСЯ' if flag else '')
     print(f'{n:32s} {note}')
