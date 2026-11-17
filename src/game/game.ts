@@ -18,7 +18,9 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { HUD } from '../ui/hud';
 import { Ambience } from './ambience';
 import { Interactions } from './interact';
-import { DOCS, PROLOGUE, OBJECTIVES, HINTS, LEVEL_END, LEVEL_TITLES } from '../story/ru';
+import { DOCS, NOTES, TAPES, FINDINGS, PROLOGUE, OBJECTIVES, HINTS, LEVEL_END, LEVEL_TITLES, type Doc } from '../story/ru';
+import { placeFindings, type Finding } from '../world/findings';
+import { TapePlayer } from './tapes';
 import { Store, type Settings } from '../core/save';
 import { UI } from '../ui/screens';
 import { T } from '../i18n/ru';
@@ -116,6 +118,9 @@ export class Game {
   /** Прикмети перед появою мисливця: кроки за спиною, двері грюкають, лампа лускає. */
   readonly tension = new TensionDirector();
   readonly omens = new Omens(this.audio, this.sfx);
+  /** Записки й плівки поточного рівня. */
+  private findings: Finding[] = [];
+  readonly tapes = new TapePlayer(this.audio, this.sfx, (t, sec) => this.hud.subtitle(t, sec));
   private geiger: AudioBuffer[] = [];
   private dosiNoiseT = 0;
   /** Батарейки, що лежать на поточному рівні. */
@@ -212,6 +217,8 @@ export class Game {
     this.level = lvl;
     this.omens.attach(lvl);
     this.pickups = await placeBatteries(this.assets, lvl, this.store.progress.pickups);
+    this.tapes.stop();
+    this.findings = await placeFindings(this.assets, lvl, FINDINGS[lvl.id] ?? []);
     this.setScene(lvl.scene);
     if (this.player) this.setupInteractions(lvl);
     this.levelAudio();
@@ -451,6 +458,11 @@ export class Game {
     const sp = lvl.seam.group.position;
     this.interact.add({ id: 'seam', x: sp.x, y: 1.3, z: sp.z, reach: 1.7, prompt: HINTS.enterSeam, enabled: true, use: () => void this.enterSeam(lvl.seam, lvl.next) });
     for (const b of this.pickups) this.addPickup(b);
+    // записки й магнітофони з плівками Савельєва
+    for (const f of this.findings) {
+      this.interact.add({ id: f.id, x: f.x, y: f.y, z: f.z, reach: 1.7, prompt: f.kind === 'tape' ? HINTS.listen : HINTS.read, enabled: true,
+        use: () => (f.kind === 'tape' ? this.playTape(f) : this.readDoc(f.id)) });
+    }
     const rift = lvl.rift;
     if (rift) {
       const rp = rift.group.position;
@@ -478,8 +490,23 @@ export class Game {
     };
   }
 
-  private readDoc(id: keyof typeof DOCS, after?: () => void): void {
-    const d = DOCS[id];
+  /** Документ, записка чи плівка (як аркуш із розшифровкою) за id. */
+  private docOf(id: string): Doc | undefined {
+    const t = TAPES[id];
+    if (t) return { id, kind: 'tape', title: t.title, meta: t.meta, body: t.lines.map(([, l]) => l).join('\n'), sign: 'Расшифровка записи' };
+    return DOCS[id] ?? NOTES[id];
+  }
+
+  /** Увімкнути плівку: шипіння магнітофона на підлозі, розшифровка субтитрами; запис потрапляє в журнал. */
+  private playTape(f: Finding): void {
+    const t = TAPES[f.id];
+    if (!t) return;
+    if (!this.store.progress.tapes.includes(f.id)) { this.store.progress.tapes.push(f.id); this.persist(); }
+    this.tapes.play(t, f.x, f.z);
+  }
+
+  private readDoc(id: string, after?: () => void): void {
+    const d = this.docOf(id);
     if (!d) return;
     const flip = this.sfx.pick('bookflip') ?? this.rustle;
     if (flip) this.audio.play2D(flip, 0.8);
@@ -626,9 +653,9 @@ export class Game {
       onSettings: () => this.openSettings(() => this.pauseMenuAgain()),
       onControls: () => { this.ui.close('pause'); this.ui.onBack = () => { this.ui.close('controls'); this.pauseMenuAgain(); }; this.ui.controls(this.device.touch, () => { this.ui.close('controls'); this.pauseMenuAgain(); }); },
       onMenu: () => { this.ui.closeAll(); this.showMenu(); },
-      docs: [...this.store.progress.docs, ...this.store.progress.notes].map((id) => ({ id, title: DOCS[id]?.title ?? id })),
+      docs: [...this.store.progress.docs, ...this.store.progress.notes, ...this.store.progress.tapes].map((id) => ({ id, title: this.docOf(id)?.title ?? id })),
       onDoc: (id) => {
-        const d = DOCS[id];
+        const d = this.docOf(id);
         if (!d) return;
         this.ui.closeAll();
         this.hud.openDoc(d, () => this.pauseMenuAgain());
@@ -646,10 +673,10 @@ export class Game {
     this.hud.show(false);
     this.input.enabled = false; this.input.touch?.show(false);
     if (document.pointerLockElement) document.exitPointerLock();
-    const docs = [...this.store.progress.docs, ...this.store.progress.notes].map((id) => ({ id, title: DOCS[id]?.title ?? id }));
+    const docs = [...this.store.progress.docs, ...this.store.progress.notes, ...this.store.progress.tapes].map((id) => ({ id, title: this.docOf(id)?.title ?? id }));
     this.ui.onBack = () => this.play();
     this.ui.journal(docs, (id) => {
-      const d = DOCS[id];
+      const d = this.docOf(id);
       if (!d) return;
       this.ui.closeAll();
       this.hud.openDoc(d, () => { this.mode = 'play'; this.openJournal(); });
@@ -822,6 +849,7 @@ export class Game {
         if (!this.tutorial.active) { this.store.data.tutorialSeen = true; this.persist(); }
       }
       this.store.progress.playSeconds += dt;
+      this.tapes.update(dt);
       if ((this.persistT -= dt) <= 0) { this.persistT = 10; this.persist(); }
       this.ambience.update(dt, this.player);
       this.hud.setTime(this.store.progress.playSeconds);

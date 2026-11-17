@@ -232,3 +232,21 @@ export function lampBurst(ctx: BaseAudioContext, seed: number): AudioBuffer {
   }
   return b;
 }
+
+/** Шипіння магнітофонної плівки з «пливом» (детонацією) і рідкими тріскотами — петля. */
+export function tapeHiss(ctx: BaseAudioContext, seconds = 4): AudioBuffer {
+  const sr = ctx.sampleRate, n = Math.floor(sr * seconds);
+  const b = ctx.createBuffer(1, n, sr), d = b.getChannelData(0);
+  const r = rng(91);
+  let lp = 0, hp = 0, prev = 0;
+  for (let i = 0; i < n; i++) {
+    const t = i / sr;
+    const x = r() * 2 - 1;
+    lp += (x - lp) * 0.35;
+    hp = 0.96 * (hp + lp - prev); prev = lp;
+    const wow = 0.75 + 0.25 * Math.sin(2 * Math.PI * (1 / seconds) * 3 * t);
+    const crackle = r() < 0.0006 ? (r() * 2 - 1) * 0.6 : 0;
+    d[i] = (hp * 0.22 + Math.sin(2 * Math.PI * 50 * t) * 0.012) * wow + crackle;
+  }
+  return b;
+}
