@@ -1,6 +1,7 @@
 // Ігровий інтерфейс: «REC» відеокамери з лічильником плівки, підказка дії, поточне завдання, субтитри,
 // читання документів і записок, пролог (машинопис на чорному), фінальна картка рівня.
 import type { Doc } from '../story/ru';
+import { prologueTimeline } from './prologue-time';
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] as string);
 
@@ -135,7 +136,10 @@ export class HUD {
     cb?.();
   }
 
-  /** Пролог: рядки друкуються по одному. Будь-яке натискання прискорює, повторне — пропускає. */
+  /**
+   * Пролог: рядки друкуються по одному за розкладом від реального часу (prologue-time.ts) — ~45–50 с.
+   * Будь-яке натискання прискорює (×6), повторне — пропускає.
+   */
   prologue(lines: string[], onType: () => void): Promise<void> {
     return new Promise((done) => {
       const el = document.createElement('div');
@@ -144,30 +148,41 @@ export class HUD {
       this.el.parentElement?.appendChild(el);
       requestAnimationFrame(() => el.classList.add('shown'));
       const box = el.querySelector('.pl-text') as HTMLElement;
-      let li = 0, ci = 0, fast = false, finished = false, timer = 0;
+      const plan = prologueTimeline(lines);
+      const ps: HTMLElement[] = [];
+      let t = 0, last = performance.now(), speed = 1, finished = false, raf = 0;
       const finish = () => {
         if (finished) return;
-        finished = true; clearTimeout(timer);
+        finished = true; cancelAnimationFrame(raf);
+        removeEventListener('keydown', onKey);
         el.classList.remove('shown');
         setTimeout(() => { el.remove(); done(); }, 900);
       };
       const tick = () => {
-        if (li >= lines.length) { timer = window.setTimeout(finish, 1800); return; }
-        const line = lines[li] as string;
-        if (ci === 0) { const p = document.createElement('p'); box.appendChild(p); }
-        const p = box.lastElementChild as HTMLElement;
-        p.textContent = line.slice(0, ++ci);
-        if (line[ci - 1] !== ' ') onType();
-        if (ci >= line.length) {
-          li++; ci = 0;
-          if (box.children.length > 4) box.firstElementChild?.classList.add('gone');
-          timer = window.setTimeout(tick, fast ? 250 : 1100);
-        } else timer = window.setTimeout(tick, fast ? 12 : 38 + Math.random() * 40);
+        const now = performance.now();
+        t += Math.min(2, (now - last) / 1000) * speed; // реальний час: повільні кадри під час завантаження не розтягують пролог
+        last = now;
+        let typed = false;
+        plan.lines.forEach((l, i) => {
+          if (t < l.start) return;
+          const line = lines[i] as string;
+          let p = ps[i];
+          if (!p) {
+            p = document.createElement('p'); box.appendChild(p); ps[i] = p;
+            if (ps.length > 5) ps[ps.length - 6]?.classList.add('gone');
+          }
+          const n = Math.min(line.length, Math.floor((t - l.start) / ((l.typeEnd - l.start) / Math.max(1, line.length))) + 1);
+          if (p.textContent?.length !== n) { p.textContent = line.slice(0, n); if (line[n - 1] !== ' ') typed = true; }
+        });
+        if (typed) onType();
+        if (t >= plan.total - 0.9) { finish(); return; }
+        raf = requestAnimationFrame(tick);
       };
-      const skip = () => { if (!fast) fast = true; else finish(); };
+      const skip = () => { if (speed === 1) speed = 6; else finish(); };
+      const onKey = (e: KeyboardEvent) => { if (e.key !== 'Tab') skip(); };
       el.addEventListener('pointerdown', skip);
-      addEventListener('keydown', function k(e) { if (finished) { removeEventListener('keydown', k); return; } if (e.key !== 'Tab') skip(); });
-      timer = window.setTimeout(tick, 900);
+      addEventListener('keydown', onKey);
+      raf = requestAnimationFrame(tick);
     });
   }
 
