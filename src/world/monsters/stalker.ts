@@ -234,10 +234,14 @@ export class Stalker {
 
   /** Двері на шляху відчиняє сам (з рипом — гравець чує, що хтось іде). */
   private openDoorsNear(): void {
+    // «Слепой» на полюванні не відчиняє — вибиває (з грюкотом); інакше — відчиняє з рипом (гравець чує, що хтось іде)
+    const bash = this.kind === 'blind' && (this.brain.state === 'chase' || this.brain.state === 'investigate');
     for (const d of this.doors.list) {
       if (d.target > 0.1) continue;
       const hp = d.pivot.position;
-      if (Math.hypot(hp.x - this.pos.x, hp.z - this.pos.z) < 1.3) this.doors.toggle(d);
+      if (Math.hypot(d.cx - this.pos.x, d.cz - this.pos.z) < (bash ? 1.6 : 1.3) || Math.hypot(hp.x - this.pos.x, hp.z - this.pos.z) < 1.3) {
+        if (bash) this.doors.bash(d); else this.doors.toggle(d);
+      }
     }
   }
 

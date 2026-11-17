@@ -12,6 +12,7 @@ import type { Assets } from '../assets/loader';
 import type { Physics } from '../physics/physics';
 import type { AudioEngine, SpatialVoice } from '../audio/audio';
 import { tongueClicks, heartbeat } from '../audio/synth';
+import { blindClickRate } from '../ai/traits';
 import type { SoundBank } from '../audio/bank';
 import type { Player } from './player';
 
@@ -118,6 +119,9 @@ export class Hunt {
       this.voice.setPosition(sp.x, 1.6, sp.z);
       const hunting = s.brain.state === 'chase' || s.brain.state === 'investigate';
       this.voice.gain.gain.value = hunting ? 1.0 : s.brain.state === 'suspicious' ? 0.8 : 0.45;
+      // клацання частішають, коли він поруч (і ще більше — коли полює)
+      const r = this.voice.src.playbackRate;
+      r.value += (blindClickRate(dist, hunting) - r.value) * Math.min(1, dt * 3);
     }
   }
 }

@@ -463,6 +463,13 @@ export class Game {
     };
     lvl.doors.onMove = (d, opening) => { doorSound('creak', d, 0.7); if (opening) doorSound('dooropen', d, 0.6); this.hunt.noise(d.pivot.position.x, 1, d.pivot.position.z, 0.6); };
     lvl.doors.onShut = (d) => doorSound('doorclose', d, 0.9);
+    lvl.doors.onBash = (d) => {
+      // вибиті двері: удар і грюкіт полотна об стіну; поруч — здригання камери
+      doorSound('hit_', d, 1);
+      doorSound('doorclose', d, 1);
+      const p = d.pivot.position, near = Math.hypot(p.x - this.player.pos.x, p.z - this.player.pos.z);
+      if (near < 9) { this.rig.shake = Math.max(this.rig.shake, 0.6 * (1 - near / 9)); look.fear.value = Math.min(1, look.fear.value + 0.3); }
+    };
   }
 
   private readDoc(id: keyof typeof DOCS, after?: () => void): void {

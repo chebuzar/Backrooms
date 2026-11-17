@@ -39,6 +39,10 @@ export class Doors {
   onMove: ((d: Door, opening: boolean) => void) | null = null;
   /** Полотно стало в раму (глухий стук). */
   onShut: ((d: Door) => void) | null = null;
+  /** Двері вибили (удар, полотно відлітає до стіни). */
+  onBash: ((d: Door) => void) | null = null;
+  /** Двері, що зараз відлітають після удару (швидкий рух). */
+  private readonly fast = new Set<Door>();
 
   /** Полотна й ручки всіх дверей (по екземпляру на двері). */
   private leaves: THREE.InstancedMesh | null = null;
@@ -97,6 +101,14 @@ export class Doors {
     });
   }
 
+  /** Вибити зачинені двері: різкий удар, полотно влітає в стіну (без рипу — грюкіт). */
+  bash(d: Door): void {
+    if (d.target > 0.1) return;
+    d.target = 1.6;
+    this.fast.add(d);
+    this.onBash?.(d);
+  }
+
   /** Відчинити/зачинити. */
   toggle(d: Door): void {
     d.target = d.target > 0.1 ? 0 : 1.5;
@@ -125,8 +137,10 @@ export class Doors {
     for (const d of this.list) {
       if (Math.abs(d.target - d.angle) < 1e-3) continue;
       // важке полотно: розгін і гальмування, без стрибків
-      const step = (d.target - d.angle) * Math.min(1, dt * 3.2);
-      d.angle += Math.sign(step) * Math.min(Math.abs(step), dt * 1.9);
+      const fast = this.fast.has(d);
+      const step = (d.target - d.angle) * Math.min(1, dt * (fast ? 14 : 3.2));
+      d.angle += Math.sign(step) * Math.min(Math.abs(step), dt * (fast ? 9 : 1.9));
+      if (fast && Math.abs(d.target - d.angle) < 0.02) this.fast.delete(d);
       if (d.target === 0 && d.angle < 0.02) { d.angle = 0; this.onShut?.(d); }
       this.apply(d);
     }
