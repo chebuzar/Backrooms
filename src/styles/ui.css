@@ -172,3 +172,6 @@ input[type='range'].pencil-range:focus-visible { outline: 2px dashed var(--penci
 .osd .bat b.on { background: rgba(232, 228, 210, 0.85); }
 .osd .bat.low b.on { background: #d6453a; animation: bat-blink 1s steps(2) infinite; }
 @keyframes bat-blink { 50% { opacity: 0.2; } }
+
+.journal-h { margin-top: 1.6em; }
+.journal .line-btn { font-size: .92em; }

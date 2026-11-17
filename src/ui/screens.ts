@@ -155,16 +155,21 @@ export class UI {
     setTimeout(() => this.focusFirst(), 60);
   }
 
-  pause(o: { onResume: Handler; onSettings: Handler; onMenu: Handler }): void {
+  pause(o: { onResume: Handler; onSettings: Handler; onMenu: Handler; docs?: { id: string; title: string }[]; onDoc?: (id: string) => void }): void {
     const p = T.pause;
+    const esc = (t: string) => t.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] as string);
+    // журнал: знайдені документи й записки — можна перечитати
+    const docs = o.docs?.length ? `<div class="pencil journal-h">${p.journal}</div><nav class="menu journal">${o.docs.map((d) =>
+      `<button class="line-btn minor" data-doc="${esc(d.id)}">${esc(d.title)}</button>`).join('')}</nav>` : '';
     const el = this.make('pause', 'pause', `<div class="dossier">
       <div class="head"><div>${T.menu.caseNo}</div><div class="pencil">${p.title.toLowerCase()}</div></div>
       <nav class="menu">
         <button class="line-btn" data-r autofocus>${p.resume}</button>
         <button class="line-btn minor" data-s>${p.settings}</button>
         <button class="line-btn minor" data-m>${p.toMenu}</button>
-      </nav></div>`);
+      </nav>${docs}</div>`);
     this.bind(el, { '[data-r]': o.onResume, '[data-s]': o.onSettings, '[data-m]': o.onMenu });
+    el.querySelectorAll<HTMLButtonElement>('[data-doc]').forEach((b) => b.addEventListener('click', () => o.onDoc?.(b.dataset.doc as string)));
     setTimeout(() => this.focusFirst(), 60);
   }
 

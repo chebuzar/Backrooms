@@ -492,7 +492,14 @@ export class Game {
     this.ui.pause({
       onResume: () => this.play(),
       onSettings: () => this.openSettings(() => this.pauseMenuAgain()),
-      onMenu: () => { this.ui.closeAll(); this.showMenu(); }
+      onMenu: () => { this.ui.closeAll(); this.showMenu(); },
+      docs: [...this.store.progress.docs, ...this.store.progress.notes].map((id) => ({ id, title: DOCS[id]?.title ?? id })),
+      onDoc: (id) => {
+        const d = DOCS[id];
+        if (!d) return;
+        this.ui.closeAll();
+        this.hud.openDoc(d, () => this.pauseMenuAgain());
+      }
     });
   }
 
