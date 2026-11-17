@@ -98,3 +98,12 @@ describe('navmesh on the real level 0 layout', () => {
     }
   });
 });
+
+describe('hiding (lockers on level 1)', () => {
+  it('a hidden player is invisible even right in front of a monster in full light', () => {
+    const b = new Brain(base, straight, { los: () => true }, { x: 0, y: 0, z: 0 }, rng(9));
+    run(b, player({ z: 3, light: 1, flashlightOn: true, hidden: true }), 3);
+    expect(b.seesPlayer).toBe(false);
+    expect(b.state).toBe('patrol');
+  });
+});

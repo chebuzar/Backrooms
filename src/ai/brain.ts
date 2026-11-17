@@ -38,6 +38,10 @@ export interface PlayerView {
   looksAtMe: boolean;
   /** Чи світить ліхтарик на монстра. */
   litByFlashlight: boolean;
+  /** Сховався (шафка): не видно зовсім. */
+  hidden?: boolean;
+  /** Мисливець бачив, як гравець ховався (тоді йде до шафки й відчиняє). */
+  hiddenSeen?: boolean;
 }
 
 export interface Noise { x: number; y: number; z: number; loudness: number; t: number }
@@ -114,7 +118,7 @@ export class Brain {
   /** Чи бачить гравця: дальність, кут, стіни, освітленість, ліхтарик, присід. Повертає «ступінь видимості» 0..1. */
   visibility(p: PlayerView, eye: V3): number {
     const t = this.traits;
-    if (t.sightRange <= 0) return 0;
+    if (t.sightRange <= 0 || p.hidden) return 0;
     const dx = p.x - this.pos.x, dz = p.z - this.pos.z;
     const d = Math.hypot(dx, dz);
     // ліхтарик видно здалеку; у темряві силует губиться

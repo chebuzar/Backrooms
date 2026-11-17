@@ -95,11 +95,17 @@ export class Hunt {
     this.stalker?.hear(x, y, z, loudness);
   }
 
-  update(dt: number, lvl: Level, player: Player, cam: THREE.Camera, flashlightOn: boolean, physics: Physics): void {
+  update(dt: number, lvl: Level, player: Player, cam: THREE.Camera, flashlightOn: boolean, physics: Physics,
+    hidden: { x: number; z: number; seen: boolean } | null = null): void {
     const s = this.stalker;
     if (!s) return;
     const v = this.view, sp = s.pos;
-    Object.assign(v, { x: player.pos.x, y: player.pos.y, z: player.pos.z, vx: player.vx, vz: player.vz, flashlightOn, crouched: player.crouched });
+    Object.assign(v, { x: player.pos.x, y: player.pos.y, z: player.pos.z, vx: player.vx, vz: player.vz, flashlightOn, crouched: player.crouched, hidden: !!hidden, hiddenSeen: !!hidden?.seen });
+    if (hidden) {
+      v.x = hidden.x; v.z = hidden.z; v.vx = v.vz = 0;
+      // бачив, як гравець зачинився в шафці: пам'ятає саме її — йде туди й відчиняє
+      if (hidden.seen) { s.brain.mem.last = { x: hidden.x, y: 0, z: hidden.z }; s.brain.mem.age = 0; s.brain.mem.confidence = 1; if (s.brain.state !== 'chase') s.brain.state = 'chase'; }
+    }
     v.light = probeAt(lvl.layout.lights, v.x, v.z);
     // чи бачить гравець монстра: у кадрі (кут від погляду), без стін між ними, і монстр освітлений (лампа чи ліхтарик)
     const c = cam.position, dx = sp.x - c.x, dz = sp.z - c.z, d = Math.hypot(dx, dz);
@@ -110,6 +116,7 @@ export class Hunt {
     const near = lvl.lamps.nearest(sp.x, sp.z, 1)[0];
     const lampLit = probeAt(lvl.layout.lights, sp.x, sp.z) * (near === undefined ? 0 : lvl.lamps.levelOf(near));
     v.looksAtMe = clear && (v.litByFlashlight || lampLit > 0.3 || d < 2.2);
+    if (hidden) { v.looksAtMe = false; v.litByFlashlight = false; } // крізь жалюзі «тримати поглядом» не вийде
     s.update(dt, v);
     const st = s.brain.state, dist = Math.hypot(sp.x - v.x, sp.z - v.z);
     const close = Math.max(0, 1 - dist / 14);

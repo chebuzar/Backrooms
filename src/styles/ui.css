@@ -181,6 +181,15 @@ input[type='range'].pencil-range:focus-visible { outline: 2px dashed var(--penci
 .hud .dosi .needle { stroke: #111; stroke-width: 2; stroke-linecap: round; }
 .hud .dosi .hub { fill: #111; }
 
+/* у шафці: погляд крізь жалюзі (6 щілин), краї — темний метал дверцят */
+.hud .slits { position: absolute; inset: 0; opacity: 0; transition: opacity .35s; pointer-events: none;
+  background:
+    linear-gradient(to bottom, #030303 0 31%, transparent 31% 69%, #030303 69% 100%),
+    linear-gradient(to right, #030303 0 14%, transparent 22% 78%, #030303 86% 100%),
+    repeating-linear-gradient(to bottom, #040404 0 2.6vh, rgba(4,4,4,.15) 2.9vh 4.6vh, #040404 4.9vh);
+  background-position: 0 0, 0 0, 0 31vh; }
+.hud .slits.on { opacity: 1; }
+
 /* зум камери й навчання */
 .osd .zoom { opacity: 0; transition: opacity .2s; color: #f0eee4; }
 .osd .zoom.on { opacity: 1; }

@@ -177,7 +177,9 @@ export class Stalker {
     if (this.kind === 'watcher') { this.watcherLook(p); this.watcherSteps(dt); } else this.blindGait(dt);
     this.tension(dt, p);
     const d = Math.hypot(p.x - this.pos.x, p.z - this.pos.z);
-    const can = this.kind === 'watcher' ? !p.looksAtMe : intent.attack || this.brain.state === 'chase' || this.brain.state === 'investigate';
+    let can = this.kind === 'watcher' ? !p.looksAtMe : intent.attack || this.brain.state === 'chase' || this.brain.state === 'investigate';
+    // у шафці: знайде, лише якщо бачив, як гравець ховався (тоді відчиняє дверцята й хапає)
+    if (p.hidden) can = !!p.hiddenSeen;
     if (this.catchCd <= 0 && d < 1.05 && can) {
       this.catchCd = 6;
       this.ev.onCatch?.(this);

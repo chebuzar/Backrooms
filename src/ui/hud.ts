@@ -23,6 +23,7 @@ export class HUD {
     el.className = 'hud';
     el.innerHTML = `
       <div class="osd"><span class="rec"><i></i>REC</span><span class="tc">0:00:00</span><span class="sp">SP</span><span class="bat" hidden><b></b><b></b><b></b><b></b></span><span class="zoom"></span></div>
+      <div class="slits" aria-hidden="true"></div>
       <div class="tutorial" aria-live="polite"></div>
       <div class="dosi" aria-hidden="true"><svg viewBox="0 0 120 78">
         <rect x="1" y="1" width="118" height="76" rx="7" class="case"/>
@@ -54,6 +55,11 @@ export class HUD {
     const z = this.el.querySelector('.zoom') as HTMLElement;
     z.textContent = label;
     z.classList.toggle('on', on);
+  }
+
+  /** У шафці: темрява з горизонтальними щілинами жалюзі, крізь які видно кімнату. */
+  setHidden(on: boolean): void {
+    (this.el.querySelector('.slits') as HTMLElement).classList.toggle('on', on);
   }
 
   /** Дозиметр ДП-5: показ шкали (null — сховати), стрілка 0..1. */

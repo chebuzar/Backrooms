@@ -20,6 +20,7 @@ import { Ambience } from './ambience';
 import { Interactions } from './interact';
 import { DOCS, NOTES, TAPES, FINDINGS, PROLOGUE, OBJECTIVES, HINTS, LEVEL_END, LEVEL_TITLES, type Doc } from '../story/ru';
 import { placeFindings, type Finding } from '../world/findings';
+import { placeLockers, type Locker } from '../world/lockers';
 import { TapePlayer } from './tapes';
 import { Store, type Settings } from '../core/save';
 import { UI } from '../ui/screens';
@@ -120,6 +121,9 @@ export class Game {
   readonly omens = new Omens(this.audio, this.sfx);
   /** Записки й плівки поточного рівня. */
   private findings: Finding[] = [];
+  /** Шафки (рівень 1) і стан «сховався»: погляд крізь жалюзі, відхилення погляду від прямого. */
+  private lockers: Locker[] = [];
+  hide: { l: Locker; dyaw: number; dpitch: number; seen: boolean } | null = null;
   readonly tapes = new TapePlayer(this.audio, this.sfx, (t, sec) => this.hud.subtitle(t, sec));
   private geiger: AudioBuffer[] = [];
   private dosiNoiseT = 0;
@@ -219,6 +223,8 @@ export class Game {
     this.pickups = await placeBatteries(this.assets, lvl, this.store.progress.pickups);
     this.tapes.stop();
     this.findings = await placeFindings(this.assets, lvl, FINDINGS[lvl.id] ?? []);
+    this.hide = null;
+    this.lockers = lvl.id === 1 ? await placeLockers(this.assets, this.physics, lvl, [0.33, 0.5, 0.7]) : [];
     this.setScene(lvl.scene);
     if (this.player) this.setupInteractions(lvl);
     this.levelAudio();
@@ -442,6 +448,31 @@ export class Game {
     for (const b of this.pickups) this.addPickup(b);
   }
 
+  /** Сховатися в шафку: камера за жалюзі, рух вимкнено, ліхтарик гасне. Мисливець, що бачив це, знайде. */
+  private enterLocker(l: Locker): void {
+    const s = this.hunt.stalker;
+    const seen = !!s && (s.brain.seesPlayer || (s.brain.state === 'chase' && s.brain.mem.age < 1.0));
+    this.hide = { l, dyaw: 0, dpitch: 0, seen };
+    this.flashlightOn = false;
+    this.hud.setHidden(true);
+    const snd = this.sfx.pick('doorclose');
+    if (snd) this.audio.play3D(snd, l.door.x, 1.1, l.door.z, { gain: 0.5, rate: 1.5, ref: 1.5 });
+    this.hunt.noise(l.x, 1, l.z, 0.25); // дверцята клацнули — тихо, але чутно поруч
+  }
+
+  private exitLocker(): void {
+    const h = this.hide;
+    if (!h) return;
+    this.hide = null;
+    this.hud.setHidden(false);
+    // стати перед шафкою, дивлячись у кімнату
+    const nx = Math.sin(h.l.yaw), nz = Math.cos(h.l.yaw);
+    this.player.teleport(h.l.door.x + nx * 0.55, 0, h.l.door.z + nz * 0.55, h.l.yaw + Math.PI + h.dyaw);
+    this.player.pitch = 0;
+    const snd = this.sfx.pick('dooropen');
+    if (snd) this.audio.play3D(snd, h.l.door.x, 1.1, h.l.door.z, { gain: 0.45, rate: 1.4, ref: 1.5 });
+  }
+
   /** Записати прогрес (разом із зарядом ліхтарика). */
   private persist(): void {
     this.store.progress.battery = this.bat.level;
@@ -462,6 +493,9 @@ export class Game {
     for (const f of this.findings) {
       this.interact.add({ id: f.id, x: f.x, y: f.y, z: f.z, reach: 1.7, prompt: f.kind === 'tape' ? HINTS.listen : HINTS.read, enabled: true,
         use: () => (f.kind === 'tape' ? this.playTape(f) : this.readDoc(f.id)) });
+    }
+    for (const l of this.lockers) {
+      this.interact.add({ id: l.id, x: l.door.x, y: l.door.y, z: l.door.z, halfHeight: 0.7, reach: 1.6, prompt: HINTS.hide, enabled: true, use: () => this.enterLocker(l) });
     }
     const rift = lvl.rift;
     if (rift) {
@@ -620,6 +654,7 @@ export class Game {
 
   /** Поставити гравця на старт поточного рівня обличчям до Шва прибуття. */
   private enterLevelStart(face = true): void {
+    if (this.hide) { this.hide = null; this.hud.setHidden(false); }
     const s = this.level?.layout.spawn;
     if (s) this.player.teleport(s.x, 0, s.z, s.yaw + (face ? Math.PI : 0));
     this.player.pitch = 0;
@@ -764,10 +799,17 @@ export class Game {
     // у зумі погляд повертається повільніше — точніше роздивитися далеке
     const lk = 1 / (1 + this.zoomK); lx *= lk; ly *= lk;
     this.time += dt;
+    if (this.mode === 'play' && this.hide) {
+      // у шафці: лише трохи роззирнутися крізь жалюзі; E — вийти
+      const h = this.hide;
+      h.dyaw = Math.max(-0.6, Math.min(0.6, h.dyaw - lx));
+      h.dpitch = Math.max(-0.35, Math.min(0.3, h.dpitch - ly));
+      if (this.input.consume('interact')) this.exitLocker();
+    }
     if (this.mode === 'play') {
-      this.player.look(lx, ly);
+      if (!this.hide) this.player.look(lx, ly);
       this.acc += dt;
-      const m = { x: this.input.move.x, y: this.input.move.y, run: this.input.run, crouch: this.input.crouch };
+      const m = this.hide ? { x: 0, y: 0, run: false, crouch: false } : { x: this.input.move.x, y: this.input.move.y, run: this.input.run, crouch: this.input.crouch };
       while (this.acc >= STEP) { this.player.update(STEP, m); this.physics.step(); this.acc -= STEP; }
     } else if (this.mode === 'menu') {
       // у меню камера повільно «дихає» й оглядає кімнату
@@ -784,12 +826,19 @@ export class Game {
     if (this.hud.readerOpen && (this.input.consume('interact') || this.input.consume('pause'))) this.hud.closeDoc();
     const lvl = this.level;
     this.rig.update(this.player, this.acc / STEP, dt);
+    if (this.hide) {
+      // камера всередині шафки, за жалюзі, дивиться в кімнату
+      const h = this.hide;
+      this.camera.position.copy(h.l.eye);
+      this.camera.rotation.set(h.dpitch, h.l.yaw + Math.PI + h.dyaw, 0, 'YXZ');
+      this.camera.updateMatrixWorld();
+    }
     this.cameraOverride?.(this.camera, dt);
     if (lvl) {
       lvl.update(this.time, dt, this.camera);
       this.figure?.update(dt, this.camera, this.mode === 'play');
       if (this.mode === 'play' && !this.ending) {
-        this.hunt.update(dt, lvl, this.player, this.camera, this.flashlightOn, this.physics);
+        this.hunt.update(dt, lvl, this.player, this.camera, this.flashlightOn, this.physics, this.hide ? { x: this.hide.l.eye.x, z: this.hide.l.eye.z, seen: this.hide.seen } : null);
         const omen = this.tension.update(dt, this.hunt.danger);
         if (omen) this.omens.play(omen, lvl, { x: this.player.pos.x, z: this.player.pos.z, yaw: this.player.yaw }, this.camera);
       }
@@ -838,10 +887,13 @@ export class Game {
     }
     const c = this.camera, f = new THREE.Vector3(0, 0, -1).applyQuaternion(c.quaternion);
     if (this.mode === 'play' && this.interact) {
-      const it = this.interact.update(c, f.x, f.y, f.z);
       const key = this.input.lastDevice === 'gamepad' ? 'A' : this.input.lastDevice === 'touch' ? '✋' : 'E';
-      this.hud.setPrompt(it ? it.prompt : null, key);
-      if (it && this.input.consume('interact')) { it.use(); this.tried.add('use'); }
+      if (this.hide) this.hud.setPrompt(HINTS.unhide, key); // у шафці — лише «Выйти» (обробляється вище)
+      else {
+        const it = this.interact.update(c, f.x, f.y, f.z);
+        this.hud.setPrompt(it ? it.prompt : null, key);
+        if (it && this.input.consume('interact')) { it.use(); this.tried.add('use'); }
+      }
       if (this.player.running) this.tried.add('run');
       if (this.player.crouched) this.tried.add('crouch');
       if (this.tutorial.active) {

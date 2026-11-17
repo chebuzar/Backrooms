@@ -206,7 +206,9 @@ export const HINTS = {
   doorOpen: 'Открыть',
   doorShut: 'Закрыть',
   battery: 'Взять батарейки',
-  listen: 'Слушать'
+  listen: 'Слушать',
+  hide: 'Спрятаться',
+  unhide: 'Выйти'
 };
 
 export const LEVEL_END = {
