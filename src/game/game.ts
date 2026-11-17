@@ -35,10 +35,14 @@ const BASE_EXPOSURE = 1.9;
 type Mode = 'boot' | 'menu' | 'play' | 'pause';
 
 export class Game {
-  readonly camera = new THREE.PerspectiveCamera(72, 16 / 9, 0.05, 150);
+  // далі 70 м туман уже повністю ховає світ (≈ 99 %) — нема сенсу малювати далекі шматки
+  readonly camera = new THREE.PerspectiveCamera(72, 16 / 9, 0.05, 70);
   scene = new THREE.Scene();
   readonly post: PostPipeline;
+  /** Роздільність рендера — лише в пресеті «Низкая» (правило власника: різкість не жертвуємо в інших пресетах). */
   readonly governor = new QualityGovernor();
+  /** Авто-пресет: якщо стабільно < ~40 FPS, крок на пресет нижче (Ультра → Высокое → Среднее); роздільність не чіпаємо. */
+  private readonly presetGov = new QualityGovernor(0.7, 1000 / 42);
   readonly input: Input;
   readonly rig: CameraRig;
   readonly audio = new AudioEngine();
@@ -505,10 +509,21 @@ export class Game {
 
   private pauseMenuAgain(): void { this.mode = 'play'; this.pause(); }
 
+  /** Автоматичний крок на пресет нижче (лише в режимі «Авто», не нижче «Среднего»). */
+  private stepDownPreset(): void {
+    this.presetGov.scale = 1;
+    const order = ['ultra', 'high', 'medium'] as const;
+    const i = order.indexOf(this.profile.name as (typeof order)[number]);
+    if (i < 0 || i >= order.length - 1) return;
+    this.profile = PROFILES[order[i + 1] as (typeof order)[number]];
+    this.post.apply(this.profile);
+    this.resize();
+  }
+
   resize(): void {
     const w = innerWidth, h = innerHeight;
     const r = this.gfx.renderer;
-    r.setPixelRatio(Math.min(this.device.dpr, this.profile.maxPixelRatio) * this.governor.scale);
+    r.setPixelRatio(Math.min(this.device.dpr, this.profile.maxPixelRatio) * (this.profile.name === 'low' ? this.governor.scale : 1));
     r.setSize(w, h, false);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
@@ -523,7 +538,10 @@ export class Game {
     const dtMs = Math.min(100, now - this.last);
     this.last = now;
     const dt = dtMs / 1000;
-    if (this.mode === 'play' && this.autoScale && this.governor.update(dtMs)) this.resize();
+    if (this.mode === 'play' && this.autoScale) {
+      if (this.profile.name === 'low') { if (this.governor.update(dtMs)) this.resize(); }
+      else if (this.store.settings.quality === 'auto' && this.presetGov.update(dtMs) && this.presetGov.scale < 1) this.stepDownPreset();
+    }
     this.input.poll(dt);
     if (this.input.consume('pause') && this.mode === 'play') this.pause();
     const [lx, ly] = this.input.takeLook();

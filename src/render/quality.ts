@@ -30,9 +30,11 @@ export const PROFILES: Record<QualityName, QualityProfile> = {
 export function autoQuality(d: DeviceInfo, webgpu: boolean): QualityName {
   if (d.software) return 'low';
   if (d.platform === 'apple') {
-    // iPadOS/iOS 27+: чипи M-серії та A17+ — ультра на планшеті, висока на телефоні
-    if (d.form === 'tablet' || d.form === 'desktop') return webgpu ? 'ultra' : 'high';
-    return 'high';
+    // Mac — запас потужності; iPad — «Высокое» (AO у половині роздільності), iPhone — «Среднее»: ціль ≥ 30 FPS із запасом.
+    // Якщо й цього забагато, у режимі «Авто» гра сама крокує на пресет нижче (game.ts, stepDownPreset).
+    if (d.form === 'desktop') return webgpu ? 'ultra' : 'high';
+    if (d.form === 'tablet') return webgpu ? 'high' : 'medium';
+    return 'medium';
   }
   if (d.platform === 'android') return d.cores >= 8 ? 'medium' : 'low';
   return webgpu ? 'ultra' : 'high';
