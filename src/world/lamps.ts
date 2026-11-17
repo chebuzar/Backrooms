@@ -85,6 +85,15 @@ export class Lamps {
 
   levelOf(i: number): number { return this.level[i] ?? 0; }
 
+  /** Лампа перегоріла назавжди (лопнула): більше не світить і не мерехтить. */
+  kill(i: number): void {
+    this.base[i] = 0; this.level[i] = 0;
+    this.ovr.delete(i);
+    const k = this.flicker.findIndex((f) => f.i === i);
+    if (k >= 0) this.flicker.splice(k, 1);
+    this.attr.needsUpdate = true;
+  }
+
   /** Приглушити (mul < 1) або повернути (mul = 1) лампи в радіусі r від точки. */
   dimAround(x: number, z: number, r: number, mul: number): void {
     this.panels.forEach((p, i) => {

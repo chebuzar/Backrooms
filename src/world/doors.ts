@@ -109,6 +109,14 @@ export class Doors {
     this.onBash?.(d);
   }
 
+  /** Зачинити різко (протяг/«хтось»): полотно грюкає об раму. */
+  slamShut(d: Door): void {
+    if (d.target <= 0.1) return;
+    d.target = 0;
+    this.fast.add(d);
+    this.onMove?.(d, false);
+  }
+
   /** Відчинити/зачинити. */
   toggle(d: Door): void {
     d.target = d.target > 0.1 ? 0 : 1.5;

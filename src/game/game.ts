@@ -32,6 +32,8 @@ import { Hunt } from './hunt';
 import { Battery } from './battery';
 import { Tutorial, type TipId } from './tutorial';
 import { Dosimeter } from './dosimeter';
+import { TensionDirector } from './tension';
+import { Omens } from './omens';
 import { ICONS, svg } from '../input/touch';
 import { placeBatteries, type Pickup } from '../world/pickups';
 
@@ -111,6 +113,9 @@ export class Game {
   private tried = new Set<TipId>();
   /** Дозиметр ДП-5 (R): тріщить скрізь, біля Шва замовкає; тріск чує «Слепой». */
   readonly dosi = new Dosimeter();
+  /** Прикмети перед появою мисливця: кроки за спиною, двері грюкають, лампа лускає. */
+  readonly tension = new TensionDirector();
+  readonly omens = new Omens(this.audio, this.sfx);
   private geiger: AudioBuffer[] = [];
   private dosiNoiseT = 0;
   /** Батарейки, що лежать на поточному рівні. */
@@ -205,6 +210,7 @@ export class Game {
       } catch { /* без моделі гра йде без Фигуры */ }
     }
     this.level = lvl;
+    this.omens.attach(lvl);
     this.pickups = await placeBatteries(this.assets, lvl, this.store.progress.pickups);
     this.setScene(lvl.scene);
     if (this.player) this.setupInteractions(lvl);
@@ -755,7 +761,12 @@ export class Game {
     if (lvl) {
       lvl.update(this.time, dt, this.camera);
       this.figure?.update(dt, this.camera, this.mode === 'play');
-      if (this.mode === 'play' && !this.ending) this.hunt.update(dt, lvl, this.player, this.camera, this.flashlightOn, this.physics);
+      if (this.mode === 'play' && !this.ending) {
+        this.hunt.update(dt, lvl, this.player, this.camera, this.flashlightOn, this.physics);
+        const omen = this.tension.update(dt, this.hunt.danger);
+        if (omen) this.omens.play(omen, lvl, { x: this.player.pos.x, z: this.player.pos.z, yaw: this.player.yaw }, this.camera);
+      }
+      this.omens.update(dt);
       look.fear.value = Math.max(0, look.fear.value - dt * 0.12);
       // живе згасання запеченого світла біля ламп, що мерехтять/згасли (оновлюємо кілька разів на секунду — дешево)
       this.dimT -= dt;

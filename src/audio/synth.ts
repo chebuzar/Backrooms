@@ -216,3 +216,19 @@ export function geigerClick(ctx: BaseAudioContext, seed: number): AudioBuffer {
   }
   return b;
 }
+
+/** Лампа лускає: різкий тріск розряду, хлопок колби і дзенькіт уламків. */
+export function lampBurst(ctx: BaseAudioContext, seed: number): AudioBuffer {
+  const sr = ctx.sampleRate, n = Math.floor(sr * 1.4);
+  const b = ctx.createBuffer(1, n, sr), d = b.getChannelData(0);
+  const r = rng(seed * 17 + 3);
+  const tinks = Array.from({ length: 9 }, () => ({ t: 0.12 + r() * 0.9, f: 2800 + r() * 4200, a: 0.15 + r() * 0.25 }));
+  for (let i = 0; i < n; i++) {
+    const t = i / sr;
+    let v = (r() * 2 - 1) * Math.exp(-t * 35) * 0.9;                       // хлопок
+    v += (r() < 0.02 ? (r() * 2 - 1) : 0) * Math.exp(-t * 8) * 0.8;         // тріск розряду
+    for (const k of tinks) { const tk = t - k.t; if (tk > 0) v += Math.sin(2 * Math.PI * k.f * tk) * Math.exp(-tk * 60) * k.a; }
+    d[i] = v * 0.7;
+  }
+  return b;
+}
