@@ -64,11 +64,14 @@ const srgb = (r: number, g: number, b: number) => new THREE.Color().setRGB(r, g,
 /** Масштаби в метрах (реальні розміри): одна текстура шпалер — 1.06 м (4 раппорти дамаску), стеля — 6×6 плит по 0.6 м, килим — 1.5 м. */
 const WALL_M = 1.06, CEIL_M = 3.6, CARPET_M = 1.5;
 
+/** Освітленість із карти світла (зберігається sqrt(E/LMAX)) з урахуванням живого згасання ламп. */
+export function decodeLightmap(lm: Tex): THREE.Node<'vec3'> {
+  const s = texture(lm, uv(1)).rgb;
+  return s.mul(s).mul(LMAX).mul(bakeLevel).mul(liveDim()) as THREE.Node<'vec3'>;
+}
+
 export function makeLevel0Materials(t: Level0Textures) {
-  const decodeLM = (lm: Tex) => {
-    const s = texture(lm, uv(1)).rgb;
-    return s.mul(s).mul(LMAX).mul(bakeLevel).mul(liveDim());
-  };
+  const decodeLM = decodeLightmap;
   // великі маски в світових координатах (справжня текстура цвілі як «шум» розподілу): зона шпалер, волога, пошкодження
   const maskAt = (p: THREE.Node<'vec2'>, k: number, off: number) => texture(t.mold, p.mul(k).add(off)).r;
 

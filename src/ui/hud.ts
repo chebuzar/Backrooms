@@ -149,6 +149,20 @@ export class HUD {
     });
   }
 
+  /** Заставка переходу: чорний екран, назва рівня друкується; work() виконується під нею (завантаження). */
+  async titleCard(title: string, sub: string, work: () => Promise<void>): Promise<void> {
+    const el = document.createElement('div');
+    el.className = 'prologue title-card';
+    el.innerHTML = `<div class="tc"><p class="tc-t">${esc(title)}</p><p class="tc-s">${esc(sub)}</p></div>`;
+    this.el.parentElement?.appendChild(el);
+    requestAnimationFrame(() => el.classList.add('shown'));
+    const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    await Promise.all([work(), wait(3200)]);
+    el.classList.remove('shown');
+    await wait(900);
+    el.remove();
+  }
+
   /** Кінець рівня: картка поверх затемнення. */
   levelEnd(title: string, body: string, note: string, onDone: () => void): void {
     const el = document.createElement('div');

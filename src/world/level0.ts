@@ -10,14 +10,15 @@ import { Seam } from './seam';
 import { decorate } from './decor';
 import { buildDecals } from './decals';
 import { Doors } from './doors';
+import { loadChunks, addLayoutColliders } from './chunks';
 
 export const LEVEL0_SEED = 1987;
-
-interface Manifest { chunk: number; nx: number; nz: number; height: number; chunks: { x: number; z: number; glb: string; lm: string }[] }
 
 export interface PropSpot { id: string; x: number; y: number; z: number }
 
 export interface Level {
+  /** Номер рівня (0 — Жёлтые комнаты, 1 — «Глубина-1», 2 — Парковка). */
+  id: number;
   scene: THREE.Scene;
   layout: Layout;
   lamps: Lamps;
@@ -28,13 +29,14 @@ export interface Level {
   /** Місця сюжетних предметів (центр, на який дивитися). */
   spots: Record<string, PropSpot>;
   doors: Doors;
+  /** Куди веде головний Шов; прихований розлом (лише рівень 0) — на рівень 2. */
+  next: number;
+  rift?: Seam;
   update(t: number, dt: number, camera: THREE.Camera): void;
 }
 
 export async function buildLevel0(assets: Assets, physics: Physics, onProgress: (p: number) => void): Promise<Level> {
   const layout = generateLayout({ seed: LEVEL0_SEED });
-  const base = `${import.meta.env.BASE_URL}assets/levels/level0/`;
-  const manifest = (await (await fetch(`${base}manifest.json`)).json()) as Manifest;
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x000000);
   // теплий серпанок: далекі кімнати тонуть у жовтому мареві
@@ -42,52 +44,14 @@ export async function buildLevel0(assets: Assets, physics: Physics, onProgress: 
 
   const tex = await loadLevel0Textures(assets);
   onProgress(0.2);
-  const materialsFor = makeLevel0Materials(tex);
-  const lmLoader = new THREE.TextureLoader();
-  let done = 0;
-  await Promise.all(manifest.chunks.map(async (c) => {
-    const lmPromise = c.lm.endsWith('.ktx2') ? assets.texture(`assets/levels/level0/${c.lm}`) : lmLoader.loadAsync(base + c.lm);
-    const [gltf, lm] = await Promise.all([assets.model(`assets/levels/level0/${c.glb}`), lmPromise]);
-    lm.colorSpace = THREE.NoColorSpace;
-    lm.flipY = false;
-    if (!c.lm.endsWith('.ktx2')) { lm.generateMipmaps = true; lm.minFilter = THREE.LinearMipmapLinearFilter; }
-    const mats = materialsFor(lm);
-    gltf.scene.traverse((o) => {
-      const mesh = o as THREE.Mesh;
-      if (!mesh.isMesh) return;
-      const name = (mesh.material as THREE.Material).name;
-      mesh.material = (mats[name] ?? mats.wall) as THREE.Material;
-      mesh.receiveShadow = true;
-      mesh.castShadow = true;
-    });
-    scene.add(gltf.scene);
-    onProgress(0.2 + 0.7 * (++done / manifest.chunks.length));
-  }));
-
-  // колізії: підлога, стеля, стіни, колони
-  const W = layout.cols * layout.cell, D = layout.rows * layout.cell, H = layout.height;
-  physics.addBox(W / 2, -0.5, D / 2, W / 2 + 1, 0.5, D / 2 + 1);
-  physics.addBox(W / 2, H + 0.5, D / 2, W / 2 + 1, 0.5, D / 2 + 1);
-  for (const w of layout.walls) physics.addBox(w.x, H / 2, w.z, w.w / 2, H / 2, w.d / 2);
-  physics.step();
+  await loadChunks(assets, 'level0', scene, makeLevel0Materials(tex), (p) => onProgress(0.2 + 0.7 * p));
+  addLayoutColliders(physics, layout);
+  const H = layout.height;
 
   const lamps = new Lamps(layout.lights, H);
   scene.add(lamps.mesh, lamps.frame);
 
-  // ліхтарик: тепла лампа розжарювання, м'яка пляма, тінь
-  // ліхтарик: тепла лампа розжарювання; гаряча пляма з дуже м'яким краєм (без «наліпки»), реальне квадратичне згасання
-  const flashlight = new THREE.SpotLight(0xffe2b8, 0, 28, 0.42, 0.92, 2);
-  flashlight.castShadow = true;
-  flashlight.shadow.mapSize.set(1024, 1024);
-  flashlight.shadow.bias = -0.0004;
-  flashlight.shadow.camera.near = 0.1;
-  scene.add(flashlight, flashlight.target);
-  // розсіяне світло навколо променя (відбивач ліхтарика) — широкий слабкий конус без тіні
-  const spill = new THREE.SpotLight(0xffd9a8, 0, 18, 0.95, 1.0, 2);
-  flashlight.add(spill);
-  spill.target = flashlight.target;
-  // ледь помітне заповнення, щоб чорні кути не були «дірами»
-  scene.add(new THREE.AmbientLight(0x2a2412, 0.25));
+  const flashlight = addFlashlight(scene);
   // «Шов» — на найближчій до виходу стіні
   const seamAt = seamPlacement(layout, layout.exit.x, layout.exit.z);
   const seam = new Seam(seamAt.x, seamAt.z, seamAt.yaw, H);
@@ -109,17 +73,39 @@ export async function buildLevel0(assets: Assets, physics: Physics, onProgress: 
   arrival.life.value = 0;
   scene.add(arrival.group);
 
+  // прихований розлом у найтемнішій глухій зоні: тьмяний, ледь живий — веде одразу на парковку (рівень 2)
+  const riftP = layout.points.rift ?? layout.exit;
+  const riftAt = seamPlacement(layout, riftP.x, riftP.z);
+  const rift = new Seam(riftAt.x, riftAt.z, riftAt.yaw, H);
+  rift.life.value = 0.4;
+  scene.add(rift.group);
+
   const spots = await placeProps(assets, physics, layout, scene);
   onProgress(1);
 
   return {
-    scene, layout, lamps, flashlight, seam, arrival, spots, doors,
-    update(t, dt) { lamps.update(t); seam.update(t); arrival.update(t); doors.update(dt); }
+    id: 0, next: 1, scene, layout, lamps, flashlight, seam, arrival, rift, spots, doors,
+    update(t, dt) { lamps.update(t); seam.update(t); arrival.update(t); rift.update(t); doors.update(dt); }
   };
 }
 
+/** Ліхтарик гравця (тепла лампа розжарювання, м'яка пляма, тінь) + розсіяне світло відбивача і слабке заповнення. */
+export function addFlashlight(scene: THREE.Scene, ambient = 0x2a2412): THREE.SpotLight {
+  const flashlight = new THREE.SpotLight(0xffe2b8, 0, 28, 0.42, 0.92, 2);
+  flashlight.castShadow = true;
+  flashlight.shadow.mapSize.set(1024, 1024);
+  flashlight.shadow.bias = -0.0004;
+  flashlight.shadow.camera.near = 0.1;
+  scene.add(flashlight, flashlight.target);
+  const spill = new THREE.SpotLight(0xffd9a8, 0, 18, 0.95, 1.0, 2);
+  flashlight.add(spill);
+  spill.target = flashlight.target;
+  scene.add(new THREE.AmbientLight(ambient, 0.25));
+  return flashlight;
+}
+
 /** Замінити матеріали моделі на «освітлені зондом» і ввімкнути тіні від ліхтарика. */
-function lightProp(o: THREE.Object3D, E: number): void {
+export function lightProp(o: THREE.Object3D, E: number): void {
   const cache = new Map<THREE.Material, THREE.Material>();
   o.traverse((m) => {
     const mm = m as THREE.Mesh;
@@ -139,7 +125,7 @@ function isFree(l: Layout, x: number, z: number, r: number): boolean {
 }
 
 /** Найближче вільне місце по спіралі від точки. */
-function freeNear(l: Layout, x: number, z: number, r: number): [number, number] {
+export function freeNear(l: Layout, x: number, z: number, r: number): [number, number] {
   for (let rad = 0; rad < 8; rad += 0.3) {
     for (let a = 0; a < Math.PI * 2; a += 0.4) {
       const px = x + Math.cos(a) * rad, pz = z + Math.sin(a) * rad;
@@ -150,7 +136,7 @@ function freeNear(l: Layout, x: number, z: number, r: number): [number, number] 
 }
 
 /** Точка на найближчій до (ex, ez) стіні й поворот грані, що дивиться на цю точку. */
-function seamPlacement(l: Layout, ex: number, ez: number): { x: number; z: number; yaw: number } {
+export function seamPlacement(l: Layout, ex: number, ez: number): { x: number; z: number; yaw: number } {
   let best = { d: 1e9, x: ex, z: ez, yaw: 0 };
   for (const w of l.walls) {
     if (w.kind === 'pillar') continue;

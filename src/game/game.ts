@@ -14,15 +14,19 @@ import { AudioEngine, type SpatialVoice } from '../audio/audio';
 import { humLoop, footstepCarpet, typeClick, paperRustle, seamDrone } from '../audio/synth';
 import { SoundBank } from '../audio/bank';
 import { Figure } from '../world/monsters/figure';
+import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { HUD } from '../ui/hud';
 import { Ambience } from './ambience';
 import { Interactions } from './interact';
-import { DOCS, PROLOGUE, OBJECTIVES, HINTS, LEVEL_END } from '../story/ru';
+import { DOCS, PROLOGUE, OBJECTIVES, HINTS, LEVEL_END, LEVEL_TITLES } from '../story/ru';
 import { Store, type Settings } from '../core/save';
 import { UI } from '../ui/screens';
 import { T } from '../i18n/ru';
 import { Assets } from '../assets/loader';
 import { buildLevel0, type Level } from '../world/level0';
+import { buildThemedLevel } from '../world/level-themed';
+import { disposeScene } from '../world/chunks';
+import type { Seam } from '../world/seam';
 
 const STEP = 1 / 60;
 /** Базова експозиція «камери»; налаштування «Яркость» множить її. */
@@ -75,6 +79,8 @@ export class Game {
   private stage: 'desk' | 'seam' | 'done' = 'desk';
   private ending = false;
   private steps: AudioBuffer[] = [];
+  private ambSrc: AudioBufferSourceNode | null = null;
+  private seamVoices: SpatialVoice[] = [];
   private stepIdx = 0;
 
   constructor(readonly gfx: RendererHandle, readonly device: DeviceInfo, forced: QualityProfile | null) {
@@ -103,31 +109,65 @@ export class Game {
   async init(onProgress: (p: number) => void = () => {}): Promise<void> {
     this.physics = await Physics.create();
     this.assets = new Assets(this.gfx.renderer);
-    const lvl = await buildLevel0(this.assets, this.physics, onProgress);
-    try {
-      const gl = await this.assets.model('assets/models/figure.glb');
-      this.figure = new Figure(gl.scene, lvl.layout, this.physics, lvl.lamps, {
-        onVanish: (x, z, seen) => {
-          // коротка «оплата» напруги: глухий удар там, де вона стояла, і здригання камери, якщо гравець її бачив
-          const hit = this.sfx.pick('hit_');
-          if (hit) this.audio.play3D(hit, x, 1.5, z, { gain: seen ? 0.55 : 0.25, ref: 4, wet: 0.6, rate: 0.85 });
-          if (seen) { this.rig.shake = Math.max(this.rig.shake, 0.6); look.fear.value = Math.min(1, look.fear.value + 0.5); }
-        }
-      });
-      lvl.scene.add(this.figure.root);
-    } catch { /* без моделі гра йде без Фигуры */ }
-    this.level = lvl;
-    this.setScene(lvl.scene);
+    const lvl = await this.loadLevel(0, onProgress);
     const s = lvl.layout.spawn;
     this.player = new Player(this.physics, s.x, 0, s.z);
     this.player.yaw = s.yaw;
     this.player.onFootstep = (e) => this.footstep(e.x, e.y, e.z, e.loudness);
-    this.setupInteractions(lvl);
     this.applySettings(this.store.settings);
     this.input.enabled = false;
     this.resize();
     // заздалегідь скомпілювати шейдери, щоб не було ривків при першому погляді на щось нове
     try { this.gfx.renderer.setRenderTarget(null); await this.gfx.renderer.compileAsync(lvl.scene, this.camera); } catch { /* не критично */ }
+  }
+
+  /** Побудувати рівень id (старий звільняється: GPU-пам'ять, колізії); гравця не чіпає. */
+  private async loadLevel(id: number, onProgress: (p: number) => void = () => {}): Promise<Level> {
+    const old = this.level;
+    if (old) {
+      const keep = this.player?.collider;
+      const list: { handle: number }[] = [];
+      this.physics.world.forEachCollider((c) => { if (c !== keep) list.push(c); });
+      for (const c of list) this.physics.world.removeCollider(c as never, false);
+      disposeScene(old.scene);
+      this.level = null;
+      this.figure = null;
+    }
+    const lvl = id === 0 ? await buildLevel0(this.assets, this.physics, onProgress) : await buildThemedLevel(id as 1 | 2, this.assets, this.physics, onProgress);
+    if (id === 0) {
+      try {
+        const gl = await this.assets.model('assets/models/figure.glb');
+        this.figure = new Figure(cloneSkinned(gl.scene), lvl.layout, this.physics, lvl.lamps, {
+          onVanish: (x, z, seen) => {
+            // коротка «оплата» напруги: глухий удар там, де вона стояла, і здригання камери, якщо гравець її бачив
+            const hit = this.sfx.pick('hit_');
+            if (hit) this.audio.play3D(hit, x, 1.5, z, { gain: seen ? 0.55 : 0.25, ref: 4, wet: 0.6, rate: 0.85 });
+            if (seen) { this.rig.shake = Math.max(this.rig.shake, 0.6); look.fear.value = Math.min(1, look.fear.value + 0.5); }
+          }
+        });
+        lvl.scene.add(this.figure.root);
+      } catch { /* без моделі гра йде без Фигуры */ }
+    }
+    this.level = lvl;
+    this.setScene(lvl.scene);
+    if (this.player) this.setupInteractions(lvl);
+    this.levelAudio();
+    return lvl;
+  }
+
+  /** Фон рівня й гул Швів — до нового рівня. */
+  private levelAudio(): void {
+    const lvl = this.level;
+    if (!lvl || !this.sfx.ready) return;
+    this.ambSrc?.stop();
+    const amb = this.sfx.get(`amb_l${lvl.id}`), bus = this.audio.music;
+    this.ambSrc = amb && bus ? this.audio.play2D(amb, 0.32, 1, bus) : null;
+    if (this.ambSrc) this.ambSrc.loop = true;
+    const seams: (Seam | undefined)[] = [lvl.seam, lvl.rift];
+    this.seamVoices.forEach((v, i) => {
+      const p = seams[i]?.group.position;
+      v.setPosition(p ? p.x : 0, p ? 1.3 : -100, p ? p.z : 0);
+    });
   }
 
   private setScene(s: THREE.Scene): void {
@@ -142,16 +182,16 @@ export class Game {
     for (let i = 0; i < 8; i++) this.steps.push(footstepCarpet(ctx, i + 1));
     for (let i = 0; i < 6; i++) this.clicks.push(typeClick(ctx, i + 1));
     this.rustle = paperRustle(ctx, 1);
-    void this.sfx.load(ctx, `${import.meta.env.BASE_URL}assets/sfx/`).then(() => {
-      // тихий фоновий трек рівня (наш, ACE-Step): шар під гулом ламп
-      const amb = this.sfx.get('amb_l0');
-      const bus = this.audio.music;
-      const src = amb && bus ? this.audio.play2D(amb, 0.32, 1, bus) : null;
-      if (src) src.loop = true;
-    });
+    // тихий фоновий трек рівня (наш, ACE-Step): шар під гулом ламп
+    void this.sfx.load(ctx, `${import.meta.env.BASE_URL}assets/sfx/`).then(() => this.levelAudio());
     this.ambience.prepare();
-    const sp = this.level?.seam.group.position;
-    if (sp) this.audio.play3D(seamDrone(ctx), sp.x, 1.3, sp.z, { loop: true, gain: 0.9, ref: 1.5, wet: 0.4 });
+    // гул Шва і (тихіше, глухіше) прихованого розлому
+    const drone = seamDrone(ctx);
+    for (const [gain, ref] of [[0.9, 1.5], [0.5, 0.9]] as const) {
+      const v = this.audio.play3D(drone, 0, -100, 0, { loop: true, gain, ref, wet: 0.4, rate: ref < 1 ? 0.8 : 1 });
+      if (v) this.seamVoices.push(v);
+    }
+    this.levelAudio();
     const hum = humLoop(ctx, 4, 3);
     // гул: 6 голосів «переїжджають» до найближчих ламп, що світять
     for (let i = 0; i < 6; i++) {
@@ -205,7 +245,7 @@ export class Game {
     this.ui.onBack = null;
     this.ui.menu({
       canContinue: !!this.store.progress.checkpoint,
-      onContinue: () => this.play(),
+      onContinue: () => void this.continueGame(),
       onStart: () => { this.store.newGame(); void this.startNewGame(); },
       onSettings: () => this.openSettings(() => this.showMenu()),
       onAbout: () => { this.ui.close('menu'); this.ui.about(() => this.showMenu()); }
@@ -220,17 +260,31 @@ export class Game {
     this.ui.settings(this.store.settings, T.settings.device(dev, T.settings.qualities[auto]), (s) => this.applySettings(s), back);
   }
 
+  /** Продовжити: якщо збережено інший рівень — завантажити його під заставкою. */
+  private async continueGame(): Promise<void> {
+    const cp = this.store.progress.checkpoint;
+    const card = cp ? LEVEL_TITLES[cp.level] : undefined;
+    if (cp && card && this.level?.id !== cp.level) {
+      this.ui.closeAll();
+      this.audio.unlock(); this.prepareAudio();
+      await this.hud.titleCard(card.title, card.sub, async () => { await this.loadLevel(cp.level); });
+      this.enterLevelStart(false);
+      this.hud.setObjective(cp.level === 1 ? OBJECTIVES.level1Start : OBJECTIVES.level2Start);
+    }
+    this.play();
+  }
+
   private async startNewGame(): Promise<void> {
     this.ui.closeAll();
     this.input.enabled = false;
     this.audio.unlock(); this.prepareAudio();
     let k = 0;
+    // якщо гравець був на іншому рівні — рівень 0 вантажиться під час прологу
+    const reload = this.level?.id !== 0 ? this.loadLevel(0) : Promise.resolve();
     await this.hud.prologue(PROLOGUE, () => { const b = this.clicks[k++ % Math.max(1, this.clicks.length)]; if (b) this.audio.play2D(b, 0.5, 0.95 + Math.random() * 0.1); });
-    const s = this.level?.layout.spawn;
+    await reload;
     // отямлюється на підлозі обличчям до стіни, крізь яку випав (стіл експедиції — за спиною)
-    if (s) this.player.teleport(s.x, 0, s.z, s.yaw + Math.PI);
-    this.player.pitch = 0;
-    this.stage = 'desk';
+    this.enterLevelStart();
     this.store.progress.checkpoint = { level: 0, spawn: 'start' };
     this.store.save();
     await this.arrive();
@@ -275,15 +329,18 @@ export class Game {
 
   private setupInteractions(lvl: Level): void {
     this.interact = new Interactions(this.physics);
-    const docSpot = (id: 'order7' | 'note1', after?: () => void) => {
-      const s = lvl.spots[id];
-      if (!s) return;
+    for (const s of Object.values(lvl.spots)) {
+      const id = s.id;
+      const after = id === 'order7' ? () => { if (this.stage === 'desk') { this.stage = 'seam'; this.hud.setObjective(OBJECTIVES.level0Find); } } : undefined;
       this.interact.add({ id, x: s.x, y: s.y, z: s.z, reach: 1.9, prompt: HINTS.read, enabled: true, use: () => this.readDoc(id, after) });
-    };
-    docSpot('order7', () => { if (this.stage === 'desk') { this.stage = 'seam'; this.hud.setObjective(OBJECTIVES.level0Find); } });
-    docSpot('note1');
+    }
     const sp = lvl.seam.group.position;
-    this.interact.add({ id: 'seam', x: sp.x, y: 1.3, z: sp.z, reach: 1.7, prompt: HINTS.enterSeam, enabled: true, use: () => void this.enterSeam() });
+    this.interact.add({ id: 'seam', x: sp.x, y: 1.3, z: sp.z, reach: 1.7, prompt: HINTS.enterSeam, enabled: true, use: () => void this.enterSeam(lvl.seam, lvl.next) });
+    const rift = lvl.rift;
+    if (rift) {
+      const rp = rift.group.position;
+      this.interact.add({ id: 'rift', x: rp.x, y: 1.3, z: rp.z, reach: 1.5, prompt: HINTS.enterSeam, enabled: true, use: () => void this.enterSeam(rift, 2) });
+    }
     // двері: по точці взаємодії з кожного боку прорізу; підказка міняється з відчинено/зачинено
     for (const d of lvl.doors.list) {
       d.sides.forEach(([x, y, z], i) => {
@@ -315,12 +372,12 @@ export class Game {
     this.hud.openDoc(d, () => { this.play(); after?.(); });
   }
 
-  private async enterSeam(): Promise<void> {
+  /** Пройти крізь Шов: розріз розкривається, світ гасне → заставка, новий рівень, прибуття; після парковки — кінець версії. */
+  private async enterSeam(seam: Seam, target: number): Promise<void> {
     if (this.ending || !this.level) return;
     this.ending = true;
     this.input.enabled = false;
     this.mode = 'pause';
-    const seam = this.level.seam;
     // Шов розкривається, світ «стискається» й гасне
     const t0 = performance.now();
     await new Promise<void>((done) => {
@@ -334,18 +391,38 @@ export class Game {
       };
       step();
     });
-    if (!this.store.progress.completed.includes(0)) this.store.progress.completed.push(0);
-    this.store.progress.checkpoint = null;
-    this.store.save();
-    this.stage = 'done';
+    const from = this.level.id;
+    if (!this.store.progress.completed.includes(from)) this.store.progress.completed.push(from);
     if (document.pointerLockElement) document.exitPointerLock();
     this.hud.show(false);
-    this.hud.levelEnd(LEVEL_END.title, LEVEL_END.body, LEVEL_END.soon, () => {
-      look.fade.value = 0; look.fear.value = 0; seam.open.value = 0; this.ending = false;
-      const s = this.level?.layout.spawn;
-      if (s) this.player.teleport(s.x, 0, s.z, s.yaw);
-      this.showMenu();
-    });
+    const card = LEVEL_TITLES[target];
+    if (!card) {
+      this.store.progress.checkpoint = null;
+      this.store.save();
+      this.stage = 'done';
+      this.hud.levelEnd(LEVEL_END.title, LEVEL_END.body, LEVEL_END.soon, () => {
+        look.fade.value = 0; look.fear.value = 0; seam.open.value = 0; this.ending = false;
+        this.showMenu();
+      });
+      return;
+    }
+    await this.hud.titleCard(card.title, card.sub, async () => { await this.loadLevel(target); });
+    look.fear.value = 0;
+    this.enterLevelStart();
+    this.store.progress.checkpoint = { level: target, spawn: 'start' };
+    this.store.save();
+    this.ending = false;
+    await this.arrive();
+    this.play();
+    this.hud.setObjective(target === 1 ? OBJECTIVES.level1Start : OBJECTIVES.level2Start);
+  }
+
+  /** Поставити гравця на старт поточного рівня обличчям до Шва прибуття. */
+  private enterLevelStart(face = true): void {
+    const s = this.level?.layout.spawn;
+    if (s) this.player.teleport(s.x, 0, s.z, s.yaw + (face ? Math.PI : 0));
+    this.player.pitch = 0;
+    this.stage = this.level?.id === 0 ? 'desk' : 'seam';
   }
 
   play(): void {
