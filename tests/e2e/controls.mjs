@@ -46,6 +46,16 @@ if (!device) {
     const closed = await page.waitForFunction(() => !document.querySelector('.journal-screen') && window.__zk.game.mode === 'play', null, { timeout: 3000 }).then(() => true, () => false);
     check(`Esc — закрыть журнал (${key})`, closed);
   }
+  // ДП-5: R — шкала й тріск; біля Шва — тиша
+  await page.keyboard.press('KeyR');
+  await wait(1500);
+  const far = await page.evaluate(() => ({ on: !!document.querySelector('.hud .dosi.on'), rate: window.__zk.game.dosi.rate }));
+  await page.screenshot({ path: `.shots/controls-dosimeter-${which}.png` });
+  await page.evaluate(() => { const g = window.__zk.game, s = g.level.seam.group; window.__zk.tp(s.position.x + Math.sin(s.rotation.y) * 1.5, s.position.z + Math.cos(s.rotation.y) * 1.5, s.rotation.y, 0); });
+  await wait(1500);
+  const near = await page.evaluate(() => window.__zk.game.dosi.rate);
+  check('R — дозиметр: трещит вдали, у Шва молчит', far.on && far.rate > 3 && near === 0, { far, near });
+  await page.keyboard.press('KeyR');
   // пауза → «Управление»
   await page.keyboard.press('Escape');
   await page.waitForSelector('.screen.pause [data-ctl]', { timeout: 3000 }).catch(() => {});

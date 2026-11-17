@@ -1,7 +1,7 @@
 // Керування: клавіатура+миша, геймпад, сенсорний екран — усе зводиться до одних «дій».
 import { TouchControls } from './touch';
 
-export type Action = 'interact' | 'flashlight' | 'pause' | 'camera' | 'journal';
+export type Action = 'interact' | 'flashlight' | 'pause' | 'camera' | 'journal' | 'dosimeter';
 
 export interface InputSettings {
   sensitivity: number; // 0.2..3
@@ -49,7 +49,7 @@ export class Input {
   private onKey(e: KeyboardEvent, down: boolean): void {
     this.lastDevice = 'keyboard';
     if (down && !e.repeat) {
-      const a = ({ KeyE: 'interact', KeyF: 'flashlight', Escape: 'pause', KeyP: 'pause', KeyV: 'camera', Tab: 'journal', KeyJ: 'journal' } as Record<string, Action>)[e.code];
+      const a = ({ KeyE: 'interact', KeyF: 'flashlight', Escape: 'pause', KeyP: 'pause', KeyV: 'camera', Tab: 'journal', KeyJ: 'journal', KeyR: 'dosimeter' } as Record<string, Action>)[e.code];
       if (a) { this.pressed.add(a); if (e.code === 'Tab') e.preventDefault(); }
       if ((e.code === 'KeyC' || e.code === 'ControlLeft') && this.settings.crouchToggle) this.crouchLatched = !this.crouchLatched;
     }
@@ -92,6 +92,7 @@ export class Input {
       if (edge(9)) this.pressed.add('pause');
       if (edge(8)) this.pressed.add('journal');
       if (edge(2)) this.pressed.add('camera');
+      if (edge(5)) this.pressed.add('dosimeter');
       if (edge(1)) this.crouchLatched = !this.crouchLatched;
       if (b[1] !== undefined) crouch = crouch || this.crouchLatched;
       this.padPrev = b;

@@ -8,7 +8,9 @@ export const ICONS = {
   use: '<path d="M9 11.2V5.5a1.5 1.5 0 1 1 3 0V11l5 1.1a2 2 0 0 1 1.6 2.2l-.6 5A2 2 0 0 1 16 21h-5.3a2 2 0 0 1-1.6-.8l-3.5-4.5 1.4-1.4L9 15.3Z"/>',
   light: '<path d="M7 2h10v4l-2 4v11a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1V10L7 6Zm4 11v3h2v-3Z"/>',
   camera: '<path d="M4 6h11a2 2 0 0 1 2 2v1.6l4-2.6v10l-4-2.6V16a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Z"/>',
-  pause: '<path d="M7 5h3.5v14H7zm6.5 0H17v14h-3.5z"/>'
+  pause: '<path d="M7 5h3.5v14H7zm6.5 0H17v14h-3.5z"/>',
+  // знак радіації: дозиметр ДП-5
+  dosi: '<path d="M12 10.3a1.7 1.7 0 1 1 0 3.4 1.7 1.7 0 0 1 0-3.4Zm-1.6-1.1L7.6 4.4A8.6 8.6 0 0 0 3.4 12h5.5a3.1 3.1 0 0 1 1.5-2.8Zm3.2 0A3.1 3.1 0 0 1 15.1 12h5.5a8.6 8.6 0 0 0-4.2-7.6Zm1.5 4.2L12 18.2l-3.1-4.8-2.8 4.8a8.6 8.6 0 0 0 11.8 0Z"/>'
 };
 
 /** Елементи інтерфейсу, яким дотик має дістатися як звичайне натискання/прокрутка. */
@@ -44,6 +46,7 @@ export class TouchControls {
         <button class="tb tb-run" data-a="run" aria-label="Бег">${svg(ICONS.run)}</button>
         <button class="tb tb-crouch" data-a="crouch" aria-label="Присесть">${svg(ICONS.crouch)}</button>
         <button class="tb tb-cam" data-a="camera" aria-label="Камера">${svg(ICONS.camera)}</button>
+        <button class="tb tb-dosi" data-a="dosimeter" aria-label="Дозиметр">${svg(ICONS.dosi)}</button>
       </div>
       <button class="tb tb-pause" data-a="pause" aria-label="Пауза">${svg(ICONS.pause)}</button>`;
     uiRoot.appendChild(r);
@@ -64,6 +67,7 @@ export class TouchControls {
     tap(btn('.tb-use'), () => this.input.press('interact'));
     tap(btn('.tb-light'), () => this.input.press('flashlight'));
     tap(btn('.tb-cam'), () => this.input.press('camera'));
+    tap(btn('.tb-dosi'), () => this.input.press('dosimeter'));
     tap(btn('.tb-pause'), () => this.input.press('pause'));
 
     const opts = { passive: false } as AddEventListenerOptions;
@@ -72,6 +76,9 @@ export class TouchControls {
     addEventListener('touchend', (e) => this.onEnd(e), opts);
     addEventListener('touchcancel', (e) => this.onEnd(e), opts);
   }
+
+  /** Підсвітити кнопку-перемикач (ліхтарик, дозиметр). */
+  setLatched(name: string, on: boolean): void { this.root.querySelector(`.tb-${name}`)?.classList.toggle('latched', on); }
 
   /** Показати/сховати кнопки (у меню вони не потрібні). */
   show(on: boolean): void { this.root.classList.toggle('shown', on); }

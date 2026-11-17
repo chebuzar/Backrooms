@@ -22,6 +22,8 @@ html, body { width: 100%; height: 100%; background: #000; color: var(--ink); ove
 .touch .tb-use { grid-column: 3; grid-row: 1; }
 .touch .tb-light { grid-column: 2; grid-row: 1; }
 .touch .tb-cam { grid-column: 1; grid-row: 1; width: 52px; height: 52px; align-self: end; justify-self: end; }
+.touch .tb-dosi { grid-column: 1; grid-row: 2; width: 52px; height: 52px; align-self: start; justify-self: end; }
+.touch .tb-dosi.latched { background: rgba(150,170,90,.32); border-color: rgba(190,210,120,.75); }
 .touch .tb-run { grid-column: 3; grid-row: 2; }
 .touch .tb-crouch { grid-column: 2; grid-row: 2; }
 .touch .tb-pause { position: fixed; top: calc(14px + env(safe-area-inset-top)); right: calc(16px + env(safe-area-inset-right)); width: 48px; height: 48px; }

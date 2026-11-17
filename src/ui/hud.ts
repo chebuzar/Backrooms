@@ -24,6 +24,15 @@ export class HUD {
     el.innerHTML = `
       <div class="osd"><span class="rec"><i></i>REC</span><span class="tc">0:00:00</span><span class="sp">SP</span><span class="bat" hidden><b></b><b></b><b></b><b></b></span><span class="zoom"></span></div>
       <div class="tutorial" aria-live="polite"></div>
+      <div class="dosi" aria-hidden="true"><svg viewBox="0 0 120 78">
+        <rect x="1" y="1" width="118" height="76" rx="7" class="case"/>
+        <path d="M18 62 A44 44 0 0 1 102 62" class="arc"/>
+        ${[0, 1, 2, 3, 4, 5].map((k) => { const a = (-60 + k * 24) * Math.PI / 180; const x1 = 60 + Math.sin(a) * 44, y1 = 66 - Math.cos(a) * 44, x2 = 60 + Math.sin(a) * 37, y2 = 66 - Math.cos(a) * 37;
+          return `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}" class="tick"/><text x="${(60 + Math.sin(a) * 30).toFixed(1)}" y="${(69 - Math.cos(a) * 30).toFixed(1)}" class="num">${k}</text>`; }).join('')}
+        <path d="M74 62 A44 44 0 0 1 102 62" class="red"/>
+        <line x1="60" y1="66" x2="60" y2="24" class="needle"/><circle cx="60" cy="66" r="4" class="hub"/>
+        <text x="8" y="14" class="lbl">ДП-5В</text><text x="112" y="14" class="lbl" text-anchor="end">мР/ч ×1</text>
+      </svg></div>
       <div class="obj" aria-live="polite"></div>
       <div class="dot"></div>
       <div class="prompt"></div>
@@ -45,6 +54,15 @@ export class HUD {
     const z = this.el.querySelector('.zoom') as HTMLElement;
     z.textContent = label;
     z.classList.toggle('on', on);
+  }
+
+  /** Дозиметр ДП-5: показ шкали (null — сховати), стрілка 0..1. */
+  setDosimeter(v: number | null): void {
+    const el = this.el.querySelector('.dosi') as HTMLElement;
+    el.classList.toggle('on', v !== null);
+    if (v === null) return;
+    const jitter = (Math.random() - 0.5) * 0.04 * Math.min(1, v * 4);
+    (el.querySelector('.needle') as SVGElement).setAttribute('transform', `rotate(${(-60 + Math.max(0, Math.min(1, v + jitter)) * 120).toFixed(1)} 60 66)`);
   }
 
   /** Підказка навчання внизу екрана: клавіша (або іконка кнопки) + дія; null — сховати. */

@@ -11,7 +11,7 @@ import { Player } from './player';
 import { CameraRig } from './camera-rig';
 import { Input } from '../input/input';
 import { AudioEngine, type SpatialVoice } from '../audio/audio';
-import { humLoop, footstepCarpet, typeClick, paperRustle, seamDrone } from '../audio/synth';
+import { humLoop, footstepCarpet, typeClick, paperRustle, seamDrone, geigerClick } from '../audio/synth';
 import { SoundBank } from '../audio/bank';
 import { Figure } from '../world/monsters/figure';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
@@ -31,6 +31,7 @@ import type { Seam } from '../world/seam';
 import { Hunt } from './hunt';
 import { Battery } from './battery';
 import { Tutorial, type TipId } from './tutorial';
+import { Dosimeter } from './dosimeter';
 import { ICONS, svg } from '../input/touch';
 import { placeBatteries, type Pickup } from '../world/pickups';
 
@@ -106,6 +107,10 @@ export class Game {
   /** Навчання керуванню на старті нової гри. */
   private tutorial!: Tutorial;
   private tried = new Set<TipId>();
+  /** Дозиметр ДП-5 (R): тріщить скрізь, біля Шва замовкає; тріск чує «Слепой». */
+  readonly dosi = new Dosimeter();
+  private geiger: AudioBuffer[] = [];
+  private dosiNoiseT = 0;
   /** Батарейки, що лежать на поточному рівні. */
   private pickups: Pickup[] = [];
   hud!: HUD;
@@ -232,6 +237,7 @@ export class Game {
     for (let i = 0; i < 8; i++) this.steps.push(footstepCarpet(ctx, i + 1));
     for (let i = 0; i < 6; i++) this.clicks.push(typeClick(ctx, i + 1));
     this.rustle = paperRustle(ctx, 1);
+    for (let i = 0; i < 4; i++) this.geiger.push(geigerClick(ctx, i + 1));
     // тихий фоновий трек рівня (наш, ACE-Step): шар під гулом ламп
     void this.sfx.load(ctx, `${import.meta.env.BASE_URL}assets/sfx/`).then(() => this.levelAudio());
     this.ambience.prepare();
@@ -617,6 +623,23 @@ export class Game {
     }, () => this.play());
   }
 
+  /** ДП-5: клацання за відстанню до найближчого Шва (головний і прихований розлом), стрілка, шум для «Слепого». */
+  private updateDosimeter(dt: number): void {
+    const lvl = this.level;
+    if (!lvl || !this.player) return;
+    const p = this.player.pos;
+    let d = Infinity;
+    for (const s of [lvl.seam, lvl.rift]) if (s) d = Math.min(d, Math.hypot(s.group.position.x - p.x, s.group.position.z - p.z));
+    const clicks = this.dosi.update(dt, d, this.mode !== 'play');
+    for (let i = 0; i < clicks; i++) {
+      const b = this.geiger[(Math.random() * this.geiger.length) | 0];
+      if (b) this.audio.play2D(b, 0.32 + Math.random() * 0.1, 0.92 + Math.random() * 0.16);
+    }
+    // тріск приладу — теж звук: «Слепой» його чує (тихо, але постійно)
+    if (this.dosi.rate > 0 && (this.dosiNoiseT -= dt) <= 0) { this.dosiNoiseT = 1; this.hunt.noise(p.x, p.y + 1, p.z, 0.12 + 0.1 * (this.dosi.rate / 9)); }
+    this.hud.setDosimeter(this.dosi.on && this.mode === 'play' ? this.dosi.needle * 0.7 : null); // повний фон ≈ 3.5 мР/ч, не в червоній зоні
+  }
+
   /** Зум 2× (як кнопка на відеокамері): поле зору звужується вдвічі за фокусною відстанню. */
   private setZoom(on: boolean): void {
     if (this.zoom === on) return;
@@ -669,6 +692,12 @@ export class Game {
     if (this.input.consume('pause') && this.mode === 'play') this.pause();
     if (this.input.consume('journal')) { if (this.mode === 'play') this.openJournal(); else if (this.ui.top === 'journal') this.play(); }
     if (this.input.consume('camera') && this.mode === 'play') this.setZoom(!this.zoom);
+    if (this.input.consume('dosimeter') && this.mode === 'play') {
+      this.dosi.on = !this.dosi.on;
+      const sw = this.sfx.get('metalclick');
+      if (sw) this.audio.play2D(sw, 0.35, this.dosi.on ? 1.3 : 1.15);
+      this.input.touch?.setLatched('dosi', this.dosi.on);
+    }
     const zk = this.zoom ? 1 : 0;
     if (Math.abs(zk - this.zoomK) > 1e-4) { this.zoomK += (zk - this.zoomK) * Math.min(1, dt * 10); if (Math.abs(zk - this.zoomK) < 1e-3) this.zoomK = zk; this.applyFov(); }
     let [lx, ly] = this.input.takeLook();
@@ -757,6 +786,7 @@ export class Game {
       this.ambience.update(dt, this.player);
       this.hud.setTime(this.store.progress.playSeconds);
     } else this.hud.setPrompt(null, '');
+    this.updateDosimeter(dt);
     this.hud.update(dt);
     this.audio.updateListener({ x: c.position.x, y: c.position.y, z: c.position.z, fx: f.x, fy: f.y, fz: f.z });
     this.post.render();

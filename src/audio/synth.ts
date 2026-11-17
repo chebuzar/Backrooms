@@ -201,3 +201,18 @@ export function heartbeat(ctx: BaseAudioContext): AudioBuffer {
   }
   return b;
 }
+
+/** Клацання лічильника Гейгера (ДП-5): короткий сухий імпульс у крихітному гучномовці приладу. */
+export function geigerClick(ctx: BaseAudioContext, seed: number): AudioBuffer {
+  const sr = ctx.sampleRate, n = Math.floor(sr * 0.012);
+  const b = ctx.createBuffer(1, n, sr), d = b.getChannelData(0);
+  const r = rng(seed * 31 + 7);
+  let hp = 0, prev = 0;
+  for (let i = 0; i < n; i++) {
+    const t = i / sr;
+    const x = (r() * 2 - 1) * Math.exp(-t * 900) + Math.sin(2 * Math.PI * (2600 + seed * 90) * t) * Math.exp(-t * 1400) * 0.6;
+    hp = 0.92 * (hp + x - prev); prev = x; // фільтр високих: тонкий «тік», без басу
+    d[i] = hp * 0.9;
+  }
+  return b;
+}
