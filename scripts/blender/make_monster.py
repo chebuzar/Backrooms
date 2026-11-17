@@ -68,6 +68,22 @@ PRESETS = {
         "rubber": (0.085, 0.1, 0.072),
         "mask": ".assets-src/polyhaven/old_gas_mask/old_gas_mask.gltf",
     },
+    # «Слепой» (рівень 2) — виснажений, голий, без очей (порожні очниці), дуже довгі руки й пальці; полює на звук.
+    "blind": {
+        "macro": {"gender": 1.0, "age": 0.75, "height": 0.9, "weight": 0.0, "muscle": 0.0, "proportions": 0.0},
+        "targets": {
+            "arms/measure-upperarm-length-incr": 1.8, "arms/measure-lowerarm-length-incr": 2.0,
+            "arms/l-upperarm-fat-decr": 1.0, "arms/r-upperarm-fat-decr": 1.0, "arms/l-lowerarm-fat-decr": 1.0, "arms/r-lowerarm-fat-decr": 1.0,
+            "legs/l-lowerleg-fat-decr": 1.0, "legs/r-lowerleg-fat-decr": 1.0, "legs/l-upperleg-fat-decr": 1.0, "legs/r-upperleg-fat-decr": 1.0,
+            "head/head-fat-decr": 1.0, "head/head-age-incr": 1.0, "head/head-scale-horiz-decr": 0.5,
+            "neck/neck-scale-vert-incr": 1.4, "neck/neck-scale-horiz-decr": 0.8,
+            "torso/torso-scale-horiz-decr": 0.9, "torso/torso-scale-depth-decr": 0.8, "stomach/stomach-pregnant-decr": 1.0,
+        },
+        "skin": "old_caucasian_male",
+        "clothes": [],
+        "noeyes": True,
+        "scale": 1.0,
+    },
 }
 P = PRESETS[args.preset]
 
@@ -97,7 +113,7 @@ for c in P["clothes"]:
     if os.path.exists(mhclo):
         HS.add_mhclo_asset(mhclo, h, asset_type="Clothes", subdiv_levels=0)
 eyes = os.path.join(udata, "eyes", "low-poly", "low-poly.mhclo")
-if os.path.exists(eyes):
+if os.path.exists(eyes) and not P.get("noeyes"):
     HS.add_mhclo_asset(eyes, h, asset_type="Eyes", subdiv_levels=0)
 
 rig.scale = (P["scale"],) * 3

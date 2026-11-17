@@ -166,3 +166,24 @@ export function breath(ctx: BaseAudioContext, seed: number): AudioBuffer {
   }
   return b;
 }
+
+/** «Слепой»: вологі клацання язиком (ехолокація) — серії з 3–6 клацань, нерівні паузи; цикл ~4 с. */
+export function tongueClicks(ctx: BaseAudioContext, seed: number): AudioBuffer {
+  const sr = ctx.sampleRate, n = Math.floor(sr * 4);
+  const b = ctx.createBuffer(1, n, sr), d = b.getChannelData(0);
+  const r = rng(seed * 31 + 7);
+  let t0 = 0.2 + r() * 0.3;
+  while (t0 < 3.6) {
+    const count = 3 + Math.floor(r() * 4);
+    for (let k = 0; k < count; k++) {
+      const f = 1500 + r() * 1100, start = Math.floor((t0 + k * (0.07 + r() * 0.05)) * sr), len = Math.floor(sr * 0.03);
+      for (let i = 0; i < len && start + i < n; i++) {
+        const t = i / sr;
+        // різкий «щелчок»: синус, що швидко згасає, + трохи вологого шуму
+        d[start + i] = (d[start + i] ?? 0) + (Math.sin(2 * Math.PI * f * t) * 0.8 + (r() * 2 - 1) * 0.35) * Math.exp(-t * 240) * (0.7 + r() * 0.3);
+      }
+    }
+    t0 += 0.9 + r() * 1.6;
+  }
+  return b;
+}

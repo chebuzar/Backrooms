@@ -27,6 +27,7 @@ import { buildLevel0, type Level } from '../world/level0';
 import { buildThemedLevel } from '../world/level-themed';
 import { disposeScene } from '../world/chunks';
 import type { Seam } from '../world/seam';
+import { Hunt } from './hunt';
 
 const STEP = 1 / 60;
 /** Базова експозиція «камери»; налаштування «Яркость» множить її. */
@@ -66,6 +67,16 @@ export class Game {
   private dimT = 0;
   /** Записані звуки (CC0): кроки, двері, папір, ліхтарик, тканина, удари, фон. */
   readonly sfx = new SoundBank();
+  /** Мисливець рівня 1–2 («Наблюдатель», «Слепой»). */
+  readonly hunt = new Hunt(this.audio, this.sfx, {
+    onCatch: () => void this.caught(),
+    onCloser: (by) => {
+      // відвернувся — а він уже значно ближче: різкий удар і здригання
+      const b = this.sfx.pick('hit_');
+      if (b) this.audio.play2D(b, Math.min(0.9, 0.35 + by * 0.06), 0.9);
+      this.rig.shake = Math.max(this.rig.shake, 0.5); look.fear.value = Math.min(1, look.fear.value + 0.45);
+    }
+  });
   /** «Фигура» рівня 0 (лише присутність). */
   figure: Figure | null = null;
   flashlightOn = false;
@@ -152,6 +163,7 @@ export class Game {
     this.setScene(lvl.scene);
     if (this.player) this.setupInteractions(lvl);
     this.levelAudio();
+    await this.hunt.setup(lvl, this.assets, this.physics);
     return lvl;
   }
 
@@ -205,6 +217,7 @@ export class Game {
     const rec = this.sfx.ready ? this.sfx.pick('carpet_') : null;
     const b = rec ?? this.steps[this.stepIdx++ % Math.max(1, this.steps.length)];
     if (b) this.audio.play3D(b, x, y + 0.05, z, { gain: 0.35 + loud * 0.65, rate: 0.94 + Math.random() * 0.12, ref: 2, wet: 0.25 });
+    this.hunt.noise(x, y, z, loud);
   }
 
   applySettings(s: Settings): void {
@@ -354,7 +367,7 @@ export class Game {
       const p = d.pivot.position;
       if (b) this.audio.play3D(b, p.x, 1.2, p.z, { gain, rate: 0.9 + Math.random() * 0.15, ref: 2, wet: 0.4 });
     };
-    lvl.doors.onMove = (d, opening) => { doorSound('creak', d, 0.7); if (opening) doorSound('dooropen', d, 0.6); };
+    lvl.doors.onMove = (d, opening) => { doorSound('creak', d, 0.7); if (opening) doorSound('dooropen', d, 0.6); this.hunt.noise(d.pivot.position.x, 1, d.pivot.position.z, 0.6); };
     lvl.doors.onShut = (d) => doorSound('doorclose', d, 0.9);
   }
 
@@ -415,6 +428,40 @@ export class Game {
     await this.arrive();
     this.play();
     this.hud.setObjective(target === 1 ? OBJECTIVES.level1Start : OBJECTIVES.level2Start);
+  }
+
+  /** Мисливець схопив: різкий поворот до нього, удар, темрява → запис відновлюється з початку рівня. */
+  private async caught(): Promise<void> {
+    if (this.ending || !this.level) return;
+    this.ending = true;
+    this.input.enabled = false;
+    const s = this.hunt.stalker, p = this.player.pos;
+    if (s) { this.player.yaw = Math.atan2(-(s.pos.x - p.x), -(s.pos.z - p.z)); this.player.pitch = 0.12; }
+    const b = this.sfx.pick('hit_');
+    if (b) this.audio.play2D(b, 1, 0.7);
+    this.rig.shake = 1.3; look.fear.value = 1;
+    const t0 = performance.now();
+    await new Promise<void>((done) => {
+      const step = () => { const k = Math.min(1, (performance.now() - t0) / 900); look.fade.value = k * k; if (k < 1) requestAnimationFrame(step); else done(); };
+      step();
+    });
+    this.store.progress.deaths++;
+    this.store.save();
+    this.mode = 'pause';
+    this.hud.show(false);
+    await this.hud.titleCard('Связь с оператором потеряна', 'Запись восстановлена с последней метки', async () => {
+      s?.reset();
+      this.enterLevelStart(false);
+    });
+    look.fear.value = 0;
+    const t1 = performance.now();
+    this.mode = 'play';
+    await new Promise<void>((done) => {
+      const step = () => { const k = Math.min(1, (performance.now() - t1) / 1200); look.fade.value = 1 - k; if (k < 1) requestAnimationFrame(step); else done(); };
+      step();
+    });
+    this.ending = false;
+    this.play();
   }
 
   /** Поставити гравця на старт поточного рівня обличчям до Шва прибуття. */
@@ -488,6 +535,7 @@ export class Game {
       this.flashlightOn = !this.flashlightOn;
       const click = this.sfx.get('metalclick');
       if (click) this.audio.play2D(click, 0.5, this.flashlightOn ? 1.1 : 0.9);
+      this.hunt.noise(this.player.pos.x, this.player.pos.y, this.player.pos.z, 0.12);
     }
     if (this.hud.readerOpen && (this.input.consume('interact') || this.input.consume('pause'))) this.hud.closeDoc();
     const lvl = this.level;
@@ -496,6 +544,7 @@ export class Game {
     if (lvl) {
       lvl.update(this.time, dt, this.camera);
       this.figure?.update(dt, this.camera, this.mode === 'play');
+      if (this.mode === 'play' && !this.ending) this.hunt.update(dt, lvl, this.player, this.camera, this.flashlightOn, this.physics);
       look.fear.value = Math.max(0, look.fear.value - dt * 0.12);
       // живе згасання запеченого світла біля ламп, що мерехтять/згасли (оновлюємо кілька разів на секунду — дешево)
       this.dimT -= dt;
