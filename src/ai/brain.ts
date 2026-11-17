@@ -23,6 +23,8 @@ export interface Traits {
   movesWhenUnseen?: boolean;
   /** Намагається перехопити гравця, а не просто бігти за ним. */
   cutsOff?: boolean;
+  /** Не блукає: стоїть на місці, доки вперше не помітить гравця (далі — звичайні стани). */
+  stillUntilNoticed?: boolean;
 }
 
 export interface PlayerView {
@@ -74,6 +76,8 @@ export class Brain {
   private pause = 0;
   /** Бачить гравця в цей момент. */
   seesPlayer = false;
+  /** Хоч раз помічав гравця (підозра дійшла до дії) — для stillUntilNoticed. */
+  noticed = false;
   private readonly rnd: () => number;
 
   constructor(readonly traits: Traits, private readonly nav: NavLike, private readonly senses: Senses, readonly pos: V3, rnd: () => number = Math.random) {
@@ -84,6 +88,7 @@ export class Brain {
     if (s === this.state) return;
     this.state = s;
     this.stateT = 0;
+    if (s !== 'patrol' && s !== 'idle') this.noticed = true;
     if (s === 'search') this.searchPoints = [];
     if (s === 'patrol') this.patrolTarget = null;
   }
@@ -197,6 +202,7 @@ export class Brain {
     const t = this.traits;
     switch (this.state) {
       case 'patrol': {
+        if (t.stillUntilNoticed && !this.noticed) return { target: null, speed: 0, lookAt: null, attack: false };
         if (this.pause > 0) { this.pause -= dt; return { target: null, speed: 0, lookAt: null, attack: false }; }
         if (!this.patrolTarget || dist(this.pos, this.patrolTarget) < 0.8) {
           // непередбачуваність: інколи зупиняється й «слухає», інколи йде далеко

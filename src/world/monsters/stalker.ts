@@ -5,19 +5,15 @@
 //   смикано, прислухається з задертою головою.
 // Перед появою — напруга: лампи довкола нього блимають; зблизька — схоплює (onCatch).
 import * as THREE from 'three/webgpu';
-import { Brain, type Traits, type PlayerView } from '../../ai/brain';
+import { Brain, type PlayerView } from '../../ai/brain';
 import type { NavLike, V3 } from '../../ai/nav';
 import type { Physics } from '../../physics/physics';
 import type { Lamps } from '../lamps';
 import type { Doors } from '../doors';
 import { probeLit } from '../materials';
 
-export type StalkerKind = 'watcher' | 'blind';
-
-export const TRAITS: Record<StalkerKind, Traits> = {
-  watcher: { sightRange: 34, fovHalf: 1.2, hearing: 0.5, walkSpeed: 3.0, runSpeed: 3.4, searchTime: 30, alertness: 0.9, movesWhenUnseen: true, cutsOff: true },
-  blind: { sightRange: 0, fovHalf: 0, hearing: 1.5, walkSpeed: 0.95, runSpeed: 3.9, searchTime: 22, alertness: 0 }
-};
+import { TRAITS, type StalkerKind } from '../../ai/traits';
+export { TRAITS, type StalkerKind };
 
 type Pose = Record<string, [number, number, number]>;
 
@@ -95,6 +91,7 @@ export class Stalker {
     this.path = [];
     this.brain.state = 'patrol';
     Object.assign(this.brain.mem, { last: null, confidence: 0, age: 0, suspicion: 0 });
+    this.brain.noticed = false;
     this.catchCd = 4;
     this.seenAt = null;
     this.lamps.dimAround(this.pos.x, this.pos.z, 6, 1);
@@ -149,7 +146,7 @@ export class Stalker {
     this.speedNow = dt > 0 ? moved / dt : 0;
     this.place();
     this.openDoorsNear();
-    if (this.kind === 'watcher') this.watcherLook(p); else this.blindGait(dt);
+    if (this.kind === 'watcher') { this.watcherLook(p); this.watcherSteps(dt); } else this.blindGait(dt);
     this.tension(dt, p);
     const d = Math.hypot(p.x - this.pos.x, p.z - this.pos.z);
     const can = this.kind === 'watcher' ? !p.looksAtMe : intent.attack || this.brain.state === 'chase' || this.brain.state === 'investigate';
@@ -177,6 +174,13 @@ export class Stalker {
       h.b.rotation.y = h.rest.y + Math.max(-1.1, Math.min(1.1, Math.atan2(Math.sin(want), Math.cos(want))));
     }
     this.wasSeen = seen;
+  }
+
+  /** «Наблюдатель» рухається (лише коли на нього не дивляться): важкі шаркаючі кроки — гравець чує, що він іде. */
+  private watcherSteps(dt: number): void {
+    const v = this.speedNow;
+    this.stepT += dt;
+    if (v > 0.3 && this.stepT > 0.62) { this.stepT = 0; this.onStep?.(this.pos.x, this.pos.z, 0.55 + Math.min(1, v / 1.8) * 0.35); }
   }
 
   /** «Слепой»: згорблений, голова задерта (слухає), смикана хода з довгими руками, що звисають. */
