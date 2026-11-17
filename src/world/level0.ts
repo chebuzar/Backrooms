@@ -22,6 +22,8 @@ export interface Level {
   layout: Layout;
   lamps: Lamps;
   seam: Seam;
+  /** Шов, крізь який гравець щойно прийшов (затягується на початку гри). */
+  arrival: Seam;
   flashlight: THREE.SpotLight;
   /** Місця сюжетних предметів (центр, на який дивитися). */
   spots: Record<string, PropSpot>;
@@ -87,7 +89,7 @@ export async function buildLevel0(assets: Assets, physics: Physics, onProgress: 
   // ледь помітне заповнення, щоб чорні кути не були «дірами»
   scene.add(new THREE.AmbientLight(0x2a2412, 0.25));
   // «Шов» — на найближчій до виходу стіні
-  const seamAt = seamPlacement(layout);
+  const seamAt = seamPlacement(layout, layout.exit.x, layout.exit.z);
   const seam = new Seam(seamAt.x, seamAt.z, seamAt.yaw, H);
   scene.add(seam.group);
 
@@ -97,12 +99,22 @@ export async function buildLevel0(assets: Assets, physics: Physics, onProgress: 
   const doors = new Doors(layout, decor, physics, tex);
   scene.add(doors.group);
 
+  // Шов прибуття: сьома експедиція проходить туди ж, куди й шість попередніх. Гравець отямлюється на підлозі
+  // спиною до стіни, крізь яку випав, і за кілька секунд розріз за ним затягується — дороги назад немає.
+  const arrivalAt = seamPlacement(layout, layout.spawn.x, layout.spawn.z);
+  const ny = arrivalAt.yaw, nx = Math.sin(ny), nz = Math.cos(ny);
+  const [ax, az] = freeNear(layout, arrivalAt.x + nx * 1.25, arrivalAt.z + nz * 1.25, 0.4);
+  layout.spawn.x = ax; layout.spawn.z = az; layout.spawn.yaw = ny + Math.PI;
+  const arrival = new Seam(arrivalAt.x, arrivalAt.z, arrivalAt.yaw, H);
+  arrival.life.value = 0;
+  scene.add(arrival.group);
+
   const spots = await placeProps(assets, physics, layout, scene);
   onProgress(1);
 
   return {
-    scene, layout, lamps, flashlight, seam, spots, doors,
-    update(t, dt) { lamps.update(t); seam.update(t); doors.update(dt); }
+    scene, layout, lamps, flashlight, seam, arrival, spots, doors,
+    update(t, dt) { lamps.update(t); seam.update(t); arrival.update(t); doors.update(dt); }
   };
 }
 
@@ -137,8 +149,8 @@ function freeNear(l: Layout, x: number, z: number, r: number): [number, number] 
   return [x, z];
 }
 
-function seamPlacement(l: Layout): { x: number; z: number; yaw: number } {
-  const ex = l.exit.x, ez = l.exit.z;
+/** Точка на найближчій до (ex, ez) стіні й поворот грані, що дивиться на цю точку. */
+function seamPlacement(l: Layout, ex: number, ez: number): { x: number; z: number; yaw: number } {
   let best = { d: 1e9, x: ex, z: ez, yaw: 0 };
   for (const w of l.walls) {
     if (w.kind === 'pillar') continue;
@@ -149,8 +161,8 @@ function seamPlacement(l: Layout): { x: number; z: number; yaw: number } {
     const d = Math.hypot(ex - cx, ez - cz);
     if (d >= best.d) continue;
     const alongX = w.w >= w.d;
-    const sx = alongX ? Math.max(w.x - w.w / 2 + 0.5, Math.min(ex, w.x + w.w / 2 - 0.5)) : w.x + Math.sign(ex - w.x || 1) * (w.w / 2 + 0.012);
-    const sz = alongX ? w.z + Math.sign(ez - w.z || 1) * (w.d / 2 + 0.012) : Math.max(w.z - w.d / 2 + 0.5, Math.min(ez, w.z + w.d / 2 - 0.5));
+    const sx = alongX ? Math.max(w.x - w.w / 2 + 0.5, Math.min(ex, w.x + w.w / 2 - 0.5)) : w.x + Math.sign(ex - w.x || 1) * (w.w / 2 + 0.035);
+    const sz = alongX ? w.z + Math.sign(ez - w.z || 1) * (w.d / 2 + 0.035) : Math.max(w.z - w.d / 2 + 0.5, Math.min(ez, w.z + w.d / 2 - 0.5));
     const yaw = alongX ? (ez > w.z ? 0 : Math.PI) : (ex > w.x ? Math.PI / 2 : -Math.PI / 2);
     best = { d, x: sx, z: sz, yaw };
   }
@@ -162,14 +174,17 @@ interface PropDef { file: string; x: number; z: number; yaw: number; y?: number;
 /** Сюжетні предмети: стіл експедиції біля старту, планшет із наказом, речі, записка. */
 async function placeProps(assets: Assets, physics: Physics, l: Layout, scene: THREE.Scene): Promise<Record<string, PropSpot>> {
   const sp = l.spawn;
-  // стіл — за 1.7 м перед гравцем (вперед = −Z), у вільному місці
-  const [dx, dz] = freeNear(l, sp.x, sp.z - 1.7, 0.9);
-  const yaw = 0;
+  // стіл — за 1.9 м перед гравцем (вперед = (−sin yaw, −cos yaw)), у вільному місці; повернутий до гравця
+  const fx = -Math.sin(sp.yaw), fz = -Math.cos(sp.yaw);
+  const [dx, dz] = freeNear(l, sp.x + fx * 1.9, sp.z + fz * 1.9, 0.9);
+  const yaw = sp.yaw;
+  // зсув у системі стола → світові координати
+  const rel = (lx: number, lz: number) => ({ x: dx + lx * Math.cos(yaw) + lz * Math.sin(yaw), z: dz - lx * Math.sin(yaw) + lz * Math.cos(yaw) });
   const defs: PropDef[] = [
     { file: 'desk', x: dx, z: dz, yaw, collide: true },
-    { file: 'chair', x: dx + 0.15, z: dz + 0.75, yaw: Math.PI + 0.35, collide: true },
-    { file: 'box', x: dx + 1.15, z: dz - 0.15, yaw: 0.4, collide: true },
-    { file: 'ammo', x: dx - 1.05, z: dz + 0.2, yaw: -0.3, collide: true }
+    { file: 'chair', ...rel(0.15, 0.75), yaw: yaw + Math.PI + 0.35, collide: true },
+    { file: 'box', ...rel(1.15, -0.15), yaw: yaw + 0.4, collide: true },
+    { file: 'ammo', ...rel(-1.05, 0.2), yaw: yaw - 0.3, collide: true }
   ];
   const note = l.points.note1 ?? sp;
   const [nx, nz] = freeNear(l, note.x, note.z, 0.5);
@@ -196,11 +211,12 @@ async function placeProps(assets: Assets, physics: Physics, l: Layout, scene: TH
   for (const [file, ox, oz, ry] of [['clipboard', -0.15, 0.05, 0.2], ['cigs', 0.42, -0.12, 1.2]] as const) {
     const g = await assets.model(`assets/models/${file}.glb`);
     const o = g.scene.clone(true);
-    o.position.set(dx + ox, deskTop + 0.002, dz + oz);
-    o.rotation.y = ry;
+    const q = rel(ox, oz);
+    o.position.set(q.x, deskTop + 0.002, q.z);
+    o.rotation.y = yaw + ry;
     lightProp(o, probeAt(l.lights, dx, dz));
     scene.add(o);
-    if (file === 'clipboard') spots.order7 = { id: 'order7', x: dx + ox, y: deskTop + 0.02, z: dz + oz };
+    if (file === 'clipboard') spots.order7 = { id: 'order7', x: q.x, y: deskTop + 0.02, z: q.z };
   }
   // записка — аркуш на підлозі
   const paper = new THREE.Mesh(new THREE.PlaneGeometry(0.21, 0.297), probeLit(new THREE.MeshStandardMaterial({ color: 0xd9d4bf, roughness: 0.95 }), probeAt(l.lights, nx, nz)));

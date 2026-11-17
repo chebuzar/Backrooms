@@ -227,13 +227,50 @@ export class Game {
     let k = 0;
     await this.hud.prologue(PROLOGUE, () => { const b = this.clicks[k++ % Math.max(1, this.clicks.length)]; if (b) this.audio.play2D(b, 0.5, 0.95 + Math.random() * 0.1); });
     const s = this.level?.layout.spawn;
-    if (s) this.player.teleport(s.x, 0, s.z, s.yaw);
+    // отямлюється на підлозі обличчям до стіни, крізь яку випав (стіл експедиції — за спиною)
+    if (s) this.player.teleport(s.x, 0, s.z, s.yaw + Math.PI);
     this.player.pitch = 0;
     this.stage = 'desk';
     this.store.progress.checkpoint = { level: 0, spawn: 'start' };
     this.store.save();
+    await this.arrive();
     this.play();
     this.hud.setObjective(OBJECTIVES.level0Start);
+  }
+
+  /** Прибуття: темрява → гравець лежить перед Швом → розріз затягується зі звуком → гравець підводиться. */
+  private async arrive(): Promise<void> {
+    const a = this.level?.arrival;
+    if (!a) return;
+    this.mode = 'play'; // світ живе (лампи, звук), але керування ще вимкнене
+    this.hud.show(false);
+    a.life.value = 1; a.open.value = 0.45;
+    look.fade.value = 1; look.fear.value = 0.6;
+    this.rig.wake = 1; this.rig.shake = 0.7;
+    const cloth = () => { const b = this.sfx.pick('cloth'); if (b) this.audio.play2D(b, 0.7, 0.9 + Math.random() * 0.2); };
+    let closed = false, up = false;
+    cloth();
+    const t0 = performance.now();
+    await new Promise<void>((done) => {
+      const step = () => {
+        const t = (performance.now() - t0) / 1000;
+        const k = (a0: number, a1: number) => Math.min(1, Math.max(0, (t - a0) / (a1 - a0)));
+        look.fade.value = 1 - k(0.2, 1.8);
+        a.open.value = 0.45 * (1 - k(1.8, 4.2));
+        a.life.value = 1 - k(4.0, 4.6);
+        if (!closed && t > 4.0) {
+          closed = true;
+          const b = this.sfx.pick('hit'); if (b) this.audio.play2D(b, 0.45, 0.8);
+          this.rig.shake = 0.5;
+        }
+        if (!up && t > 5.0) { up = true; cloth(); }
+        this.rig.wake = 1 - k(5.0, 7.0);
+        look.fear.value = 0.6 * (1 - k(4.6, 7.0));
+        if (t < 7.0) requestAnimationFrame(step); else done();
+      };
+      step();
+    });
+    this.rig.wake = 0; a.life.value = 0; look.fade.value = 0;
   }
 
   private setupInteractions(lvl: Level): void {
