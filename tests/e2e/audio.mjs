@@ -1,11 +1,10 @@
 // Автотест: після справжнього натискання (Safari вимагає жест) записані звуки завантажуються й декодуються (AAC .m4a),
 // без помилок у консолі. node tests/e2e/audio.mjs [webkit|chromium]
 import { webkit, chromium } from 'playwright';
-import { createServer } from 'vite';
+import { startServer, BASE } from './lib.mjs';
 
 const which = process.argv[2] ?? 'webkit';
-const srv = await createServer({ root: process.cwd(), server: { port: 5191, strictPort: true }, logLevel: 'error' });
-await srv.listen();
+const srv = await startServer(); // спільні налаштування сервера тестів (lib.mjs)
 const b = which === 'chromium'
   ? await chromium.launch({ args: ['--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-vulkan=swiftshader', '--use-webgpu-adapter=swiftshader', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] })
   : await webkit.launch();
@@ -13,7 +12,7 @@ const page = await (await b.newContext({ viewport: { width: 1280, height: 720 } 
 const logs = [];
 page.on('console', (m) => { if (['error', 'warning'].includes(m.type())) logs.push(m.text()); });
 page.on('pageerror', (e) => logs.push('pageerror: ' + e.message));
-await page.goto('http://localhost:5191/?debug&nodbg');
+await page.goto(BASE + '?debug&nodbg');
 await page.waitForFunction(() => window.__zk?.ready, null, { timeout: 180000 });
 await page.click('.age [data-go]');
 await page.waitForTimeout(800);
