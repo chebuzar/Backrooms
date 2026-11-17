@@ -16,7 +16,9 @@ const outDir = path.join(pos[1] ?? '.shots/baseline', device ? `${which}-${devic
 mkdirSync(outDir, { recursive: true });
 
 const srv = await startServer(args.includes('--prod'));
-const { page, logs, net, close } = await openPage(which, { device });
+// --viewport 960x540: програмний Chromium (SwiftShader) інакше знімає кадр по кілька хвилин
+const vp = opt('viewport', null);
+const { page, logs, net, close } = await openPage(which, { device, ...(vp ? { viewport: { width: +vp.split('x')[0], height: +vp.split('x')[1] } } : {}) });
 const t0 = Date.now();
 await gotoGame(page, query);
 const bootBytes = net.bytes;
