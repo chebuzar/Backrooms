@@ -24,7 +24,12 @@ async function boot(): Promise<void> {
       __zk: {
         get ready() { return game.mode !== 'boot' && !!game.level; }, game,
         /** Одразу в гру без прологу (для автотестів). */
-        play: () => { document.querySelector<HTMLButtonElement>('.age [data-go]')?.click(); setTimeout(() => game.play(), 300); },
+        play: () => {
+          document.querySelector<HTMLButtonElement>('.age [data-go]')?.click();
+          // дочекатися головного меню (воно з'являється після попередження 18+), тоді — в гру
+          const go = () => { if (game.mode === 'menu' && document.querySelector('.menu')) game.play(); else setTimeout(go, 100); };
+          setTimeout(go, 100);
+        },
         look: (yaw: number, pitch = 0) => { game.player.yaw = yaw; game.player.pitch = pitch; },
         /** Поставити гравця в точку й повернути камеру (для повторюваних скріншотів). */
         tp: (x: number, z: number, yaw = 0, pitch = 0) => { game.player.teleport(x, 0, z, yaw); game.player.pitch = pitch; },
