@@ -1,0 +1,24 @@
+{
+  "enabledMcpjsonServers": [
+    "meshy",
+    "context7",
+    "playwright",
+    "chrome-devtools",
+    "spector"
+  ],
+  "enabledPlugins": {
+    "claude-code-setup@anthropic-plugin-directory": true
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"$CLAUDE_PROJECT_DIR/.claude/hooks/task-observer-start.sh\""
+          }
+        ]
+      }
+    ]
+  }
+}

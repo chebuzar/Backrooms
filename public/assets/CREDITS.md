@@ -1,34 +1,53 @@
-# Ассеты и лицензии
+# Ассети й ліцензії
 
-Все текстуры — **CC0 1.0** (общественное достояние), ambientCG.com. Атрибуция не обязательна, но указываем источник.
-
-- `Asphalt031` — https://ambientcg.com/view?id=Asphalt031
-- `Carpet011` — https://ambientcg.com/view?id=Carpet011
-- `Carpet012` — https://ambientcg.com/view?id=Carpet012
-- `Carpet016` — https://ambientcg.com/view?id=Carpet016
-- `Concrete031` — https://ambientcg.com/view?id=Concrete031
-- `Concrete034` — https://ambientcg.com/view?id=Concrete034
-- `Concrete046` — https://ambientcg.com/view?id=Concrete046
-- `OfficeCeiling001` — https://ambientcg.com/view?id=OfficeCeiling001
-- `PaintedMetal012` — https://ambientcg.com/view?id=PaintedMetal012
-- `Tiles107` — https://ambientcg.com/view?id=Tiles107
-- `Tiles132A` — https://ambientcg.com/view?id=Tiles132A
-- `Wallpaper001A` — https://ambientcg.com/view?id=Wallpaper001A
-- `Wallpaper001C` — https://ambientcg.com/view?id=Wallpaper001C
-- `Wood066` — https://ambientcg.com/view?id=Wood066
-
-## 3D-модели
-
-**CC0 1.0**, Quaternius (quaternius.com). Сконвертированы из FBX в GLB скриптом `scripts/convert-models.mjs`.
-
-- `models/human.glb` — «Animated Man» (Animated Human.fbx): Idle, Walk, Run, Punch, Death
-- `models/zombie.glb` — «Animated Zombie» (ZombieSmooth.fbx): Idle, Walk, Run, Crawl, Bite
+Усі сторонні ассети гри з автором, джерелом і ліцензією. Скрипти `fetch-model` / `fetch-sound` дописують рядки самі.
 
 ## Code
 
-- **N8AO** (screen-space ambient occlusion) by N8python — CC0 1.0. Vendored three.js pass in `src/render/n8ao/` (the pmndrs `N8AOPostPass` is omitted). https://github.com/N8python/n8ao
-- **detect-gpu** by pmndrs — MIT. GPU benchmark data bundled with the game. https://github.com/pmndrs/detect-gpu
+- **three.js** — MIT. https://github.com/mrdoob/three.js
+- **Rapier** (`@dimforge/rapier3d-compat`) — Apache-2.0. https://github.com/dimforge/rapier
+- **recast-navigation-js** — MIT. https://github.com/isaac-mason/recast-navigation-js
+- **Basis Universal transcoder** (`public/libs/basis/`) — Apache-2.0, Binomial LLC. https://github.com/BinomialLLC/basis_universal
+- **meshoptimizer decoder** — MIT, Arseny Kapoulkine. https://github.com/zeux/meshoptimizer
 
-## Sounds
+## Завантажені моделі (fetch-model)
 
-- `assets/sfx/*.mp3` — **Meta Open Sound** (Oculus Audio Pack) by Meta, **CC0 1.0**. https://github.com/facebookincubator/Meta-open-sound — converted from OGG to MP3, peak-normalized to −1 dBFS. Sources: CREAMnstr_CreatureCreepy*, DSGNDron_DroneCreepy*, DSGNImpt_ImpactCreepyReverb*, MUSCStr_StringsCreepy*, MUSCKeyd_PipeOrganCreepy, METLFric_ScratchCreepyReverb*, CHAINMvmt_ChainsCreepy, VOXWhsp_WhispersCreepy*, VOXFem/VOXMale_GroanCreepy, VOXScrm_FemaleScream, HMNBrth_*Breathing, DOORKnck_OfficeDoorKnock, DOORMetl_HatchClose, DOORWood_OfficeDoorClose, MACHMisc_MachineHum_LOOP, MECHSwtch_SwitchSmallOn/Off, CLOCKTick_ClockCreepyReverb.
+- `models/desk.glb` — «Metal Office Desk» — Ulan Cabanilla, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/metal_office_desk
+- `models/clipboard.glb` — «Clipboard» — ProgrammerOnCoffee, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/clipboard
+- `models/chair.glb` — «School Chair 01» — Ethan Place, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/SchoolChair_01
+- `models/box.glb` — «Cardboard Box 01» — Rahul Chaudhary, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/cardboard_box_01
+- `models/wetsign.glb` — «Wet Floor Sign 01» — Fran Calvente, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/WetFloorSign_01
+- `models/ammo.glb` — «Ammo Box» — DanKit, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/ammo_box
+- `models/cigs.glb` — «Cigarette Pack» — Ulrich Büch, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/cigarette_pack
+
+## Текстури Poly Haven
+
+- `tex/painted_concrete` — «Painted Concrete» — Dario Barresi, Dimitrios Savva, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/painted_concrete
+- `tex/painted_plaster_wall` — «Painted Plaster Wall» — Amal Kumar, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/painted_plaster_wall
+- `tex/old_linoleum_flooring_01` — «Old Linoleum Flooring 01» — Charlotte Baglioni, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/old_linoleum_flooring_01
+- `tex/concrete_wall_008` — «Concrete Wall 008» — Dario Barresi, Charlotte Baglioni, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/concrete_wall_008
+- `tex/blue_plaster_weathered` — «Blue Plaster Weathered» — Amal Kumar, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/blue_plaster_weathered
+- `tex/garage_floor` — «Garage Floor» — Jenelle van Heerden, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/garage_floor
+- `tex/rough_concrete` — «Rough Concrete» — Dimitrios Savva, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/rough_concrete
+- `tex/ceiling_interior` — «Ceiling Interior» — Dimitrios Savva, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/ceiling_interior
+- `tex/dirty_carpet` — «Dirty Carpet» — Rohit Seervi, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/dirty_carpet
+
+## Текстури рівня 0 (обробка справжніх текстур скриптом `scripts/assets/make-level0-textures.py`)
+
+- `tex/level0/wall_c` — ShareTextures «Wallpaper 10», **CC0**: https://www.sharetextures.com/textures/wall/wallpaper-10 (перефарбовано)
+- `tex/level0/wall2_c` — ShareTextures «Wallpaper 26», **CC0**: https://www.sharetextures.com/textures/wall/wallpaper_26 (перефарбовано)
+- `tex/level0/wall_n`, `wall_r`, `dmg_c`, `mold` — ambientCG Wallpaper001A, Wallpaper001C, Wallpaper002C, **CC0**: https://ambientcg.com
+- `tex/level0/ceil_*` — ambientCG OfficeCeiling001, **CC0**: https://ambientcg.com/view?id=OfficeCeiling001
+- `tex/level0/carpet_*` — ambientCG Carpet011, **CC0**: https://ambientcg.com/view?id=Carpet011
+- `tex/level0/decals` — ambientCG Leaking001, Leaking004–009, **CC0**: https://ambientcg.com
+
+## Звуки (`public/assets/sfx`, скрипт `scripts/assets/make-sounds.py`)
+
+- `step_*`, `dooropen_*`, `doorclose_*`, `creak*`, `bookflip*`, `metalclick`, `metallatch`, `cloth*` — Kenney «RPG Audio», **CC0**: https://opengameart.org/content/rpg-sound-pack (kenney.nl)
+- `hit_*` — «Horror Hit Soundpack 1», **CC0**, OpenGameArt
+- `amb_l0`, `amb_l1`, `amb_l2` — згенеровано нами моделлю ACE-Step 1.5 (Apache-2.0)
+- гул ламп, гул Шва — синтез у грі (`src/audio/synth.ts`)
+
+## Монстри
+- `models/figure.glb`, `models/watcher.glb`, `models/blind.glb` — тіла MakeHuman/MPFB2 (системні ассети, **CC0**: шкіра old_caucasian_male, роба male_worksuit01, очі low-poly), зібрані нашим скриптом `scripts/blender/make_monster.py` (пресети figure / watcher / blind); протигаз фигуры — Poly Haven «Old Gas Mask», **CC0**
+- клацання «Слепого» й серцебиття небезпеки — синтез у грі (`src/audio/synth.ts`)

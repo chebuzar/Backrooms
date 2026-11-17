@@ -1,0 +1,12 @@
+{
+  "version": 2,
+  "skills": {
+    "task-observer": {
+      "source": "rebelytics/one-skill-to-rule-them-all",
+      "commit": "e082d2c6ad6636ac353a2bd3bb43e24acf124430",
+      "sourceType": "github",
+      "skillPath": "skills/task-observer/SKILL.md",
+      "computedHash": "f43bbc65ed75473ac33c3f295136d19095a294d38a56df472d0164e9cb499abd"
+    }
+  }
+}

@@ -1,0 +1,623 @@
+// Ядро гри: режими (меню / гра / пауза), фіксований крок фізики (60 Гц), рендер із частотою екрана,
+// камера згладжується між кроками. Налаштування застосовуються на льоту.
+import * as THREE from 'three/webgpu';
+import type { RendererHandle } from '../render/renderer';
+import { PostPipeline, look } from '../render/post';
+import { lampDeficits } from '../world/materials';
+import { PROFILES, QualityGovernor, autoQuality, type QualityProfile } from '../render/quality';
+import type { DeviceInfo } from '../core/device';
+import { Physics } from '../physics/physics';
+import { Player } from './player';
+import { CameraRig } from './camera-rig';
+import { Input } from '../input/input';
+import { AudioEngine, type SpatialVoice } from '../audio/audio';
+import { humLoop, footstepCarpet, typeClick, paperRustle, seamDrone } from '../audio/synth';
+import { SoundBank } from '../audio/bank';
+import { Figure } from '../world/monsters/figure';
+import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
+import { HUD } from '../ui/hud';
+import { Ambience } from './ambience';
+import { Interactions } from './interact';
+import { DOCS, PROLOGUE, OBJECTIVES, HINTS, LEVEL_END, LEVEL_TITLES } from '../story/ru';
+import { Store, type Settings } from '../core/save';
+import { UI } from '../ui/screens';
+import { T } from '../i18n/ru';
+import { Assets } from '../assets/loader';
+import { buildLevel0, type Level } from '../world/level0';
+import { buildThemedLevel } from '../world/level-themed';
+import { disposeScene } from '../world/chunks';
+import type { Seam } from '../world/seam';
+import { Hunt } from './hunt';
+
+const STEP = 1 / 60;
+/** Базова експозиція «камери»; налаштування «Яркость» множить її. */
+const BASE_EXPOSURE = 1.9;
+type Mode = 'boot' | 'menu' | 'play' | 'pause';
+
+export class Game {
+  // далі 70 м туман уже повністю ховає світ (≈ 99 %) — нема сенсу малювати далекі шматки
+  readonly camera = new THREE.PerspectiveCamera(72, 16 / 9, 0.05, 70);
+  scene = new THREE.Scene();
+  readonly post: PostPipeline;
+  /** Роздільність рендера — лише в пресеті «Низкая» (правило власника: різкість не жертвуємо в інших пресетах). */
+  readonly governor = new QualityGovernor();
+  /** Авто-пресет: якщо стабільно < ~40 FPS, крок на пресет нижче (Ультра → Высокое → Среднее); роздільність не чіпаємо. */
+  private readonly presetGov = new QualityGovernor(0.7, 1000 / 42);
+  readonly input: Input;
+  readonly rig: CameraRig;
+  readonly audio = new AudioEngine();
+  readonly store = new Store();
+  readonly ui: UI;
+  player!: Player;
+  physics!: Physics;
+  mode: Mode = 'boot';
+  profile: QualityProfile;
+  private acc = 0;
+  private last = performance.now();
+  private lastDraw = 0;
+  /** Обмеження FPS (0 — без обмеження). */
+  fpsCap = 60;
+  /** Автопідлаштування роздільності (вимикає тест швидкодії й debug-панель). */
+  autoScale = true;
+  /** Гачки для інструментів (debug-панель, тест швидкодії): виклик після кадру й керування камерою. */
+  onFrame: ((dtMs: number) => void) | null = null;
+  cameraOverride: ((cam: THREE.PerspectiveCamera, dt: number) => void) | null = null;
+  private time = 0;
+  level: Level | null = null;
+  assets!: Assets;
+  private loading: Promise<void> | null = null;
+  private humVoices: { voice: SpatialVoice; lamp: number }[] = [];
+  private humT = 0;
+  private dimT = 0;
+  /** Записані звуки (CC0): кроки, двері, папір, ліхтарик, тканина, удари, фон. */
+  readonly sfx = new SoundBank();
+  /** Мисливець рівня 1–2 («Наблюдатель», «Слепой»). */
+  readonly hunt = new Hunt(this.audio, this.sfx, {
+    onCatch: () => void this.caught(),
+    onCloser: (by) => {
+      // відвернувся — а він уже значно ближче: різкий удар і здригання
+      const b = this.sfx.pick('hit_');
+      if (b) this.audio.play2D(b, Math.min(0.9, 0.35 + by * 0.06), 0.9);
+      this.rig.shake = Math.max(this.rig.shake, 0.5); look.fear.value = Math.min(1, look.fear.value + 0.45);
+    }
+  });
+  /** «Фигура» рівня 0 (лише присутність). */
+  figure: Figure | null = null;
+  flashlightOn = false;
+  /** Заряд батареї ліхтарика 0..1 (≈ 12 хв світла); на низькому заряді світло блимає. */
+  battery = 1;
+  hud!: HUD;
+  readonly ambience = new Ambience(this.audio);
+  interact!: Interactions;
+  private clicks: AudioBuffer[] = [];
+  private rustle: AudioBuffer | null = null;
+  private stage: 'desk' | 'seam' | 'done' = 'desk';
+  private ending = false;
+  private steps: AudioBuffer[] = [];
+  private ambSrc: AudioBufferSourceNode | null = null;
+  private seamVoices: SpatialVoice[] = [];
+  private stepIdx = 0;
+
+  constructor(readonly gfx: RendererHandle, readonly device: DeviceInfo, forced: QualityProfile | null) {
+    const canvas = gfx.renderer.domElement;
+    this.profile = forced ?? this.qualityFromSettings();
+    this.post = new PostPipeline(gfx.renderer, this.scene, this.camera);
+    const s = this.store.settings;
+    const uiRoot = document.getElementById('ui') as HTMLElement;
+    this.input = new Input(canvas, uiRoot, { sensitivity: s.sensitivity, invertY: s.invertY, crouchToggle: s.crouchToggle });
+    this.ui = new UI(uiRoot);
+    this.hud = new HUD(uiRoot);
+    this.rig = new CameraRig(this.camera);
+    canvas.addEventListener('click', () => { if (this.mode === 'play') this.input.lockPointer(); });
+    document.addEventListener('pointerlockchange', () => { if (!this.input.pointerLocked && this.mode === 'play' && !this.device.touch) this.pause(); });
+    // будь-який жест «оживляє» звук (iOS)
+    for (const ev of ['pointerdown', 'keydown', 'touchend'] as const) addEventListener(ev, () => this.audio.unlock(), { passive: true });
+    addEventListener('resize', () => this.resize());
+    document.addEventListener('visibilitychange', () => { if (document.hidden && this.mode === 'play') this.pause(); });
+  }
+
+  private qualityFromSettings(): QualityProfile {
+    const q = this.store.settings.quality;
+    return PROFILES[q === 'auto' ? autoQuality(this.device, this.gfx.backend === 'webgpu') : q];
+  }
+
+  async init(onProgress: (p: number) => void = () => {}): Promise<void> {
+    this.physics = await Physics.create();
+    this.assets = new Assets(this.gfx.renderer);
+    const lvl = await this.loadLevel(0, onProgress);
+    const s = lvl.layout.spawn;
+    this.player = new Player(this.physics, s.x, 0, s.z);
+    this.player.yaw = s.yaw;
+    this.player.onFootstep = (e) => this.footstep(e.x, e.y, e.z, e.loudness);
+    this.applySettings(this.store.settings);
+    this.input.enabled = false;
+    this.resize();
+    // заздалегідь скомпілювати шейдери, щоб не було ривків при першому погляді на щось нове
+    try { this.gfx.renderer.setRenderTarget(null); await this.gfx.renderer.compileAsync(lvl.scene, this.camera); } catch { /* не критично */ }
+  }
+
+  /** Побудувати рівень id (старий звільняється: GPU-пам'ять, колізії); гравця не чіпає. */
+  private async loadLevel(id: number, onProgress: (p: number) => void = () => {}): Promise<Level> {
+    const old = this.level;
+    if (old) {
+      const keep = this.player?.collider;
+      const list: { handle: number }[] = [];
+      this.physics.world.forEachCollider((c) => { if (c !== keep) list.push(c); });
+      for (const c of list) this.physics.world.removeCollider(c as never, false);
+      disposeScene(old.scene);
+      this.level = null;
+      this.figure = null;
+    }
+    const lvl = id === 0 ? await buildLevel0(this.assets, this.physics, onProgress) : await buildThemedLevel(id as 1 | 2, this.assets, this.physics, onProgress);
+    if (id === 0) {
+      try {
+        const gl = await this.assets.model('assets/models/figure.glb');
+        this.figure = new Figure(cloneSkinned(gl.scene), lvl.layout, this.physics, lvl.lamps, {
+          onVanish: (x, z, seen) => {
+            // коротка «оплата» напруги: глухий удар там, де вона стояла, і здригання камери, якщо гравець її бачив
+            const hit = this.sfx.pick('hit_');
+            if (hit) this.audio.play3D(hit, x, 1.5, z, { gain: seen ? 0.55 : 0.25, ref: 4, wet: 0.6, rate: 0.85 });
+            if (seen) { this.rig.shake = Math.max(this.rig.shake, 0.6); look.fear.value = Math.min(1, look.fear.value + 0.5); }
+          }
+        });
+        lvl.scene.add(this.figure.root);
+      } catch { /* без моделі гра йде без Фигуры */ }
+    }
+    this.level = lvl;
+    this.setScene(lvl.scene);
+    if (this.player) this.setupInteractions(lvl);
+    this.levelAudio();
+    await this.hunt.setup(lvl, this.assets, this.physics);
+    return lvl;
+  }
+
+  /** Фон рівня й гул Швів — до нового рівня. */
+  private levelAudio(): void {
+    const lvl = this.level;
+    if (!lvl || !this.sfx.ready) return;
+    this.ambSrc?.stop();
+    const amb = this.sfx.get(`amb_l${lvl.id}`), bus = this.audio.music;
+    this.ambSrc = amb && bus ? this.audio.play2D(amb, 0.32, 1, bus) : null;
+    if (this.ambSrc) this.ambSrc.loop = true;
+    const seams: (Seam | undefined)[] = [lvl.seam, lvl.rift];
+    this.seamVoices.forEach((v, i) => {
+      const p = seams[i]?.group.position;
+      v.setPosition(p ? p.x : 0, p ? 1.3 : -100, p ? p.z : 0);
+    });
+  }
+
+  private setScene(s: THREE.Scene): void {
+    this.scene = s;
+    this.post.scene = s;
+    this.post.apply(this.profile);
+  }
+
+  private prepareAudio(): void {
+    const ctx = this.audio.ctx;
+    if (!ctx || this.steps.length) return;
+    for (let i = 0; i < 8; i++) this.steps.push(footstepCarpet(ctx, i + 1));
+    for (let i = 0; i < 6; i++) this.clicks.push(typeClick(ctx, i + 1));
+    this.rustle = paperRustle(ctx, 1);
+    // тихий фоновий трек рівня (наш, ACE-Step): шар під гулом ламп
+    void this.sfx.load(ctx, `${import.meta.env.BASE_URL}assets/sfx/`).then(() => this.levelAudio());
+    this.ambience.prepare();
+    // гул Шва і (тихіше, глухіше) прихованого розлому
+    const drone = seamDrone(ctx);
+    for (const [gain, ref] of [[0.9, 1.5], [0.5, 0.9]] as const) {
+      const v = this.audio.play3D(drone, 0, -100, 0, { loop: true, gain, ref, wet: 0.4, rate: ref < 1 ? 0.8 : 1 });
+      if (v) this.seamVoices.push(v);
+    }
+    this.levelAudio();
+    const hum = humLoop(ctx, 4, 3);
+    // гул: 6 голосів «переїжджають» до найближчих ламп, що світять
+    for (let i = 0; i < 6; i++) {
+      const v = this.audio.play3D(hum, 0, -100, 0, { loop: true, gain: 0.45, ref: 1.1, wet: 0.12, rate: 0.985 + i * 0.006 });
+      if (v) this.humVoices.push({ voice: v, lamp: -1 });
+    }
+  }
+
+  private footstep(x: number, y: number, z: number, loud: number): void {
+    // записані кроки (на килимі — приглушені); поки бібліотека вантажиться — синтез
+    const rec = this.sfx.ready ? this.sfx.pick('carpet_') : null;
+    const b = rec ?? this.steps[this.stepIdx++ % Math.max(1, this.steps.length)];
+    if (b) this.audio.play3D(b, x, y + 0.05, z, { gain: 0.35 + loud * 0.65, rate: 0.94 + Math.random() * 0.12, ref: 2, wet: 0.25 });
+    this.hunt.noise(x, y, z, loud);
+  }
+
+  applySettings(s: Settings): void {
+    look.exposure.value = BASE_EXPOSURE * s.brightness;
+    this.camera.fov = s.fov; this.camera.updateProjectionMatrix();
+    this.fpsCap = s.fpsLimit === 'off' ? 0 : Number(s.fpsLimit);
+    this.audio.setVolumes(s.masterVolume, s.musicVolume, s.sfxVolume);
+    Object.assign(this.input.settings, { sensitivity: s.sensitivity, invertY: s.invertY, crouchToggle: s.crouchToggle });
+    const p = this.qualityFromSettings();
+    if (p !== this.profile && this.mode !== 'boot') { this.profile = p; this.post.apply(p); this.resize(); }
+    this.store.save();
+  }
+
+  // ---------- потік екранів ----------
+  async run(): Promise<void> {
+    this.mode = 'menu';
+    // рівень вантажиться, поки гравець читає попередження
+    let pct = 0;
+    const bar = document.createElement('div');
+    bar.className = 'loadline';
+    this.loading = this.init((p) => { pct = p; bar.textContent = `Подготовка экспедиции… ${Math.round(p * 100)} %`; }).then(() => this.start());
+    await this.ui.age(this.store.data.ageConfirmed);
+    if (pct < 1) {
+      bar.textContent = `Подготовка экспедиции… ${Math.round(pct * 100)} %`;
+      document.getElementById('ui')?.appendChild(bar);
+    }
+    await this.loading;
+    bar.remove();
+    this.store.data.ageConfirmed = true; this.store.save();
+    this.audio.unlock(); this.prepareAudio();
+    this.showMenu();
+  }
+
+  private showMenu(): void {
+    this.mode = 'menu';
+    this.hud.show(false);
+    this.input.enabled = false; this.input.touch?.show(false);
+    this.ui.onBack = null;
+    this.ui.menu({
+      canContinue: !!this.store.progress.checkpoint,
+      onContinue: () => void this.continueGame(),
+      onStart: () => { this.store.newGame(); void this.startNewGame(); },
+      onSettings: () => this.openSettings(() => this.showMenu()),
+      onAbout: () => { this.ui.close('menu'); this.ui.about(() => this.showMenu()); }
+    });
+  }
+
+  private openSettings(back: () => void): void {
+    const auto = autoQuality(this.device, this.gfx.backend === 'webgpu');
+    const dev = `${this.device.platform === 'apple' ? 'Apple' : this.device.platform === 'android' ? 'Android' : 'ПК'}, ${this.gfx.backend === 'webgpu' ? 'WebGPU' : 'WebGL 2'}`;
+    for (const n of ['menu', 'pause']) this.ui.close(n);
+    this.ui.onBack = () => { this.ui.close('settings'); back(); };
+    this.ui.settings(this.store.settings, T.settings.device(dev, T.settings.qualities[auto]), (s) => this.applySettings(s), back);
+  }
+
+  /** Продовжити: якщо збережено інший рівень — завантажити його під заставкою. */
+  private async continueGame(): Promise<void> {
+    const cp = this.store.progress.checkpoint;
+    const card = cp ? LEVEL_TITLES[cp.level] : undefined;
+    if (cp && card && this.level?.id !== cp.level) {
+      this.ui.closeAll();
+      this.audio.unlock(); this.prepareAudio();
+      await this.hud.titleCard(card.title, card.sub, async () => { await this.loadLevel(cp.level); });
+      this.enterLevelStart(false);
+      this.hud.setObjective(cp.level === 1 ? OBJECTIVES.level1Start : OBJECTIVES.level2Start);
+    }
+    this.play();
+  }
+
+  private async startNewGame(): Promise<void> {
+    this.ui.closeAll();
+    this.input.enabled = false;
+    this.audio.unlock(); this.prepareAudio();
+    let k = 0;
+    // якщо гравець був на іншому рівні — рівень 0 вантажиться під час прологу
+    const reload = this.level?.id !== 0 ? this.loadLevel(0) : Promise.resolve();
+    await this.hud.prologue(PROLOGUE, () => { const b = this.clicks[k++ % Math.max(1, this.clicks.length)]; if (b) this.audio.play2D(b, 0.5, 0.95 + Math.random() * 0.1); });
+    await reload;
+    // отямлюється на підлозі обличчям до стіни, крізь яку випав (стіл експедиції — за спиною)
+    this.enterLevelStart();
+    this.store.progress.checkpoint = { level: 0, spawn: 'start' };
+    this.store.save();
+    await this.arrive();
+    this.play();
+    this.hud.setObjective(OBJECTIVES.level0Start);
+  }
+
+  /** Прибуття: темрява → гравець лежить перед Швом → розріз затягується зі звуком → гравець підводиться. */
+  private async arrive(): Promise<void> {
+    const a = this.level?.arrival;
+    if (!a) return;
+    this.mode = 'play'; // світ живе (лампи, звук), але керування ще вимкнене
+    this.hud.show(false);
+    a.life.value = 1; a.open.value = 0.45;
+    look.fade.value = 1; look.fear.value = 0.6;
+    this.rig.wake = 1; this.rig.shake = 0.7;
+    const cloth = () => { const b = this.sfx.pick('cloth'); if (b) this.audio.play2D(b, 0.7, 0.9 + Math.random() * 0.2); };
+    let closed = false, up = false;
+    cloth();
+    const t0 = performance.now();
+    await new Promise<void>((done) => {
+      const step = () => {
+        const t = (performance.now() - t0) / 1000;
+        const k = (a0: number, a1: number) => Math.min(1, Math.max(0, (t - a0) / (a1 - a0)));
+        look.fade.value = 1 - k(0.2, 1.8);
+        a.open.value = 0.45 * (1 - k(1.8, 4.2));
+        a.life.value = 1 - k(4.0, 4.6);
+        if (!closed && t > 4.0) {
+          closed = true;
+          const b = this.sfx.pick('hit'); if (b) this.audio.play2D(b, 0.45, 0.8);
+          this.rig.shake = 0.5;
+        }
+        if (!up && t > 5.0) { up = true; cloth(); }
+        this.rig.wake = 1 - k(5.0, 7.0);
+        look.fear.value = 0.6 * (1 - k(4.6, 7.0));
+        if (t < 7.0) requestAnimationFrame(step); else done();
+      };
+      step();
+    });
+    this.rig.wake = 0; a.life.value = 0; look.fade.value = 0;
+  }
+
+  private setupInteractions(lvl: Level): void {
+    this.interact = new Interactions(this.physics);
+    for (const s of Object.values(lvl.spots)) {
+      const id = s.id;
+      const after = id === 'order7' ? () => { if (this.stage === 'desk') { this.stage = 'seam'; this.hud.setObjective(OBJECTIVES.level0Find); } } : undefined;
+      this.interact.add({ id, x: s.x, y: s.y, z: s.z, reach: 1.9, prompt: HINTS.read, enabled: true, use: () => this.readDoc(id, after) });
+    }
+    const sp = lvl.seam.group.position;
+    this.interact.add({ id: 'seam', x: sp.x, y: 1.3, z: sp.z, reach: 1.7, prompt: HINTS.enterSeam, enabled: true, use: () => void this.enterSeam(lvl.seam, lvl.next) });
+    const rift = lvl.rift;
+    if (rift) {
+      const rp = rift.group.position;
+      this.interact.add({ id: 'rift', x: rp.x, y: 1.3, z: rp.z, reach: 1.5, prompt: HINTS.enterSeam, enabled: true, use: () => void this.enterSeam(rift, 2) });
+    }
+    // двері: по точці взаємодії з кожного боку прорізу; підказка міняється з відчинено/зачинено
+    for (const d of lvl.doors.list) {
+      d.sides.forEach(([x, y, z], i) => {
+        const doors = lvl.doors;
+        this.interact.add({ id: `${d.id}-${i}`, x, y, z, reach: 1.7, enabled: true,
+          get prompt() { return d.target > 0.1 ? HINTS.doorShut : HINTS.doorOpen; }, use: () => doors.toggle(d) });
+      });
+    }
+    const doorSound = (name: string, d: { pivot: THREE.Object3D }, gain: number) => {
+      const b = this.sfx.pick(name);
+      const p = d.pivot.position;
+      if (b) this.audio.play3D(b, p.x, 1.2, p.z, { gain, rate: 0.9 + Math.random() * 0.15, ref: 2, wet: 0.4 });
+    };
+    lvl.doors.onMove = (d, opening) => { doorSound('creak', d, 0.7); if (opening) doorSound('dooropen', d, 0.6); this.hunt.noise(d.pivot.position.x, 1, d.pivot.position.z, 0.6); };
+    lvl.doors.onShut = (d) => doorSound('doorclose', d, 0.9);
+  }
+
+  private readDoc(id: keyof typeof DOCS, after?: () => void): void {
+    const d = DOCS[id];
+    if (!d) return;
+    const flip = this.sfx.pick('bookflip') ?? this.rustle;
+    if (flip) this.audio.play2D(flip, 0.8);
+    const list = d.kind === 'note' ? this.store.progress.notes : this.store.progress.docs;
+    if (!list.includes(id)) { list.push(id); this.store.save(); }
+    this.mode = 'pause';
+    this.input.enabled = false;
+    this.input.touch?.show(false); // кнопки гри не перекривають записку; play() поверне їх
+    if (document.pointerLockElement) document.exitPointerLock();
+    this.hud.openDoc(d, () => { this.play(); after?.(); });
+  }
+
+  /** Пройти крізь Шов: розріз розкривається, світ гасне → заставка, новий рівень, прибуття; після парковки — кінець версії. */
+  private async enterSeam(seam: Seam, target: number): Promise<void> {
+    if (this.ending || !this.level) return;
+    this.ending = true;
+    this.input.enabled = false;
+    this.mode = 'pause';
+    // Шов розкривається, світ «стискається» й гасне
+    const t0 = performance.now();
+    await new Promise<void>((done) => {
+      const step = () => {
+        const k = Math.min(1, (performance.now() - t0) / 2600);
+        seam.open.value = k;
+        look.fear.value = k;
+        look.fade.value = Math.max(0, (k - 0.55) / 0.45);
+        this.rig.shake = 0.6 * k;
+        if (k < 1) requestAnimationFrame(step); else done();
+      };
+      step();
+    });
+    const from = this.level.id;
+    if (!this.store.progress.completed.includes(from)) this.store.progress.completed.push(from);
+    if (document.pointerLockElement) document.exitPointerLock();
+    this.hud.show(false);
+    const card = LEVEL_TITLES[target];
+    if (!card) {
+      this.store.progress.checkpoint = null;
+      this.store.save();
+      this.stage = 'done';
+      this.hud.levelEnd(LEVEL_END.title, LEVEL_END.body, LEVEL_END.soon, () => {
+        look.fade.value = 0; look.fear.value = 0; seam.open.value = 0; this.ending = false;
+        this.showMenu();
+      });
+      return;
+    }
+    await this.hud.titleCard(card.title, card.sub, async () => { await this.loadLevel(target); });
+    look.fear.value = 0;
+    this.enterLevelStart();
+    this.store.progress.checkpoint = { level: target, spawn: 'start' };
+    this.store.save();
+    this.ending = false;
+    await this.arrive();
+    this.play();
+    this.hud.setObjective(target === 1 ? OBJECTIVES.level1Start : OBJECTIVES.level2Start);
+  }
+
+  /** Мисливець схопив: різкий поворот до нього, удар, темрява → запис відновлюється з початку рівня. */
+  private async caught(): Promise<void> {
+    if (this.ending || !this.level) return;
+    this.ending = true;
+    this.input.enabled = false;
+    const s = this.hunt.stalker, p = this.player.pos;
+    if (s) { this.player.yaw = Math.atan2(-(s.pos.x - p.x), -(s.pos.z - p.z)); this.player.pitch = 0.12; }
+    const b = this.sfx.pick('hit_');
+    if (b) this.audio.play2D(b, 1, 0.7);
+    this.rig.shake = 1.3; look.fear.value = 1;
+    const t0 = performance.now();
+    await new Promise<void>((done) => {
+      const step = () => { const k = Math.min(1, (performance.now() - t0) / 900); look.fade.value = k * k; if (k < 1) requestAnimationFrame(step); else done(); };
+      step();
+    });
+    this.store.progress.deaths++;
+    this.store.save();
+    this.mode = 'pause';
+    this.hud.show(false);
+    await this.hud.titleCard('Связь с оператором потеряна', 'Запись восстановлена с последней метки', async () => {
+      s?.reset();
+      this.enterLevelStart(false);
+    });
+    look.fear.value = 0;
+    const t1 = performance.now();
+    this.mode = 'play';
+    await new Promise<void>((done) => {
+      const step = () => { const k = Math.min(1, (performance.now() - t1) / 1200); look.fade.value = 1 - k; if (k < 1) requestAnimationFrame(step); else done(); };
+      step();
+    });
+    this.ending = false;
+    this.play();
+  }
+
+  /** Поставити гравця на старт поточного рівня обличчям до Шва прибуття. */
+  private enterLevelStart(face = true): void {
+    const s = this.level?.layout.spawn;
+    if (s) this.player.teleport(s.x, 0, s.z, s.yaw + (face ? Math.PI : 0));
+    this.player.pitch = 0;
+    this.stage = this.level?.id === 0 ? 'desk' : 'seam';
+  }
+
+  play(): void {
+    this.ui.closeAll();
+    this.hud.show(true);
+    this.mode = 'play';
+    this.input.enabled = true;
+    this.input.touch?.show(true);
+    this.input.lockPointer();
+    this.ui.onBack = null;
+    this.audio.unlock(); this.prepareAudio();
+  }
+
+  pause(): void {
+    if (this.mode !== 'play' || this.hud.readerOpen) return;
+    this.mode = 'pause';
+    this.hud.show(false);
+    this.input.enabled = false; this.input.touch?.show(false);
+    this.ui.onBack = () => this.play();
+    this.ui.pause({
+      onResume: () => this.play(),
+      onSettings: () => this.openSettings(() => this.pauseMenuAgain()),
+      onMenu: () => { this.ui.closeAll(); this.showMenu(); },
+      docs: [...this.store.progress.docs, ...this.store.progress.notes].map((id) => ({ id, title: DOCS[id]?.title ?? id })),
+      onDoc: (id) => {
+        const d = DOCS[id];
+        if (!d) return;
+        this.ui.closeAll();
+        this.hud.openDoc(d, () => this.pauseMenuAgain());
+      }
+    });
+  }
+
+  private pauseMenuAgain(): void { this.mode = 'play'; this.pause(); }
+
+  /** Автоматичний крок на пресет нижче (лише в режимі «Авто», не нижче «Среднего»). */
+  private stepDownPreset(): void {
+    this.presetGov.scale = 1;
+    const order = ['ultra', 'high', 'medium'] as const;
+    const i = order.indexOf(this.profile.name as (typeof order)[number]);
+    if (i < 0 || i >= order.length - 1) return;
+    this.profile = PROFILES[order[i + 1] as (typeof order)[number]];
+    this.post.apply(this.profile);
+    this.resize();
+  }
+
+  resize(): void {
+    const w = innerWidth, h = innerHeight;
+    const r = this.gfx.renderer;
+    r.setPixelRatio(Math.min(this.device.dpr, this.profile.maxPixelRatio) * (this.profile.name === 'low' ? this.governor.scale : 1));
+    r.setSize(w, h, false);
+    this.camera.aspect = w / h;
+    this.camera.updateProjectionMatrix();
+    look.aspect.value = w / h;
+  }
+
+  frame(): void {
+    const now = performance.now();
+    // обмеження частоти: пропускаємо виклики rAF, що прийшли зарано (120 Гц екран → 60, 60 Гц → 30)
+    if (this.fpsCap > 0 && now - this.lastDraw < (1000 / this.fpsCap) * 0.92) return;
+    this.lastDraw = now;
+    const dtMs = Math.min(100, now - this.last);
+    this.last = now;
+    const dt = dtMs / 1000;
+    if (this.mode === 'play' && this.autoScale) {
+      if (this.profile.name === 'low') { if (this.governor.update(dtMs)) this.resize(); }
+      else if (this.store.settings.quality === 'auto' && this.presetGov.update(dtMs) && this.presetGov.scale < 1) this.stepDownPreset();
+    }
+    this.input.poll(dt);
+    if (this.input.consume('pause') && this.mode === 'play') this.pause();
+    const [lx, ly] = this.input.takeLook();
+    this.time += dt;
+    if (this.mode === 'play') {
+      this.player.look(lx, ly);
+      this.acc += dt;
+      const m = { x: this.input.move.x, y: this.input.move.y, run: this.input.run, crouch: this.input.crouch };
+      while (this.acc >= STEP) { this.player.update(STEP, m); this.physics.step(); this.acc -= STEP; }
+    } else if (this.mode === 'menu') {
+      // у меню камера повільно «дихає» й оглядає кімнату
+      this.player.yaw = Math.sin(this.time * 0.07) * 0.5;
+      this.player.pitch = -0.04 + Math.sin(this.time * 0.11) * 0.03;
+    }
+    if (this.input.consume('flashlight') && this.mode === 'play') {
+      this.flashlightOn = !this.flashlightOn;
+      const click = this.sfx.get('metalclick');
+      if (click) this.audio.play2D(click, 0.5, this.flashlightOn ? 1.1 : 0.9);
+      this.hunt.noise(this.player.pos.x, this.player.pos.y, this.player.pos.z, 0.12);
+    }
+    if (this.hud.readerOpen && (this.input.consume('interact') || this.input.consume('pause'))) this.hud.closeDoc();
+    const lvl = this.level;
+    this.rig.update(this.player, this.acc / STEP, dt);
+    this.cameraOverride?.(this.camera, dt);
+    if (lvl) {
+      lvl.update(this.time, dt, this.camera);
+      this.figure?.update(dt, this.camera, this.mode === 'play');
+      if (this.mode === 'play' && !this.ending) this.hunt.update(dt, lvl, this.player, this.camera, this.flashlightOn, this.physics);
+      look.fear.value = Math.max(0, look.fear.value - dt * 0.12);
+      // живе згасання запеченого світла біля ламп, що мерехтять/згасли (оновлюємо кілька разів на секунду — дешево)
+      this.dimT -= dt;
+      if (this.dimT <= 0) { this.dimT = 0.05; lvl.lamps.fillDeficits(this.camera.position.x, this.camera.position.z, lampDeficits.array as THREE.Vector4[]); }
+      // ліхтарик у руці: трохи нижче й правіше очей, світить туди, куди дивишся
+      const fl = lvl.flashlight, c = this.camera;
+      if (this.flashlightOn && this.mode === 'play') this.battery = Math.max(0, this.battery - dt / 720);
+      if (this.battery <= 0) this.flashlightOn = false;
+      // низький заряд: тьмяніє, жовтіє й час від часу «провалюється»
+      const low = this.battery < 0.15 ? this.battery / 0.15 : 1;
+      const dip = this.battery < 0.15 && Math.sin(this.time * 23.0) * Math.sin(this.time * 7.3) > 0.55 ? 0.15 : 1;
+      fl.intensity += ((this.flashlightOn ? 26 * (0.35 + 0.65 * low) * dip : 0) - fl.intensity) * Math.min(1, dt * 18);
+      this.hud.setBattery?.(this.flashlightOn || this.battery < 0.3 ? this.battery : -1);
+      const spill = fl.children[0] as THREE.SpotLight | undefined;
+      if (spill) spill.intensity = fl.intensity * 0.12;
+      fl.position.set(0.18, -0.16, 0.05).applyQuaternion(c.quaternion).add(c.position);
+      fl.target.position.set(0, -0.08, -6).applyQuaternion(c.quaternion).add(c.position);
+      this.humT -= dt;
+      if (this.humT <= 0 && this.humVoices.length) {
+        this.humT = 0.4;
+        const near = lvl.lamps.nearest(c.position.x, c.position.z, this.humVoices.length);
+        this.humVoices.forEach((h, i) => {
+          const li = near[i];
+          if (li === undefined) { h.voice.setPosition(0, -100, 0); h.lamp = -1; return; }
+          const p = lvl.layout.lights[li];
+          if (p) h.voice.setPosition(p.x, lvl.layout.height - 0.05, p.z);
+          h.lamp = li;
+        });
+      }
+      for (const h of this.humVoices) h.voice.gain.gain.value = h.lamp >= 0 ? 0.45 * lvl.lamps.levelOf(h.lamp) : 0;
+    }
+    const c = this.camera, f = new THREE.Vector3(0, 0, -1).applyQuaternion(c.quaternion);
+    if (this.mode === 'play' && this.interact) {
+      const it = this.interact.update(c, f.x, f.y, f.z);
+      const key = this.input.lastDevice === 'gamepad' ? 'A' : this.input.lastDevice === 'touch' ? '✋' : 'E';
+      this.hud.setPrompt(it ? it.prompt : null, key);
+      if (it && this.input.consume('interact')) it.use();
+      this.store.progress.playSeconds += dt;
+      this.ambience.update(dt, this.player);
+      this.hud.setTime(this.store.progress.playSeconds);
+    } else this.hud.setPrompt(null, '');
+    this.hud.update(dt);
+    this.audio.updateListener({ x: c.position.x, y: c.position.y, z: c.position.z, fx: f.x, fy: f.y, fz: f.z });
+    this.post.render();
+    this.onFrame?.(dtMs);
+  }
+
+  start(): void {
+    this.gfx.renderer.setAnimationLoop(() => this.frame());
+  }
+}

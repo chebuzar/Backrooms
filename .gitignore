@@ -5,3 +5,18 @@ dist/
 .vite/
 test-results/
 .shots/
+
+# секрети й локальні ключі — ніколи в git
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+.meshy/
+meshy_output/
+# сирі завантажені ассети (до оптимізації)
+.assets-src/
+.playwright-mcp/
+
+# task-observer workspace (local observation logs)
+.task-observer/
