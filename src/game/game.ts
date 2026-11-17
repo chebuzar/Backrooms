@@ -29,6 +29,8 @@ import { disposeScene } from '../world/chunks';
 import { DOOR_H } from '../world/decor';
 import type { Seam } from '../world/seam';
 import { Hunt } from './hunt';
+import { Battery } from './battery';
+import { placeBatteries, type Pickup } from '../world/pickups';
 
 const STEP = 1 / 60;
 /** Базова експозиція «камери»; налаштування «Яркость» множить її. */
@@ -85,8 +87,13 @@ export class Game {
   /** «Фигура» рівня 0 (лише присутність). */
   figure: Figure | null = null;
   flashlightOn = false;
-  /** Заряд батареї ліхтарика 0..1 (≈ 12 хв світла); на низькому заряді світло блимає. */
-  battery = 1;
+  /** Батарея ліхтарика (≈ 12 хв світла); на низькому заряді світло блимає. Заряд — у збереженні. */
+  readonly bat = new Battery();
+  get battery(): number { return this.bat.level; }
+  set battery(v: number) { this.bat.level = v; }
+  private persistT = 0;
+  /** Батарейки, що лежать на поточному рівні. */
+  private pickups: Pickup[] = [];
   hud!: HUD;
   readonly ambience = new Ambience(this.audio);
   interact!: Interactions;
@@ -129,6 +136,7 @@ export class Game {
     const s = lvl.layout.spawn;
     this.player = new Player(this.physics, s.x, 0, s.z);
     this.player.yaw = s.yaw;
+    this.bat.level = this.store.progress.battery;
     this.player.onFootstep = (e) => this.footstep(e.x, e.y, e.z, e.loudness);
     // взаємодії потребують гравця: при першому завантаженні рівня його ще не було (loadLevel їх пропустив)
     this.setupInteractions(lvl);
@@ -167,6 +175,7 @@ export class Game {
       } catch { /* без моделі гра йде без Фигуры */ }
     }
     this.level = lvl;
+    this.pickups = await placeBatteries(this.assets, lvl, this.store.progress.pickups);
     this.setScene(lvl.scene);
     if (this.player) this.setupInteractions(lvl);
     this.levelAudio();
@@ -266,7 +275,7 @@ export class Game {
     this.ui.menu({
       canContinue: !!this.store.progress.checkpoint,
       onContinue: () => void this.continueGame(),
-      onStart: () => { this.store.newGame(); void this.startNewGame(); },
+      onStart: () => { this.store.newGame(); this.bat.newGame(); void this.startNewGame(); },
       onSettings: () => this.openSettings(() => this.showMenu()),
       onAbout: () => { this.ui.close('menu'); this.ui.about(() => this.showMenu()); }
     });
@@ -300,13 +309,13 @@ export class Game {
     this.audio.unlock(); this.prepareAudio();
     let k = 0;
     // якщо гравець був на іншому рівні — рівень 0 вантажиться під час прологу
-    const reload = this.level?.id !== 0 ? this.loadLevel(0) : Promise.resolve();
+    const reload = this.level?.id !== 0 ? this.loadLevel(0) : this.resetPickups();
     await this.hud.prologue(PROLOGUE, () => { const b = this.clicks[k++ % Math.max(1, this.clicks.length)]; if (b) this.audio.play2D(b, 0.5, 0.95 + Math.random() * 0.1); });
     await reload;
     // отямлюється на підлозі обличчям до стіни, крізь яку випав (стіл експедиції — за спиною)
     this.enterLevelStart();
     this.store.progress.checkpoint = { level: 0, spawn: 'start' };
-    this.store.save();
+    this.persist();
     await this.arrive();
     this.play();
     this.hud.setObjective(OBJECTIVES.level0Start);
@@ -347,6 +356,36 @@ export class Game {
     this.rig.wake = 0; a.life.value = 0; look.fade.value = 0;
   }
 
+  /** Батарейки: «Взять» → заряд, клацання, предмет зникає (і не з'явиться знову в цьому проходженні). */
+  private addPickup(b: Pickup): void {
+    this.interact.add({ id: b.id, x: b.x, y: b.y, z: b.z, reach: 1.6, prompt: HINTS.battery, enabled: true, use: () => {
+      this.interact.remove(b.id);
+      b.obj.removeFromParent();
+      this.pickups = this.pickups.filter((p) => p !== b);
+      this.bat.pickup();
+      if (!this.store.progress.pickups.includes(b.id)) this.store.progress.pickups.push(b.id);
+      const snd = this.sfx.get('metallatch') ?? this.sfx.get('metalclick');
+      if (snd) this.audio.play2D(snd, 0.6, 1.05);
+      this.hud.flashBattery(this.bat.level);
+      this.persist();
+    } });
+  }
+
+  /** Нове проходження на вже завантаженому рівні 0: підібрані раніше батарейки повертаються на місця. */
+  private async resetPickups(): Promise<void> {
+    const lvl = this.level;
+    if (!lvl) return;
+    for (const b of this.pickups) { b.obj.removeFromParent(); this.interact?.remove(b.id); }
+    this.pickups = await placeBatteries(this.assets, lvl, this.store.progress.pickups);
+    for (const b of this.pickups) this.addPickup(b);
+  }
+
+  /** Записати прогрес (разом із зарядом ліхтарика). */
+  private persist(): void {
+    this.store.progress.battery = this.bat.level;
+    this.store.save();
+  }
+
   private setupInteractions(lvl: Level): void {
     this.interact = new Interactions(this.physics);
     for (const s of Object.values(lvl.spots)) {
@@ -356,6 +395,7 @@ export class Game {
     }
     const sp = lvl.seam.group.position;
     this.interact.add({ id: 'seam', x: sp.x, y: 1.3, z: sp.z, reach: 1.7, prompt: HINTS.enterSeam, enabled: true, use: () => void this.enterSeam(lvl.seam, lvl.next) });
+    for (const b of this.pickups) this.addPickup(b);
     const rift = lvl.rift;
     if (rift) {
       const rp = rift.group.position;
@@ -427,8 +467,9 @@ export class Game {
     await this.hud.titleCard(card.title, card.sub, async () => { await this.loadLevel(target); });
     look.fear.value = 0;
     this.enterLevelStart();
+    this.bat.enterLevel(); // експедиція «перезарядилася» в темряві між рівнями — новий рівень починається з повним ліхтариком
     this.store.progress.checkpoint = { level: target, spawn: 'start' };
-    this.store.save();
+    this.persist();
     this.ending = false;
     await this.arrive();
     this.play();
@@ -451,7 +492,8 @@ export class Game {
       step();
     });
     this.store.progress.deaths++;
-    this.store.save();
+    this.bat.afterDeath();
+    this.persist();
     this.mode = 'pause';
     this.hud.show(false);
     await this.hud.titleCard('Связь с оператором потеряна', 'Запись восстановлена с последней метки', async () => {
@@ -490,6 +532,7 @@ export class Game {
 
   pause(): void {
     if (this.mode !== 'play' || this.hud.readerOpen) return;
+    this.persist();
     this.mode = 'pause';
     this.hud.show(false);
     this.input.enabled = false; this.input.touch?.show(false);
@@ -577,13 +620,13 @@ export class Game {
       if (this.dimT <= 0) { this.dimT = 0.05; lvl.lamps.fillDeficits(this.camera.position.x, this.camera.position.z, lampDeficits.array as THREE.Vector4[]); }
       // ліхтарик у руці: трохи нижче й правіше очей, світить туди, куди дивишся
       const fl = lvl.flashlight, c = this.camera;
-      if (this.flashlightOn && this.mode === 'play') this.battery = Math.max(0, this.battery - dt / 720);
+      if (this.mode === 'play') this.bat.update(dt, this.flashlightOn);
       if (this.battery <= 0) this.flashlightOn = false;
       // низький заряд: тьмяніє, жовтіє й час від часу «провалюється»
       const low = this.battery < 0.15 ? this.battery / 0.15 : 1;
       const dip = this.battery < 0.15 && Math.sin(this.time * 23.0) * Math.sin(this.time * 7.3) > 0.55 ? 0.15 : 1;
       fl.intensity += ((this.flashlightOn ? 26 * (0.35 + 0.65 * low) * dip : 0) - fl.intensity) * Math.min(1, dt * 18);
-      this.hud.setBattery?.(this.flashlightOn || this.battery < 0.3 ? this.battery : -1);
+      this.hud.setBattery(this.flashlightOn || this.battery < 0.3 ? this.battery : -1, this.battery);
       const spill = fl.children[0] as THREE.SpotLight | undefined;
       if (spill) spill.intensity = fl.intensity * 0.12;
       fl.position.set(0.18, -0.16, 0.05).applyQuaternion(c.quaternion).add(c.position);
@@ -609,6 +652,7 @@ export class Game {
       this.hud.setPrompt(it ? it.prompt : null, key);
       if (it && this.input.consume('interact')) it.use();
       this.store.progress.playSeconds += dt;
+      if ((this.persistT -= dt) <= 0) { this.persistT = 10; this.persist(); }
       this.ambience.update(dt, this.player);
       this.hud.setTime(this.store.progress.playSeconds);
     } else this.hud.setPrompt(null, '');

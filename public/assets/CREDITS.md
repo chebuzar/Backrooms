@@ -19,6 +19,7 @@
 - `models/wetsign.glb` — «Wet Floor Sign 01» — Fran Calvente, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/WetFloorSign_01
 - `models/ammo.glb` — «Ammo Box» — DanKit, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/ammo_box
 - `models/cigs.glb` — «Cigarette Pack» — Ulrich Büch, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/cigarette_pack
+- `models/battery.glb` — батарейки 3336Л, власна модель (`scripts/blender/make_battery.py`); текстура — кроп «Metal Plate 02» (Rob Tuytel, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/metal_plate_02), перефарбований (`scripts/assets/make-battery-tex.py`)
 
 ## Текстури Poly Haven
 
@@ -51,3 +52,4 @@
 ## Монстри
 - `models/figure.glb`, `models/watcher.glb`, `models/blind.glb` — тіла MakeHuman/MPFB2 (системні ассети, **CC0**: шкіра old_caucasian_male, роба male_worksuit01, очі low-poly), зібрані нашим скриптом `scripts/blender/make_monster.py` (пресети figure / watcher / blind); протигаз фигуры — Poly Haven «Old Gas Mask», **CC0**
 - клацання «Слепого» й серцебиття небезпеки — синтез у грі (`src/audio/synth.ts`)
+- `tex/metal_plate_02` — «Metal Plate 02» — Rob Tuytel, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/metal_plate_02

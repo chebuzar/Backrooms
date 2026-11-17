@@ -99,7 +99,8 @@ export const HINTS = {
   close: 'Закрыть',
   enterSeam: 'Пройти',
   doorOpen: 'Открыть',
-  doorShut: 'Закрыть'
+  doorShut: 'Закрыть',
+  battery: 'Взять батарейки'
 };
 
 export const LEVEL_END = {

@@ -6,7 +6,7 @@
 |---|---|---|---|
 | ambientCG | https://ambientcg.com | CC0 1.0 | шпалери Wallpaper001A/001C/002C, стеля OfficeCeiling001, килим Carpet011, декалі Leaking001/004–009 |
 | ShareTextures | https://www.sharetextures.com | CC0 1.0 | шпалери wallpaper_10, wallpaper_26 (рівень 0), wallpaper_12, wallpaper_43 («кімнати-спогади») |
-| Poly Haven | https://polyhaven.com | CC0 1.0 | текстури бетону, лінолеуму, фарби (рівні 1–2), моделі предметів |
+| Poly Haven | https://polyhaven.com | CC0 1.0 | текстури бетону, лінолеуму, фарби (рівні 1–2), моделі предметів; metal_plate_02 — корпус батарейок (власна модель) |
 | Kenney «RPG Audio» (OpenGameArt) | https://opengameart.org/content/rpg-sound-pack | CC0 1.0 | кроки, двері, рип, папір, клацання, тканина |
 | «Horror Hit Soundpack 1» | https://opengameart.org | CC0 1.0 | удари жаху |
 | MakeHuman / MPFB2 | http://www.makehumancommunity.org | CC0 (ассети) | тіла монстрів |

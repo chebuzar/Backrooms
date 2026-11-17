@@ -38,10 +38,15 @@ export class HUD {
 
   show(on: boolean): void { this.el.classList.toggle('shown', on); }
 
-  /** Батарея ліхтарика в рамці камери: 4 поділки; −1 — сховати. */
-  setBattery(v: number): void {
+  private batHold = 0;
+  /** Підібрав батарейки: індикатор заряду видно ще кілька секунд. */
+  flashBattery(v: number): void { this.batHold = 3; this.setBattery(v); }
+
+  /** Батарея ліхтарика в рамці камери: 4 поділки; −1 — сховати (якщо щойно не підбирав батарейки). */
+  setBattery(v: number, actual = v): void {
     const b = this.el.querySelector<HTMLElement>('.bat');
     if (!b) return;
+    if (v < 0 && this.batHold > 0) v = actual;
     b.hidden = v < 0;
     if (v < 0) return;
     const n = Math.ceil(v * 4);
@@ -78,6 +83,7 @@ export class HUD {
   }
 
   update(dt: number): void {
+    this.batHold = Math.max(0, this.batHold - dt);
     if (this.subTimer > 0 && (this.subTimer -= dt) <= 0) this.sub.classList.remove('on');
   }
 

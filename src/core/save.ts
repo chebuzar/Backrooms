@@ -29,6 +29,10 @@ export interface Progress {
   endings: string[];
   playSeconds: number;
   deaths: number;
+  /** Заряд ліхтарика 0..1 (необов'язкове в старих записах — тоді повний). */
+  battery: number;
+  /** Підібрані батарейки поточного проходження (id) — щоб не з'являлися знову. */
+  pickups: string[];
 }
 
 interface SaveFile {
@@ -45,7 +49,7 @@ export const DEFAULT_SETTINGS: Settings = {
   sensitivity: 1, invertY: false, crouchToggle: false, fov: 75, subtitles: true, fpsLimit: '60'
 };
 
-const freshProgress = (): Progress => ({ checkpoint: null, docs: [], notes: [], tapes: [], completed: [], endings: [], playSeconds: 0, deaths: 0 });
+const freshProgress = (): Progress => ({ checkpoint: null, docs: [], notes: [], tapes: [], completed: [], endings: [], playSeconds: 0, deaths: 0, battery: 1, pickups: [] });
 
 const num = (v: unknown, d: number, lo: number, hi: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d);
 const bool = (v: unknown, d: boolean) => (typeof v === 'boolean' ? v : d);
@@ -83,7 +87,9 @@ export function parseSave(raw: string | null): SaveFile {
       completed: Array.isArray(p.completed) ? p.completed.filter((x): x is number => typeof x === 'number') : [],
       endings: strs(p.endings),
       playSeconds: num(p.playSeconds, 0, 0, 1e9),
-      deaths: num(p.deaths, 0, 0, 1e9)
+      deaths: num(p.deaths, 0, 0, 1e9),
+      battery: typeof p.battery === 'number' && p.battery >= 0 && p.battery <= 1 ? p.battery : 1,
+      pickups: strs(p.pickups)
     }
   };
 }

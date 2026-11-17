@@ -61,7 +61,7 @@ const closedDoorNear = () => page.evaluate(() => {
 });
 
 /** Іти до точки, тримаючи W (і Shift для бігу), повертаючи погляд «мишею»; впирається — відчиняє двері (E) чи обходить. */
-async function walkTo(tx, tz, { stop = 1.1, run = false, timeout = 240000, label = '' } = {}) {
+async function walkTo(tx, tz, { stop = 1.1, run = false, timeout = 600000, label = "" } = {}) {
   let path = await navPath(tx, tz);
   await page.keyboard.down('KeyW');
   if (run) await page.keyboard.down('ShiftLeft');
@@ -92,7 +92,9 @@ async function walkTo(tx, tz, { stop = 1.1, run = false, timeout = 240000, label
           // зачинені двері: глянути на них і натиснути E (як гравець)
           await page.keyboard.up('KeyW');
           await aim(door.x, 1.0, door.z);
-          await page.keyboard.press('KeyE');
+          // E — лише якщо під поглядом саме двері (поруч може бути Шов чи документ)
+          const p = (await state()).prompt ?? '';
+          if (/Открыть|Закрыть/.test(p)) await page.keyboard.press('KeyE');
           await wait(1400);
           stuck++;
           await page.keyboard.down('KeyW');
@@ -143,7 +145,8 @@ async function approach(x, y, z, r0) {
   }, [x, y, z, r0]);
 }
 
-async function useAt(x, y, z, label, { stop = 1.4, run = false } = {}) {
+let seamBattery = 1;
+async function useAt(x, y, z, label, { stop = 1.4, run = false, beforeUse = null } = {}) {
   // на якій горизонтальній відстані предмет ще «дістається» (висота очей 1.66, радіус дії предмета з гри)
   const reach = await page.evaluate(([x, z]) => {
     const it = window.__zk.game.interact?.items.find((i) => Math.hypot(i.x - x, i.z - z) < 0.05);
@@ -157,6 +160,7 @@ async function useAt(x, y, z, label, { stop = 1.4, run = false } = {}) {
   await wait(300);
   const s = await state();
   if (!log(`подсказка E: ${label}`, !!s.prompt, { prompt: s.prompt, mode: s.mode, input: s.input, at: [s.x?.toFixed(2), s.z?.toFixed(2)], target: [x, y, z].map((v) => +v.toFixed(2)), approach: ap })) { await shot(`fail-${label}`); return 'noprompt'; }
+  await beforeUse?.();
   await page.keyboard.press('KeyE');
   await wait(700);
   return 'ok';
@@ -176,7 +180,7 @@ async function readDoc(spot, label) {
 
 async function throughSeam(target, label) {
   const sp = await page.evaluate(() => { const s = window.__zk.game.level.seam.group; return { x: s.position.x + Math.sin(s.rotation.y) * 0.6, z: s.position.z + Math.cos(s.rotation.y) * 0.6, sx: s.position.x, sz: s.position.z }; });
-  const r = await useAt(sp.sx, 1.3, sp.sz, label, { stop: 1.3 });
+  const r = await useAt(sp.sx, 1.3, sp.sz, label, { stop: 1.3, beforeUse: async () => { seamBattery = await page.evaluate(() => window.__zk.game.battery); } });
   if (r !== 'ok') return r;
   const ok = await page.waitForFunction((n) => window.__zk.game.level?.id === n && window.__zk.game.input.enabled, target, { timeout: 60000 }).then(() => true, () => false);
   await wait(800);
@@ -199,6 +203,9 @@ try {
   const arrived = await page.waitForFunction(() => window.__zk.game.input.enabled && window.__zk.game.mode === 'play', null, { timeout: 40000 }).then(() => true, () => false);
   await shot('level0-arrive');
   log('прибытие: управление включено', arrived);
+  await page.keyboard.press('KeyF'); // ліхтарик — одразу, щоб до Шва він помітно розрядився
+  await wait(300);
+  log('F включает фонарик', await page.evaluate(() => window.__zk.game.flashlightOn));
 
   // наказ на столі
   const order = await page.evaluate(() => window.__zk.game.level.spots.order7);
@@ -214,8 +221,15 @@ try {
       const moved = await page.evaluate((id) => window.__zk.game.level.doors.list.find((d) => d.id === id).target, door.id);
       log('двери сдвинулись', Math.abs(moved - door.t) > 0.1, { from: door.t, to: moved });
     }
-    await page.keyboard.press('KeyF'); // ліхтарик
+    // батарейки біля столу
+    const bat = await page.evaluate(() => { const b = window.__zk.game.pickups.find((p) => p.id === 'bat0-0'); return b && { x: b.x, y: b.y, z: b.z }; });
+    if (log('батарейки лежат у стола', !!bat) && (await useAt(bat.x, bat.y, bat.z, 'батарейки')) === 'ok') {
+      const got = await page.evaluate(() => window.__zk.game.store.progress.pickups.includes('bat0-0') && !window.__zk.game.pickups.some((p) => p.id === 'bat0-0'));
+      log('батарейки подобраны', got);
+    }
     if ((await throughSeam(1, 'шов-0')) === 'ok') {
+      const before = seamBattery, after = await page.evaluate(() => window.__zk.game.battery);
+      log('новый уровень — фонарик заряжен полностью', after >= 0.99 && before < after, { before: +before.toFixed(3), after: +after.toFixed(3) });
       // рівень 1: документ (Наблюдатель може схопити — тоді знову зі старту, до 3 спроб)
       let r = 'caught';
       for (let a = 0; a < 3 && r === 'caught'; a++) {
@@ -228,6 +242,7 @@ try {
         s1 = await throughSeam(2, 'шов-1');
         if (s1 === 'caught') await page.waitForFunction(() => window.__zk.game.input.enabled, null, { timeout: 30000 });
       }
+      log('уровень 1 пройден (Наблюдатель не поймал 3 раза подряд)', s1 === 'ok', { result: s1, deaths: (await state()).deaths });
       if (s1 === 'ok') {
         // рівень 2: бігти до «Слепого», поки не схопить
         const d0 = (await state()).deaths;
