@@ -38,10 +38,11 @@
 ## Текстури рівня 0 (обробка справжніх текстур скриптом `scripts/assets/make-level0-textures.py`)
 
 - `tex/level0/wall_c` — ShareTextures «Wallpaper 10», **CC0**: https://www.sharetextures.com/textures/wall/wallpaper-10 (перефарбовано)
-- `tex/level0/wall2_c` — ShareTextures «Wallpaper 26», **CC0**: https://www.sharetextures.com/textures/wall/wallpaper_26 (перефарбовано)
 - `tex/level0/wall_n`, `wall_r`, `dmg_c`, `mold` — ambientCG Wallpaper001A, Wallpaper001C, Wallpaper002C, **CC0**: https://ambientcg.com
 - `tex/level0/ceil_*` — ambientCG OfficeCeiling001, **CC0**: https://ambientcg.com/view?id=OfficeCeiling001
-- `tex/level0/carpet_*` — ambientCG Carpet011, **CC0**: https://ambientcg.com/view?id=Carpet011
+- `tex/level0/paint_*` — ambientCG PaintedPlaster017, **CC0**: https://ambientcg.com/view?id=PaintedPlaster017
+- `tex/level0/peel_*` — ambientCG Plaster007, **CC0**: https://ambientcg.com/view?id=Plaster007
+- `tex/level0/parquet_*` — ambientCG WoodFloor034, **CC0**: https://ambientcg.com/view?id=WoodFloor034
 - `tex/level0/decals` — ambientCG Leaking001, Leaking004–009, **CC0**: https://ambientcg.com
 
 ## Звуки (`public/assets/sfx`, скрипт `scripts/assets/make-sounds.py`)

@@ -24,7 +24,7 @@ function inWall(l: Layout, x: number, z: number, r = 0): boolean {
   return l.walls.some((w) => Math.abs(x - w.x) < w.w / 2 + r && Math.abs(z - w.z) < w.d / 2 + r);
 }
 
-function zoneOf(l: Layout, x: number, z: number): string {
+export function zoneOf(l: Layout, x: number, z: number): string {
   const zw = Math.floor(l.cols / 3) * l.cell, zh = Math.floor(l.rows / 3) * l.cell;
   return l.zones[Math.min(2, Math.floor(x / zw)) + 3 * Math.min(2, Math.floor(z / zh))] ?? 'rooms';
 }

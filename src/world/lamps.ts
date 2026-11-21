@@ -1,4 +1,4 @@
-// Стельові світильники «армстронг» 1.2×0.6 м: розсіювач із двома лампами-трубками всередині, алюмінієва рамка.
+// Стельові світильники ЛПО 1.2×0.6 м (радянські люмінесцентні): дві трубки ЛБ за решіткою-«жалюзі», емальована рамка.
 // Усі лампи рівня — один InstancedMesh (один виклик малювання). Яскравість кожної — атрибут інстанса:
 // мерехтливі оновлюються щокадру, вимкнені темні.
 import * as THREE from 'three/webgpu';
@@ -34,8 +34,11 @@ export class Lamps {
     const u = uv();
     const tubes = max(smoothstep(0.14, 0.0, abs(u.y.sub(0.33))), smoothstep(0.14, 0.0, abs(u.y.sub(0.67))));
     const edge = smoothstep(0.0, 0.06, u.x).mul(smoothstep(1.0, 0.94, u.x)).mul(smoothstep(0.0, 0.1, u.y)).mul(smoothstep(1.0, 0.9, u.y));
-    const glow = float(0.55).add(tubes.mul(0.75)).mul(edge.mul(0.7).add(0.3));
-    const lc = look.color ?? [1.0, 0.94, 0.78];
+    // решітка-«жалюзі» ЛПО: поперечні пластини через 12 см і поздовжня планка посередині (затінюють трубки)
+    const cell = u.x.mul(10).fract();
+    const louver = smoothstep(0.0, 0.1, cell).mul(smoothstep(1.0, 0.9, cell)).mul(smoothstep(0.02, 0.06, abs(u.y.sub(0.5))));
+    const glow = float(0.35).add(tubes.mul(0.95)).mul(edge.mul(0.7).add(0.3)).mul(mix(float(0.22), float(1), louver));
+    const lc = look.color ?? [0.95, 0.97, 0.86];
     const warm = vec3(lc[0], lc[1], lc[2]);
     // вимкнена лампа — сірий пластик із жовтим нальотом
     mat.colorNode = mix(vec3(0.16, 0.15, 0.12), warm.mul(glow).mul(7.0), lv.mul(this.master));
@@ -43,7 +46,7 @@ export class Lamps {
     // рамка тонша й вища за розсіювач: знизу видно світну панель в алюмінієвому обідку
     const frameGeo = new THREE.BoxGeometry(pw + 0.04, 0.012, pd + 0.04);
     frameGeo.translate(0, -0.006, 0);
-    const frameMat = probeLit(new THREE.MeshStandardMaterial({ color: 0xc9c5b8, roughness: 0.45, metalness: 0.2 }), 1.6);
+    const frameMat = probeLit(new THREE.MeshStandardMaterial({ color: 0xd4d2c6, roughness: 0.4, metalness: 0.1 }), 1.6); // біла емаль
     this.frame = new THREE.InstancedMesh(frameGeo, frameMat, n);
     const m = new THREE.Matrix4();
     const r = rng(0x1a3e);
