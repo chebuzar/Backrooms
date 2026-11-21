@@ -33,7 +33,7 @@ for (const lv of [1, 2]) {
   await page.waitForTimeout(1200);
   await page.screenshot({ path: `.shots/mon-${lv}-a.png` });
   // ще ракурс: ближче й трохи збоку
-  await page.evaluate(() => { const g = window.__zk.game, s = g.hunt.stalker, p = g.player; window.__zk.tp(s.pos.x + 1.6, s.pos.z + 1.6, Math.atan2(-(s.pos.x - (s.pos.x + 1.6)), -(s.pos.z - (s.pos.z + 1.6))), 0.15); });
+  await page.evaluate(() => { const g = window.__zk.game, s = g.hunt.stalker; window.__zk.tp(s.pos.x + 1.6, s.pos.z + 1.6, Math.atan2(-(s.pos.x - (s.pos.x + 1.6)), -(s.pos.z - (s.pos.z + 1.6))), 0.15); });
   await page.waitForTimeout(1000);
   await page.screenshot({ path: `.shots/mon-${lv}-b.png` });
   res[lv] = { placed, state: await page.evaluate(() => window.__zk.game.hunt.stalker.brain.state) };
