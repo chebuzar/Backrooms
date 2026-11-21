@@ -2,22 +2,37 @@
 // права — огляд пальцем; кнопки праворуч: біг (утримання), присід, дія, ліхтарик, камера; пауза вгорі.
 import type { Input } from './input';
 
+/** Значки кнопок: тонкі лінійні позначки, як гравіювання на радянському приладі (без «веселих» фігурок і емодзі).
+ *  Лінії малює <g> у svg(); суцільні частини — з fill="currentColor". */
 export const ICONS = {
-  run: '<path d="M13.5 5.5a1.8 1.8 0 1 0 0-3.6 1.8 1.8 0 0 0 0 3.6ZM9.8 8.9 7 22h2.1l1.8-8 2.1 2v6h2v-7.5l-2.1-2.1.6-3A7.3 7.3 0 0 0 19 12v-2a5.5 5.5 0 0 1-4.7-2.6l-1-1.6A2.1 2.1 0 0 0 11.5 5c-.3 0-.5 0-.8.1L5 7.4V12h2V8.7l2.8-1.1Z"/>',
-  crouch: '<path d="M12 5.2a1.9 1.9 0 1 0 0-3.8 1.9 1.9 0 0 0 0 3.8ZM6 21h2.2l1.4-5H13l1.6 5h2.2l-2-6.4a2 2 0 0 0-1.9-1.4h-1.6l.9-3.1 1.6 1.5H17v-2h-2.2l-2.7-2.6A2 2 0 0 0 8.9 8l-1.7 5.7a2 2 0 0 0 .4 1.8Z"/>',
-  use: '<path d="M9 11.2V5.5a1.5 1.5 0 1 1 3 0V11l5 1.1a2 2 0 0 1 1.6 2.2l-.6 5A2 2 0 0 1 16 21h-5.3a2 2 0 0 1-1.6-.8l-3.5-4.5 1.4-1.4L9 15.3Z"/>',
-  light: '<path d="M7 2h10v4l-2 4v11a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1V10L7 6Zm4 11v3h2v-3Z"/>',
-  camera: '<path d="M4 6h11a2 2 0 0 1 2 2v1.6l4-2.6v10l-4-2.6V16a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Z"/>',
-  pause: '<path d="M7 5h3.5v14H7zm6.5 0H17v14h-3.5z"/>',
+  // бег: подвійний шеврон уперед
+  run: '<path d="M6 13.5 12 7.5l6 6M6 19l6-6 6 6"/>',
+  // присесть: шеврон униз над рискою підлоги
+  crouch: '<path d="M6 6.5l6 6 6-6M4.5 18.5h15"/>',
+  // действие: кнопка-контакт — кільце з точкою
+  use: '<circle cx="12" cy="12" r="7.6"/><circle cx="12" cy="12" r="2.5" fill="currentColor" stroke="none"/>',
+  // фонарик: корпус з відбивачем і кнопкою
+  light: '<path d="M6.5 3.5h11L15 9.5v11H9v-11Z"/><path d="M9 9.5h6M12 12.5v2.5"/>',
+  // камера: корпус, об'єктив і точка запису
+  camera: '<path d="M3 7.5h11.5v9H3Z"/><path d="M14.5 10.6 20.5 7.5v9l-6-3.1"/><circle cx="6" cy="10.2" r="1.1" fill="currentColor" stroke="none"/>',
+  pause: '<path d="M9 5.5v13M15 5.5v13" stroke-width="2.2"/>',
   // знак радіації: дозиметр ДП-5
-  dosi: '<path d="M12 10.3a1.7 1.7 0 1 1 0 3.4 1.7 1.7 0 0 1 0-3.4Zm-1.6-1.1L7.6 4.4A8.6 8.6 0 0 0 3.4 12h5.5a3.1 3.1 0 0 1 1.5-2.8Zm3.2 0A3.1 3.1 0 0 1 15.1 12h5.5a8.6 8.6 0 0 0-4.2-7.6Zm1.5 4.2L12 18.2l-3.1-4.8-2.8 4.8a8.6 8.6 0 0 0 11.8 0Z"/>'
+  dosi: '<path fill="currentColor" stroke="none" d="M12 10.3a1.7 1.7 0 1 1 0 3.4 1.7 1.7 0 0 1 0-3.4Zm-1.6-1.1L7.6 4.4A8.6 8.6 0 0 0 3.4 12h5.5a3.1 3.1 0 0 1 1.5-2.8Zm3.2 0A3.1 3.1 0 0 1 15.1 12h5.5a8.6 8.6 0 0 0-4.2-7.6Zm1.5 4.2L12 18.2l-3.1-4.8-2.8 4.8a8.6 8.6 0 0 0 11.8 0Z"/>',
+  // для екрана «Управление»: стік (ліва половина) і огляд (права)
+  stick: '<circle cx="12" cy="12" r="8.5"/><path d="M12 12l3.2-3.2"/><circle cx="15.8" cy="8.2" r="2.4" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"/>',
+  look: '<path d="M3.5 12h17M6.5 9l-3 3 3 3M17.5 9l3 3-3 3M12 6.5v11"/>'
 };
+
+/** Підписи під значками кнопок (машинопис, як таблички на пульті). */
+const CAPS = { use: 'ДЕЙСТВ.', light: 'СВЕТ', run: 'БЕГ', crouch: 'ПРИСЕСТЬ', camera: 'ЗУМ', dosimeter: 'ДП-5' } as const;
 
 /** Елементи інтерфейсу, яким дотик має дістатися як звичайне натискання/прокрутка. */
 const UI_SELECTOR = '.reader, .screen, .prologue, .loadline, button, a, input, select, label';
 const onUI = (t: EventTarget | null) => t instanceof Element && !!t.closest(UI_SELECTOR);
 
-export const svg = (p: string) => `<svg viewBox="0 0 24 24" aria-hidden="true">${p}</svg>`;
+export const svg = (p: string) =>
+  `<svg viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="square" stroke-linejoin="miter">${p}</g></svg>`;
+const cap = (a: keyof typeof CAPS) => `<b class="cap">${CAPS[a]}</b>`;
 
 export class TouchControls {
   active = false;
@@ -41,12 +56,12 @@ export class TouchControls {
     r.innerHTML = `
       <div class="stick"><div class="knob"></div></div>
       <div class="tbtns">
-        <button class="tb tb-use" data-a="use" aria-label="Действие">${svg(ICONS.use)}</button>
-        <button class="tb tb-light" data-a="light" aria-label="Фонарик">${svg(ICONS.light)}</button>
-        <button class="tb tb-run" data-a="run" aria-label="Бег">${svg(ICONS.run)}</button>
-        <button class="tb tb-crouch" data-a="crouch" aria-label="Присесть">${svg(ICONS.crouch)}</button>
-        <button class="tb tb-cam" data-a="camera" aria-label="Камера">${svg(ICONS.camera)}</button>
-        <button class="tb tb-dosi" data-a="dosimeter" aria-label="Дозиметр">${svg(ICONS.dosi)}</button>
+        <button class="tb tb-use" data-a="use" aria-label="Действие">${svg(ICONS.use)}${cap('use')}</button>
+        <button class="tb tb-light" data-a="light" aria-label="Фонарик">${svg(ICONS.light)}${cap('light')}</button>
+        <button class="tb tb-run" data-a="run" aria-label="Бег">${svg(ICONS.run)}${cap('run')}</button>
+        <button class="tb tb-crouch" data-a="crouch" aria-label="Присесть">${svg(ICONS.crouch)}${cap('crouch')}</button>
+        <button class="tb tb-cam" data-a="camera" aria-label="Камера">${svg(ICONS.camera)}${cap('camera')}</button>
+        <button class="tb tb-dosi" data-a="dosimeter" aria-label="Дозиметр">${svg(ICONS.dosi)}${cap('dosimeter')}</button>
       </div>
       <button class="tb tb-pause" data-a="pause" aria-label="Пауза">${svg(ICONS.pause)}</button>`;
     uiRoot.appendChild(r);
@@ -85,6 +100,8 @@ export class TouchControls {
 
   private onStart(e: TouchEvent): void {
     this.active = true;
+    // будь-який дотик — гравець на сенсорному екрані: підказки показують кнопку, а не клавішу «E»
+    this.input.lastDevice = 'touch';
     if (!this.root.classList.contains('shown')) return;
     // дотик по інтерфейсу (записка, меню, кнопки) не наш: інакше preventDefault «з'їдає» натискання «Закрыть»
     if (onUI(e.target)) return;

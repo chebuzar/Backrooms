@@ -14,11 +14,15 @@ html, body { width: 100%; height: 100%; background: #000; color: var(--ink); ove
   background: rgba(233, 228, 214, .32); box-shadow: 0 0 0 1px rgba(233,228,214,.4) inset; }
 .touch .tbtns { position: fixed; right: calc(18px + env(safe-area-inset-right)); bottom: calc(18px + env(safe-area-inset-bottom));
   display: grid; grid-template-columns: repeat(3, 64px); grid-template-rows: repeat(2, 64px); gap: 12px; pointer-events: auto; }
-.touch .tb { width: 64px; height: 64px; border-radius: 50%; border: 1.5px solid rgba(233,228,214,.3); background: rgba(10,9,7,.38);
-  color: rgba(233,228,214,.85); display: grid; place-items: center; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
-  pointer-events: auto; touch-action: none; transition: transform .08s, background .12s; }
-.touch .tb svg { width: 28px; height: 28px; fill: currentColor; }
-.touch .tb.on, .touch .tb.latched { background: rgba(217,194,122,.32); border-color: rgba(217,194,122,.75); color: #fff; transform: scale(.94); }
+.touch .tb { width: 64px; height: 64px; border-radius: 50%; border: 1px solid rgba(233,228,214,.26); background: rgba(8,8,7,.42);
+  box-shadow: 0 0 0 3px rgba(0,0,0,.18), inset 0 0 0 4px rgba(233,228,214,.05);
+  color: rgba(233,228,214,.78); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); pointer-events: auto; touch-action: none; transition: transform .08s, background .12s; }
+.touch .tb svg { width: 24px; height: 24px; }
+/* підпис під значком — машинопис, як табличка на пульті */
+.touch .tb .cap { font: 700 8px/1 'Anonymous Pro', 'Courier New', monospace; letter-spacing: .05em; color: rgba(233,228,214,.6); }
+.touch .tb.on, .touch .tb.latched { background: rgba(200,182,120,.26); border-color: rgba(217,194,122,.7); color: #f3ecd8; transform: scale(.94); }
+.touch .tb.on .cap, .touch .tb.latched .cap { color: rgba(243,236,216,.85); }
 .touch .tb-use { grid-column: 3; grid-row: 1; }
 .touch .tb-light { grid-column: 2; grid-row: 1; }
 .touch .tb-cam { grid-column: 1; grid-row: 1; width: 52px; height: 52px; align-self: end; justify-self: end; }
@@ -27,4 +31,5 @@ html, body { width: 100%; height: 100%; background: #000; color: var(--ink); ove
 .touch .tb-run { grid-column: 3; grid-row: 2; }
 .touch .tb-crouch { grid-column: 2; grid-row: 2; }
 .touch .tb-pause { position: fixed; top: calc(14px + env(safe-area-inset-top)); right: calc(16px + env(safe-area-inset-right)); width: 48px; height: 48px; }
-.touch .tb-pause svg { width: 22px; height: 22px; }
+.touch .tb-pause svg { width: 20px; height: 20px; }
+.touch .tb-cam svg, .touch .tb-dosi svg { width: 20px; height: 20px; }

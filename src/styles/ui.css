@@ -130,6 +130,8 @@ input[type='range'].pencil-range:focus-visible { outline: 2px dashed var(--penci
   text-shadow: 0 0 3px #000, 0 0 10px rgba(0,0,0,.8); opacity: 0; transition: opacity .15s; white-space: nowrap; }
 .hud .prompt.on { opacity: 1; }
 .hud .prompt kbd { display: inline-block; min-width: 1.6em; padding: .2em .4em; margin-right: .6em; border: 1.5px solid rgba(239,233,217,.7); border-radius: 4px; font: inherit; text-align: center; }
+.hud .prompt kbd.ico { min-width: 0; padding: .12em; vertical-align: middle; }
+.hud .prompt kbd.ico svg { display: block; width: 1.35em; height: 1.35em; }
 .hud .subs { position: absolute; left: 50%; bottom: calc(9dvh + env(safe-area-inset-bottom)); transform: translateX(-50%); max-width: min(46em, 86vw); text-align: center;
   font: 400 calc(var(--u) * 1.1)/1.45 var(--type); color: #f1ecdd; background: rgba(0,0,0,.55); padding: .35em .8em; border-radius: 2px; opacity: 0; transition: opacity .3s; }
 .hud .subs.on { opacity: 1; }
@@ -198,8 +200,8 @@ input[type='range'].pencil-range:focus-visible { outline: 2px dashed var(--penci
   background: rgba(0,0,0,.38); padding: .55em 1em; border-radius: 3px; opacity: 0; transition: opacity .5s; white-space: nowrap; }
 .hud .tutorial.on { opacity: 1; }
 .hud .tutorial kbd { display: inline-block; min-width: 1.6em; padding: .2em .45em; border: 1.5px solid rgba(239,233,217,.75); border-radius: 4px; font: inherit; text-align: center; }
-.hud .tutorial .ti svg, .controls-screen .ti svg { width: 1.7em; height: 1.7em; fill: #efe9d9; vertical-align: middle; }
-.controls-screen .ti svg { fill: var(--ink); }
+.hud .tutorial .ti svg, .controls-screen .ti svg { width: 1.7em; height: 1.7em; color: #efe9d9; vertical-align: middle; }
+.controls-screen .ti svg { color: var(--ink); }
 .controls-screen .keys { display: grid; grid-template-columns: max-content 1fr; gap: .45em 1.2em; align-items: center; margin-bottom: 1.2em; font-size: calc(var(--u) * .95); }
 .controls-screen kbd { display: inline-block; padding: .15em .45em; border: 1.5px solid var(--ink-soft); border-radius: 4px; font: 700 .9em/1.2 var(--type); white-space: nowrap; }
 .journal-screen .empty { max-width: 40ch; color: var(--ink-soft); margin-bottom: 1.2em; }

@@ -13,7 +13,6 @@ await page.waitForSelector('.menu', { timeout: 90000 });
 for (const lv of [1, 2]) {
   await page.evaluate(async (n) => { const g = window.__zk.game; await g.loadLevel(n); g.enterLevelStart(); g.play(); }, lv);
   await wait(1500);
-  const d0 = await page.evaluate(() => window.__zk.game.store.progress.deaths);
   // монстр за спиною впритул, у погоні; гравець дивиться вбік — «Наблюдатель» хапає, коли на нього не дивляться
   await page.evaluate(() => {
     const g = window.__zk.game, s = g.hunt.stalker, p = g.player;

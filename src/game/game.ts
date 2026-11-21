@@ -108,7 +108,7 @@ export class Game {
   private readonly fwd = new THREE.Vector3();
   /** «Схопив»: ліхтарик на пів секунди світить на обличчя монстра знизу. */
   private flashOverride: { from: THREE.Vector3; at: THREE.Vector3; intensity: number } | null = null;
-  /** Зум камери 2× (V / кнопка 📹): плавний перехід 0..1. */
+  /** Зум камери 2× (V / кнопка камери на дотику): плавний перехід 0..1. */
   zoom = false;
   private zoomK = 0;
   private baseFov = 75;
@@ -927,11 +927,12 @@ export class Game {
     }
     const c = this.camera, f = new THREE.Vector3(0, 0, -1).applyQuaternion(c.quaternion);
     if (this.mode === 'play' && this.interact) {
-      const key = this.input.lastDevice === 'gamepad' ? 'A' : this.input.lastDevice === 'touch' ? '✋' : 'E';
-      if (this.hide) this.hud.setPrompt(HINTS.unhide, key); // у шафці — лише «Выйти» (обробляється вище)
+      // на дотику — значок кнопки «Действие» (той самий, що на екрані), а не клавіша
+      const key = this.input.lastDevice === 'gamepad' ? 'A' : 'E', icon = this.input.lastDevice === 'touch' ? svg(ICONS.use) : undefined;
+      if (this.hide) this.hud.setPrompt(HINTS.unhide, key, icon); // у шафці — лише «Выйти» (обробляється вище)
       else {
         const it = this.interact.update(c, f.x, f.y, f.z);
-        this.hud.setPrompt(it ? it.prompt : null, key);
+        this.hud.setPrompt(it ? it.prompt : null, key, icon);
         if (it && this.input.consume('interact')) { it.use(); this.tried.add('use'); }
       }
       if (this.player.running) this.tried.add('run');
