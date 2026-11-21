@@ -1,5 +1,6 @@
 // Постобробка на TSL: сцена (+нормалі, швидкості) → тіні в кутах (GTAO) → часове згладжування (TRAA)
-// → свічення (bloom) → фінальний «об'єктив камери»: експозиція, AgX, грейдинг, аберація, віньєтка, зерно.
+// → свічення (bloom) → «радянська плівка»: експозиція, ACES, плівкова крива й грейдинг палітри рівня, halation, дрібне зерно
+// в напівтонах. Без рамки й вигину: віньєтка, аберація й «плавання» — лише від страху; видошукач — лише з камерою в руках.
 import * as THREE from 'three/webgpu';
 import {
   pass, mrt, output, normalView, velocity, packNormalToRGB, unpackRGBToNormal, sample, uniform, Fn,
@@ -21,11 +22,15 @@ export const look = {
   aoStrength: uniform(1.0),
   bloomStrength: uniform(0.32),
   bloomThreshold: uniform(1.05),
-  grain: uniform(0.022),
-  vignette: uniform(0.42),
-  aberration: uniform(0.0014),
-  distortion: uniform(0.06),
+  grain: uniform(0.012),
+  /** Постійна віньєтка — 0 (рішення власника 21.11: затемнення країв лише від страху). */
+  vignette: uniform(0.0),
+  aberration: uniform(0.0),
   saturation: uniform(1.0),
+  /** Камера піднята до ока (0..1): холодніший кадр видошукача, легка віньєтка об'єктива. */
+  cam: uniform(0.0),
+  /** Нерви (0 — спокій, 1 — на межі): світ вицвітає й «пливе». */
+  dread: uniform(0.0),
   /** Подих страху: посилює аберацію, віньєтку й зерно (0..1). */
   fear: uniform(0.0),
   /** Затемнення екрана (0 — нема, 1 — чорний). */
@@ -34,6 +39,29 @@ export const look = {
   hurt: uniform(0.0),
   aspect: uniform(16 / 9)
 };
+
+/** Палітра «радянської плівки» рівня: відтінок тіней і світел, підняті чорні, насиченість, контраст, колір halation. */
+export interface FilmLook { shadow: [number, number, number]; high: [number, number, number]; lift: [number, number, number]; sat: number; contrast: number; halation: [number, number, number] }
+const film = {
+  shadow: uniform(new THREE.Vector3(0.0, 0.0, 0.0)),
+  high: uniform(new THREE.Vector3(0.0, 0.0, 0.0)),
+  lift: uniform(new THREE.Vector3(0.02, 0.02, 0.02)),
+  sat: uniform(0.88),
+  contrast: uniform(1.0),
+  halation: uniform(new THREE.Vector3(1.0, 0.85, 0.75))
+};
+/** Палітри рівнів (ART.md §2): 0 НИИ — охра й оливкові тіні; 1 база — холодна зелень; 2 парковка — натрій і синя тінь. */
+export const FILM: Record<number, FilmLook> = {
+  0: { shadow: [-0.012, 0.006, -0.004], high: [0.024, 0.012, -0.03], lift: [0.026, 0.026, 0.02], sat: 0.82, contrast: 1.06, halation: [1.0, 0.78, 0.64] },
+  1: { shadow: [-0.018, 0.01, 0.006], high: [0.0, 0.016, 0.006], lift: [0.018, 0.026, 0.024], sat: 0.78, contrast: 1.08, halation: [0.86, 0.92, 0.9] },
+  2: { shadow: [-0.014, -0.002, 0.02], high: [0.03, 0.01, -0.03], lift: [0.02, 0.02, 0.028], sat: 0.84, contrast: 1.1, halation: [1.0, 0.7, 0.5] }
+};
+export function setFilm(level: number): void {
+  const f = FILM[level] ?? FILM[0] as FilmLook;
+  film.shadow.value.set(...f.shadow); film.high.value.set(...f.high); film.lift.value.set(...f.lift);
+  film.sat.value = f.sat; film.contrast.value = f.contrast; film.halation.value.set(...f.halation);
+}
+setFilm(0);
 
 /** Тональна корекція (правило власника: AgX або ACES). ?tm=agx|aces|neutral — для порівняння скріншотами. */
 const TM = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('tm') : null;
@@ -99,37 +127,41 @@ export class PostPipeline {
       bloomTex.setResolutionScale(profile.bloom);
     }
     const bloomNode = bloomTex ? texOf(bloomTex) : null;
-    const S = (uv: V2) => (bloomNode ? S0(uv).add(bloomNode.sample(uv).rgb) : S0(uv));
+    // halation плівки: сяйво довкола ламп трохи червонувате (світло розсіюється в підкладці емульсії)
+    const S = (uv: V2) => (bloomNode ? S0(uv).add(bloomNode.sample(uv).rgb.mul(film.halation)) : S0(uv));
 
     const finalPass = Fn(() => {
       const c = screenUV.sub(0.5);
-      // об'єктив: легка бочкоподібна дисторсія + більше на страху
       const ca = vec2(c.x.mul(look.aspect), c.y);
       const r2 = dot(ca, ca);
-      const k = look.distortion.add(look.fear.mul(0.05));
-      const uvd = c.mul(float(1).add(k.mul(r2))).div(float(1).add(k.mul(0.35))).add(0.5).toVar();
-      // хроматична аберація до країв
-      const ab = c.mul(look.aberration.add(look.fear.mul(0.006))).mul(r2.mul(4).add(0.4));
+      // «плавання» картинки лише від страху й нервів: легке дихання лінзи, без вигину країв і чорних кутів
+      const wob = look.fear.mul(0.012).add(look.dread.mul(0.006));
+      const uvd = c.mul(float(1).add(wob.mul(sin(time.mul(1.7)).mul(r2).mul(4)))).add(0.5).toVar();
+      // аберація — лише від страху (за замовчуванням нуль)
+      const ab = c.mul(look.aberration.add(look.fear.mul(0.0045)).add(look.dread.mul(0.0015))).mul(r2.mul(4).add(0.4));
       const col = vec3(S(uvd.add(ab)).r, S(uvd).g, S(uvd.sub(ab)).b).toVar();
-      // експозиція й тональна компресія Khronos Neutral: зберігає відтінок (насичений жовтий не «буріє»)
       col.assign(TONEMAP(col.mul(look.exposure), float(1)));
-      // грейдинг: тіні трохи в холодну зелень, світла в теплий жовтий (флуоресцентні лампи)
+      // плівкова крива: контраст довкола середнього сірого, м'яко підняті чорні (вицвіла плівка)
+      col.assign(clamp(col.sub(0.42).mul(film.contrast).add(0.42), 0, 1));
       const lum = dot(col, vec3(0.2126, 0.7152, 0.0722));
-      col.addAssign(vec3(-0.008, 0.004, 0.01).mul(float(1).sub(smoothstep(0, 0.4, lum))));
-      col.addAssign(vec3(0.02, 0.012, -0.018).mul(smoothstep(0.5, 1, lum)));
-      col.assign(mix(vec3(lum), col, look.saturation));
-      // віньєтка
-      const v = smoothstep(0.85, 0.2, length(ca).mul(float(1).add(look.vignette.add(look.fear.mul(0.4)))));
-      col.mulAssign(mix(float(1), v, 0.85));
+      // розщеплене тонування: відтінок тіней і світел палітри рівня
+      col.addAssign(film.shadow.mul(float(1).sub(smoothstep(0, 0.45, lum))));
+      col.addAssign(film.high.mul(smoothstep(0.45, 1, lum)));
+      col.assign(mix(vec3(lum), col, film.sat.mul(look.saturation).mul(float(1).sub(look.dread.mul(0.35)))));
+      col.assign(col.mul(float(1).sub(film.lift)).add(film.lift));
+      // видошукач камери: трохи холодніше й зеленкувато (відикон), легка віньєтка об'єктива
+      col.assign(mix(col, col.mul(vec3(0.93, 1.0, 1.02)), look.cam));
+      // віньєтка — від страху, нервів і об'єктива камери (постійної немає)
+      const vk = look.vignette.add(look.fear.mul(0.55)).add(look.dread.mul(0.3)).add(look.cam.mul(0.25));
+      const v = smoothstep(0.95, 0.25, length(ca).mul(float(1).add(vk)));
+      col.mulAssign(mix(float(1), v, clamp(vk.mul(1.4), 0, 0.9)));
       // пошкодження: червоний край
       col.assign(mix(col, col.mul(vec3(1.25, 0.35, 0.3)).add(vec3(0.05, 0, 0)), look.hurt.mul(clamp(length(ca).mul(1.6), 0.2, 1))));
-      // поза об'єктивом — чорне
-      const edge = vec2(smoothstep(vec2(0.5), vec2(0.495), uvd.sub(0.5).abs()));
-      col.mulAssign(edge.x.mul(edge.y));
-      // плівкове зерно: сильніше в тінях
+      // дрібне плівкове зерно лише в напівтонах (у глибоких тінях і світлах майже немає — жодного «снігу»)
       const seed = screenCoordinate.xy.add(fract(time.mul(7.31)).mul(vec2(173.1, 91.7)));
       const n = fract(sin(dot(seed, vec2(12.9898, 78.233))).mul(43758.5453)).sub(0.5);
-      col.addAssign(n.mul(look.grain.add(look.fear.mul(0.04))).mul(mix(float(1.4), float(0.6), lum)));
+      const mid = lum.mul(float(1).sub(lum)).mul(4);
+      col.addAssign(n.mul(look.grain.add(look.fear.mul(0.012)).add(look.cam.mul(0.01))).mul(mid));
       col.mulAssign(float(1).sub(look.fade));
       return vec4(sRGBTransferOETF(max(col, vec3(0))) as THREE.Node<'vec3'>, 1);
     });

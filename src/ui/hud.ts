@@ -1,5 +1,6 @@
-// Ігровий інтерфейс: «REC» відеокамери з лічильником плівки, підказка дії, поточне завдання, субтитри,
-// читання документів і записок, пролог (машинопис на чорному), фінальна картка рівня.
+// Ігровий інтерфейс «речами»: на екрані майже нічого. Видошукач відеокамери (REC, лічильник, заряд) — лише коли
+// камера піднята; годинник «Электроника» на руці — на мить; завдання з'являється олівцем і зникає (воно в блокноті).
+// Тут же: підказка дії, субтитри, читання документів, пролог (машинопис на чорному), картки рівня.
 import type { Doc } from '../story/ru';
 import { prologueTimeline } from './prologue-time';
 import { T } from '../i18n/ru';
@@ -24,7 +25,11 @@ export class HUD {
     const el = document.createElement('div');
     el.className = 'hud';
     el.innerHTML = `
-      <div class="osd"><span class="rec"><i></i>REC</span><span class="tc">0:00:00</span><span class="sp">SP</span><span class="bat" hidden><b></b><b></b><b></b><b></b></span><span class="zoom"></span></div>
+      <div class="vf" aria-hidden="true"><i class="c tl"></i><i class="c tr"></i><i class="c bl"></i><i class="c br"></i>
+        <div class="vf-top"><span class="rec"><i></i>${esc(T.hud.rec)}</span><span class="tc">0:00:00</span><span class="vbat"><b></b><b></b><b></b><b></b></span></div>
+        <div class="vf-bot"><span class="brand">${esc(T.hud.camBrand)}</span><span class="zoom"></span></div>
+        <div class="vf-cross"></div><div class="vf-dead">${esc(T.hud.camDead)}</div></div>
+      <div class="watch" aria-hidden="true"><div class="w-face"><span class="w-brand">${esc(T.hud.watchBrand)}</span><span class="w-time">00:00</span><span class="w-sec">00</span></div></div>
       <div class="slits" aria-hidden="true"></div>
       <div class="tutorial" aria-live="polite"></div>
       <div class="lockhint">${esc(T.hud.lockHint)}</div>
@@ -54,7 +59,7 @@ export class HUD {
 
   show(on: boolean): void { this.el.classList.toggle('shown', on); }
 
-  /** Зум камери: напис «ZOOM 2×» у рамці відеокамери. */
+  /** Зум камери: «×2» у видошукачі. */
   setZoom(on: boolean, label: string): void {
     const z = this.el.querySelector('.zoom') as HTMLElement;
     z.textContent = label;
@@ -83,28 +88,34 @@ export class HUD {
     el.classList.remove('on'); void el.offsetWidth; el.classList.add('on');
   }
 
-  private batHold = 0;
-  /** Підібрав батарейки: індикатор заряду видно ще кілька секунд. */
-  flashBattery(v: number): void { this.batHold = 3; this.setBattery(v); }
-
-  /** Батарея ліхтарика в рамці камери: 4 поділки; −1 — сховати (якщо щойно не підбирав батарейки). */
-  setBattery(v: number, actual = v): void {
-    const b = this.el.querySelector<HTMLElement>('.bat');
-    if (!b) return;
-    if (v < 0 && this.batHold > 0) v = actual;
-    b.hidden = v < 0;
-    if (v < 0) return;
-    const n = Math.ceil(v * 4);
-    b.querySelectorAll('b').forEach((x, i) => x.classList.toggle('on', i < n));
-    b.classList.toggle('low', v < 0.15);
+  /** Камера піднята до ока: видошукач (0..1 — прозорість), заряд камери 0..1. */
+  setCamera(k: number, charge: number): void {
+    const vf = this.el.querySelector('.vf') as HTMLElement;
+    vf.style.opacity = k.toFixed(3);
+    vf.classList.toggle('on', k > 0.01);
+    vf.classList.toggle('dead', charge <= 0);
+    const n = Math.ceil(charge * 4);
+    vf.querySelectorAll('.vbat b').forEach((x, i) => x.classList.toggle('on', i < n));
+    (vf.querySelector('.vbat') as HTMLElement).classList.toggle('low', charge < 0.2);
   }
 
-  /** Лічильник плівки: години:хвилини:секунди запису. */
-  setTime(sec: number): void {
+  /** Лічильник касети камери: години:хвилини:секунди запису. */
+  setTape(sec: number): void {
     const s = Math.floor(sec), h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60;
     this.tc.textContent = `${h}:${String(m).padStart(2, '0')}:${String(x).padStart(2, '0')}`;
     this.rec.classList.toggle('blink', Math.floor(sec * 1.2) % 2 === 0);
   }
+
+  private watchT = 0;
+  /** Глянути на годинник: циферблат на 3 с (text — «ГГ:ХХ», sec — секунди; бреше, коли нерви на межі). */
+  showWatch(text: string, sec: string): void {
+    const w = this.el.querySelector('.watch') as HTMLElement;
+    (w.querySelector('.w-time') as HTMLElement).textContent = text;
+    (w.querySelector('.w-sec') as HTMLElement).textContent = sec;
+    w.classList.add('on');
+    this.watchT = 3;
+  }
+  get watchOpen(): boolean { return this.watchT > 0; }
 
   /** «Щёлкните, чтобы осмотреться»: миша ще не захоплена (ПК). */
   setLockHint(on: boolean): void { this.lockHint.classList.toggle('on', on); }
@@ -132,7 +143,7 @@ export class HUD {
   }
 
   update(dt: number): void {
-    this.batHold = Math.max(0, this.batHold - dt);
+    if (this.watchT > 0 && (this.watchT -= dt) <= 0) this.el.querySelector('.watch')?.classList.remove('on');
     if (this.subTimer > 0 && (this.subTimer -= dt) <= 0) this.sub.classList.remove('on');
   }
 

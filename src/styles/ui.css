@@ -113,17 +113,41 @@ input[type='range'].pencil-range:focus-visible { outline: 2px dashed var(--penci
 /* ---------- ігровий інтерфейс: екран відеокамери ---------- */
 .hud { position: fixed; inset: 0; pointer-events: none; opacity: 0; transition: opacity .6s; font-family: var(--type); }
 .hud.shown { opacity: 1; }
-.hud .osd { position: absolute; top: calc(18px + env(safe-area-inset-top)); left: calc(22px + env(safe-area-inset-left)); display: flex; gap: 1.1em;
-  font: 700 calc(var(--u) * 1.05)/1 var(--type); color: rgba(240,238,228,.82); letter-spacing: .06em; text-shadow: 0 0 2px #000, 0 0 6px rgba(0,0,0,.6); }
-.hud .rec i { display: inline-block; width: .62em; height: .62em; border-radius: 50%; background: #e02a1f; margin-right: .45em; vertical-align: .02em; box-shadow: 0 0 6px rgba(224,42,31,.8); }
-.hud .rec.blink i { opacity: .25; box-shadow: none; }
-.hud .sp { opacity: .7; }
+/* видошукач відеокамери — лише коли камера піднята (V) */
+.hud .vf { position: absolute; inset: calc(4dvh + env(safe-area-inset-top)) calc(4vw + env(safe-area-inset-right)) calc(4dvh + env(safe-area-inset-bottom)) calc(4vw + env(safe-area-inset-left));
+  opacity: 0; font: 700 calc(var(--u) * 1.0)/1 var(--type); color: rgba(240,238,228,.86); letter-spacing: .08em; text-shadow: 0 0 2px #000, 0 0 6px rgba(0,0,0,.6); }
+.hud .vf .c { position: absolute; width: 2.4em; height: 2.4em; border: 2px solid rgba(240,238,228,.8); }
+.hud .vf .tl { left: 0; top: 0; border-right: 0; border-bottom: 0; } .hud .vf .tr { right: 0; top: 0; border-left: 0; border-bottom: 0; }
+.hud .vf .bl { left: 0; bottom: 0; border-right: 0; border-top: 0; } .hud .vf .br { right: 0; bottom: 0; border-left: 0; border-top: 0; }
+.hud .vf-top { position: absolute; top: 1.1em; left: 1.4em; right: 1.4em; display: flex; gap: 1.2em; align-items: center; }
+.hud .vf-top .vbat { margin-left: auto; display: inline-flex; gap: 2px; padding: 2px; border: 1px solid rgba(232,228,210,.7); }
+.hud .vbat b { width: 6px; height: 9px; background: rgba(232,228,210,.15); }
+.hud .vbat b.on { background: rgba(232,228,210,.85); }
+.hud .vbat.low b.on { background: #d6453a; animation: bat-blink 1s steps(2) infinite; }
+.hud .vf-bot { position: absolute; bottom: 1.1em; left: 1.4em; right: 1.4em; display: flex; justify-content: space-between; font-size: .8em; opacity: .75; }
+.hud .vf-bot .zoom { font-size: 1.25em; opacity: 0; }
+.hud .vf-bot .zoom.on { opacity: 1; }
+.hud .vf-cross { position: absolute; left: 50%; top: 50%; width: 3.2em; height: 2.2em; transform: translate(-50%, -50%);
+  background: linear-gradient(rgba(240,238,228,.55), rgba(240,238,228,.55)) center/100% 1px no-repeat, linear-gradient(rgba(240,238,228,.55), rgba(240,238,228,.55)) center/1px 100% no-repeat; opacity: .6; }
+.hud .vf-dead { position: absolute; left: 50%; top: 58%; transform: translateX(-50%); color: #e04a3a; letter-spacing: .3em; display: none; animation: bat-blink 1s steps(2) infinite; }
+.hud .vf.dead .vf-dead { display: block; }
+.hud .vf.dead .rec { opacity: .25; }
+/* годинник «Электроника 5» на руці: внизу ліворуч, на мить */
+.hud .watch { position: absolute; left: calc(5vw + env(safe-area-inset-left)); bottom: calc(6dvh + env(safe-area-inset-bottom)); opacity: 0;
+  transform: translateY(2em) rotate(-8deg); transition: opacity .35s, transform .45s cubic-bezier(.3,.7,.3,1); }
+.hud .watch.on { opacity: 1; transform: rotate(-8deg); }
+.hud .w-face { width: max-content; padding: .7em .9em .8em; border-radius: .9em; background: linear-gradient(160deg, #3b3b37, #1b1b19);
+  border: 3px solid #77746a; box-shadow: 0 .8em 2em rgba(0,0,0,.7), inset 0 0 0 2px #111; display: grid; grid-template-columns: 1fr auto; align-items: end; gap: .2em .4em; }
+.hud .w-brand { grid-column: 1 / -1; font: 700 calc(var(--u) * .55)/1 var(--type); letter-spacing: .14em; color: #b9b5a5; }
+.hud .w-time, .hud .w-sec { font: 700 calc(var(--u) * 2.3)/1 'Anonymous Pro', monospace; color: #1d211a; background: #8d9a7e; padding: .12em .25em; border-radius: 3px;
+  box-shadow: inset 0 2px 5px rgba(0,0,0,.45); letter-spacing: .04em; }
+.hud .w-sec { font-size: calc(var(--u) * 1.2); align-self: stretch; display: flex; align-items: flex-end; }
 .hud .obj { position: absolute; top: calc(18px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); max-width: 70vw; text-align: center;
   font: 400 calc(var(--u) * 1.2)/1.2 var(--hand); color: #d9d2ff; text-shadow: 0 0 3px #000, 0 1px 8px rgba(0,0,0,.8); opacity: 0;
   clip-path: inset(0 100% 0 0); }
 .hud .obj.on { animation: write-in 1.4s cubic-bezier(.4,.1,.3,1) forwards, fade-obj 7s 1.4s forwards; }
 @keyframes write-in { from { opacity: 1; clip-path: inset(0 100% 0 0); } to { opacity: 1; clip-path: inset(0 0 0 0); } }
-@keyframes fade-obj { 0%, 70% { opacity: 1; } 100% { opacity: .35; } }
+@keyframes fade-obj { 0%, 70% { opacity: 1; } 100% { opacity: 0; } }
 .hud .dot { position: absolute; left: 50%; top: 50%; width: 5px; height: 5px; margin: -2.5px; border-radius: 50%; background: rgba(240,238,228,.85); opacity: 0; transition: opacity .15s; box-shadow: 0 0 3px #000; }
 .hud .dot.on { opacity: 1; }
 .hud .prompt { position: absolute; left: 50%; top: calc(50% + 2.2em); transform: translateX(-50%); font: 700 var(--u)/1 var(--type); color: #efe9d9;
@@ -196,9 +220,7 @@ input[type='range'].pencil-range:focus-visible { outline: 2px dashed var(--penci
 .hud .lockhint { position: absolute; left: 50%; top: calc(50% + 4.4em); transform: translateX(-50%); font: 400 calc(var(--u) * .9)/1 var(--type);
   color: rgba(239,233,217,.72); letter-spacing: .06em; text-shadow: 0 0 3px #000, 0 0 10px rgba(0,0,0,.85); opacity: 0; transition: opacity .6s; white-space: nowrap; }
 .hud .lockhint.on { opacity: 1; transition-delay: .8s; }
-/* зум камери й навчання */
-.osd .zoom { opacity: 0; transition: opacity .2s; color: #f0eee4; }
-.osd .zoom.on { opacity: 1; }
+/* навчання */
 .hud .tutorial { position: absolute; left: 50%; bottom: calc(16dvh + env(safe-area-inset-bottom)); transform: translateX(-50%); display: flex; align-items: center; gap: .7em;
   font: 700 calc(var(--u) * 1.05)/1 var(--type); color: #efe9d9; letter-spacing: .04em; text-shadow: 0 0 3px #000, 0 0 10px rgba(0,0,0,.85);
   background: rgba(0,0,0,.38); padding: .55em 1em; border-radius: 3px; opacity: 0; transition: opacity .5s; white-space: nowrap; }
@@ -210,12 +232,34 @@ input[type='range'].pencil-range:focus-visible { outline: 2px dashed var(--penci
 .controls-screen kbd { display: inline-block; padding: .15em .45em; border: 1.5px solid var(--ink-soft); border-radius: 4px; font: 700 .9em/1.2 var(--type); white-space: nowrap; }
 .journal-screen .empty { max-width: 40ch; color: var(--ink-soft); margin-bottom: 1.2em; }
 
-/* батарея ліхтарика в рамці «камери» */
-.osd .bat { display: inline-flex; gap: 2px; margin-left: 1.2em; padding: 2px; border: 1px solid rgba(232, 228, 210, 0.7); vertical-align: middle; }
-.osd .bat b { width: 6px; height: 9px; background: rgba(232, 228, 210, 0.15); }
-.osd .bat b.on { background: rgba(232, 228, 210, 0.85); }
-.osd .bat.low b.on { background: #d6453a; animation: bat-blink 1s steps(2) infinite; }
 @keyframes bat-blink { 50% { opacity: 0.2; } }
 
 .journal-h { margin-top: 1.6em; }
 .journal .line-btn { font-size: .92em; }
+
+/* ---------- блокнот оператора ---------- */
+.notebook { position: fixed; inset: 0; display: grid; place-items: center; background: rgba(0,0,0,.66); pointer-events: auto; opacity: 0; transition: opacity .25s; }
+.notebook.shown { opacity: 1; }
+.nb-book { position: relative; width: min(64em, 94vw); height: min(36em, 86dvh); display: grid; grid-template-columns: 1fr 1fr; gap: 0;
+  transform: rotate(-.8deg) translateY(.8em); transition: transform .3s; box-shadow: 0 1.4em 3em rgba(0,0,0,.75); }
+.notebook.shown .nb-book { transform: rotate(-.8deg); }
+.nb-page { position: relative; overflow: auto; padding: 1.6em 1.8em 3.2em; background-color: #e3ddc8;
+  background-image: linear-gradient(rgba(70,110,160,.2) 1px, transparent 1px), linear-gradient(90deg, rgba(70,110,160,.2) 1px, transparent 1px);
+  background-size: 1.15em 1.15em; font: 400 calc(var(--u) * 1.15)/1.45 var(--hand); color: #3a3470; }
+.nb-left { box-shadow: inset -1.6em 0 1.6em -1.2em rgba(60,40,10,.4); border-radius: .4em 0 0 .4em; }
+.nb-right { box-shadow: inset 1.6em 0 1.6em -1.2em rgba(60,40,10,.4); border-radius: 0 .4em .4em 0; padding: 1.2em; display: flex; flex-direction: column; }
+.nb-head { font: 700 calc(var(--u) * .72)/1.2 var(--type); letter-spacing: .14em; text-transform: uppercase; color: #6b6455; margin-bottom: 1em; }
+.nb-task { font-size: calc(var(--u) * 1.45); line-height: 1.3; margin-bottom: .8em; }
+.nb-items { list-style: none; margin-bottom: 1em; }
+.nb-items li::before { content: '☐ '; }
+.nb-items li.done { text-decoration: line-through; opacity: .7; }
+.nb-items li.done::before { content: '☑ '; }
+.nb-sub { margin-top: .6em; opacity: .8; }
+.nb-docs { display: flex; flex-direction: column; align-items: flex-start; gap: .1em; }
+.nb-doc { background: none; border: 0; font: inherit; color: #2c2760; text-align: left; cursor: pointer; padding: .1em 0; text-decoration: underline; text-decoration-color: rgba(44,39,96,.35); }
+.nb-doc:hover, .nb-doc:focus-visible { color: #9b2b24; outline: none; }
+.nb-empty { opacity: .7; }
+.nb-map { flex: 1; width: 100%; min-height: 0; }
+.nb-cap { text-align: right; font-size: calc(var(--u) * .9); opacity: .7; }
+.nb-close { position: absolute; left: 1.8em; bottom: .9em; color: var(--ink); font-size: calc(var(--u) * .95); }
+@media (max-height: 460px) { .nb-page { padding: 1em 1.2em 2.8em; } .nb-task { font-size: calc(var(--u) * 1.2); } }

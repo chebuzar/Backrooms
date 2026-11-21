@@ -1,6 +1,6 @@
 // Навчання керуванню на старті: підказки по одній («F — фонарик», «Shift — бег», «C — присесть», «E — действие»).
 // Кожна тримається, доки гравець не спробує дію (але щонайменше 2.5 с, щоб встигнути прочитати) або 7 с.
-export type TipId = 'light' | 'run' | 'crouch' | 'use';
+export type TipId = 'light' | 'run' | 'crouch' | 'use' | 'camera' | 'book';
 export interface Tip { id: TipId; key?: string; icon?: string; text: string }
 
 export class Tutorial {

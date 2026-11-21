@@ -205,6 +205,7 @@ export const OBJECTIVES = {
 
 /** Заставки при переході між рівнями. */
 export const LEVEL_TITLES: Record<number, { title: string; sub: string }> = {
+  0: { title: 'Уровень 0', sub: 'Бесконечный НИИ' },
   1: { title: 'Уровень 1', sub: 'База «Глубина-1»' },
   2: { title: 'Уровень 2', sub: 'Парковка' }
 };

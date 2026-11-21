@@ -1,5 +1,5 @@
 // Сенсорне керування (iPad/iPhone, горизонтально): ліва половина — «плаваючий» стік руху,
-// права — огляд пальцем; кнопки праворуч: біг (утримання), присід, дія, ліхтарик, камера; пауза вгорі.
+// права — огляд пальцем (стік до краю — біг); праворуч чотири кнопки: дія, ліхтарик, присід, камера; вгорі дрібні: годинник, блокнот, ДП-5, пауза.
 import type { Input } from './input';
 
 /** Значки кнопок: тонкі лінійні позначки, як гравіювання на радянському приладі (без «веселих» фігурок і емодзі).
@@ -16,6 +16,10 @@ export const ICONS = {
   // камера: корпус, об'єктив і точка запису
   camera: '<path d="M3 7.5h11.5v9H3Z"/><path d="M14.5 10.6 20.5 7.5v9l-6-3.1"/><circle cx="6" cy="10.2" r="1.1" fill="currentColor" stroke="none"/>',
   pause: '<path d="M9 5.5v13M15 5.5v13" stroke-width="2.2"/>',
+  // блокнот: обкладинка з пружиною
+  book: '<path d="M6.5 3.5h12v17h-12Z"/><path d="M4.5 7h3M4.5 12h3M4.5 17h3M10 8h6M10 11h4"/>',
+  // годинник на руці: корпус і ремінець
+  watch: '<path d="M8.5 2.5h7l1 4h-9ZM8.5 21.5h7l1-4h-9Z"/><rect x="6.5" y="6.5" width="11" height="11" rx="1.5"/><path d="M12 9.5V12l2 1.5"/>',
   // знак радіації: дозиметр ДП-5
   dosi: '<path fill="currentColor" stroke="none" d="M12 10.3a1.7 1.7 0 1 1 0 3.4 1.7 1.7 0 0 1 0-3.4Zm-1.6-1.1L7.6 4.4A8.6 8.6 0 0 0 3.4 12h5.5a3.1 3.1 0 0 1 1.5-2.8Zm3.2 0A3.1 3.1 0 0 1 15.1 12h5.5a8.6 8.6 0 0 0-4.2-7.6Zm1.5 4.2L12 18.2l-3.1-4.8-2.8 4.8a8.6 8.6 0 0 0 11.8 0Z"/>',
   // для екрана «Управление»: стік (ліва половина) і огляд (права)
@@ -24,7 +28,7 @@ export const ICONS = {
 };
 
 /** Підписи під значками кнопок (машинопис, як таблички на пульті). */
-const CAPS = { use: 'ДЕЙСТВ.', light: 'СВЕТ', run: 'БЕГ', crouch: 'ПРИСЕСТЬ', camera: 'ЗУМ', dosimeter: 'ДП-5' } as const;
+const CAPS = { use: 'ДЕЙСТВ.', light: 'СВЕТ', run: 'БЕГ', crouch: 'ПРИСЕСТЬ', camera: 'КАМЕРА', dosimeter: 'ДП-5', zoom: '×2' } as const;
 
 /** Елементи інтерфейсу, яким дотик має дістатися як звичайне натискання/прокрутка. */
 const UI_SELECTOR = '.reader, .screen, .prologue, .loadline, button, a, input, select, label';
@@ -58,31 +62,31 @@ export class TouchControls {
       <div class="tbtns">
         <button class="tb tb-use" data-a="use" aria-label="Действие">${svg(ICONS.use)}${cap('use')}</button>
         <button class="tb tb-light" data-a="light" aria-label="Фонарик">${svg(ICONS.light)}${cap('light')}</button>
-        <button class="tb tb-run" data-a="run" aria-label="Бег">${svg(ICONS.run)}${cap('run')}</button>
         <button class="tb tb-crouch" data-a="crouch" aria-label="Присесть">${svg(ICONS.crouch)}${cap('crouch')}</button>
         <button class="tb tb-cam" data-a="camera" aria-label="Камера">${svg(ICONS.camera)}${cap('camera')}</button>
-        <button class="tb tb-dosi" data-a="dosimeter" aria-label="Дозиметр">${svg(ICONS.dosi)}${cap('dosimeter')}</button>
+        <button class="tb tb-zoom" data-a="zoom" aria-label="Приближение">${cap('zoom')}</button>
       </div>
-      <button class="tb tb-pause" data-a="pause" aria-label="Пауза">${svg(ICONS.pause)}</button>`;
+      <div class="ttop">
+        <button class="tb tb-watch" data-a="watch" aria-label="Часы">${svg(ICONS.watch)}</button>
+        <button class="tb tb-book" data-a="journal" aria-label="Блокнот">${svg(ICONS.book)}</button>
+        <button class="tb tb-dosi" data-a="dosimeter" aria-label="Дозиметр">${svg(ICONS.dosi)}</button>
+        <button class="tb tb-pause" data-a="pause" aria-label="Пауза">${svg(ICONS.pause)}</button>
+      </div>`;
     uiRoot.appendChild(r);
     this.root = r;
     this.base = r.querySelector('.stick') as HTMLDivElement;
     this.knob = r.querySelector('.knob') as HTMLDivElement;
 
     const btn = (sel: string) => r.querySelector(sel) as HTMLButtonElement;
-    const hold = (b: HTMLButtonElement, on: (v: boolean) => void) => {
-      b.addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation(); on(true); b.classList.add('on'); }, { passive: false });
-      const off = (e: Event) => { e.preventDefault(); on(false); b.classList.remove('on'); };
-      b.addEventListener('touchend', off, { passive: false });
-      b.addEventListener('touchcancel', off, { passive: false });
-    };
     const tap = (b: HTMLButtonElement, fn: () => void) => b.addEventListener('touchstart', (e) => { e.preventDefault(); e.stopPropagation(); fn(); b.classList.add('on'); setTimeout(() => b.classList.remove('on'), 140); }, { passive: false });
-    hold(btn('.tb-run'), (v) => { this.run = v; });
     tap(btn('.tb-crouch'), () => { this.crouch = !this.crouch; btn('.tb-crouch').classList.toggle('latched', this.crouch); });
     tap(btn('.tb-use'), () => this.input.press('interact'));
     tap(btn('.tb-light'), () => this.input.press('flashlight'));
     tap(btn('.tb-cam'), () => this.input.press('camera'));
     tap(btn('.tb-dosi'), () => this.input.press('dosimeter'));
+    tap(btn('.tb-zoom'), () => this.input.press('zoom'));
+    tap(btn('.tb-watch'), () => this.input.press('watch'));
+    tap(btn('.tb-book'), () => this.input.press('journal'));
     tap(btn('.tb-pause'), () => this.input.press('pause'));
 
     const opts = { passive: false } as AddEventListenerOptions;
@@ -94,6 +98,9 @@ export class TouchControls {
 
   /** Підсвітити кнопку-перемикач (ліхтарик, дозиметр). */
   setLatched(name: string, on: boolean): void { this.root.querySelector(`.tb-${name}`)?.classList.toggle('latched', on); }
+
+  /** Камера піднята: з'являється кнопка «×2». */
+  setCamera(on: boolean): void { this.root.classList.toggle('cam', on); this.setLatched('cam', on); }
 
   /** Показати/сховати кнопки (у меню вони не потрібні). */
   show(on: boolean): void { this.root.classList.toggle('shown', on); }
