@@ -947,6 +947,9 @@ export class Game {
       this.ambience.update(dt, this.player);
       this.hud.setTime(this.store.progress.playSeconds);
     } else this.hud.setPrompt(null, '');
+    // ПК: миша ще не захоплена (після прологу браузер не дає захопити без кліку) — підказати клікнути
+    this.hud.setLockHint(this.mode === 'play' && this.input.enabled && !this.device.touch && !this.input.pointerLocked
+      && this.input.lastDevice !== 'gamepad' && !this.hud.readerOpen);
     this.updateDosimeter(dt);
     this.hud.update(dt);
     this.audio.updateListener({ x: c.position.x, y: c.position.y, z: c.position.z, fx: f.x, fy: f.y, fz: f.z });

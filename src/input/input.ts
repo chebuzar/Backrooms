@@ -40,6 +40,10 @@ export class Input {
   /** Захопити мишу (лише на ПК; на iOS pointer lock немає). */
   lockPointer(): void {
     if (this.touch?.active) return;
+    // браузер дозволяє захоплення лише одразу після дії гравця; інакше — відмова (Firefox ще й пише попередження).
+    // Тоді гра показує «Щёлкните, чтобы осмотреться», і захоплення робить клік по екрану.
+    const ua = (navigator as Navigator & { userActivation?: { isActive: boolean } }).userActivation;
+    if (ua && !ua.isActive) return;
     const r = this.canvas.requestPointerLock?.() as unknown;
     if (r instanceof Promise) r.catch(() => {});
   }

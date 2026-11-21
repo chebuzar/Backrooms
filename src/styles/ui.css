@@ -192,6 +192,10 @@ input[type='range'].pencil-range:focus-visible { outline: 2px dashed var(--penci
   background-position: 0 0, 0 0, 0 31vh; }
 .hud .slits.on { opacity: 1; }
 
+/* «Щёлкните, чтобы осмотреться» — миша ще не захоплена (ПК) */
+.hud .lockhint { position: absolute; left: 50%; top: calc(50% + 4.4em); transform: translateX(-50%); font: 400 calc(var(--u) * .9)/1 var(--type);
+  color: rgba(239,233,217,.72); letter-spacing: .06em; text-shadow: 0 0 3px #000, 0 0 10px rgba(0,0,0,.85); opacity: 0; transition: opacity .6s; white-space: nowrap; }
+.hud .lockhint.on { opacity: 1; transition-delay: .8s; }
 /* зум камери й навчання */
 .osd .zoom { opacity: 0; transition: opacity .2s; color: #f0eee4; }
 .osd .zoom.on { opacity: 1; }

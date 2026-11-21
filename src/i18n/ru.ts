@@ -41,7 +41,7 @@ export const T = {
     back: 'Назад'
   },
   tutorial: { light: 'фонарик', run: 'бег', crouch: 'присесть', use: 'действие' },
-  hud: { rec: 'REC', zoom: 'ZOOM 2×' },
+  hud: { rec: 'REC', zoom: 'ZOOM 2×', lockHint: 'Щёлкните, чтобы осмотреться' },
   settings: {
     title: 'Настройки',
     back: 'Готово',

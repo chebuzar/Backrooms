@@ -2,6 +2,7 @@
 // читання документів і записок, пролог (машинопис на чорному), фінальна картка рівня.
 import type { Doc } from '../story/ru';
 import { prologueTimeline } from './prologue-time';
+import { T } from '../i18n/ru';
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] as string);
 
@@ -13,6 +14,7 @@ export class HUD {
   private readonly obj: HTMLElement;
   private readonly sub: HTMLElement;
   private readonly dot: HTMLElement;
+  private readonly lockHint: HTMLElement;
   private reader: HTMLElement | null = null;
   private onReaderClose: (() => void) | null = null;
   private objText = '';
@@ -25,6 +27,7 @@ export class HUD {
       <div class="osd"><span class="rec"><i></i>REC</span><span class="tc">0:00:00</span><span class="sp">SP</span><span class="bat" hidden><b></b><b></b><b></b><b></b></span><span class="zoom"></span></div>
       <div class="slits" aria-hidden="true"></div>
       <div class="tutorial" aria-live="polite"></div>
+      <div class="lockhint">${esc(T.hud.lockHint)}</div>
       <div class="dosi" aria-hidden="true"><svg viewBox="0 0 120 78">
         <rect x="1" y="1" width="118" height="76" rx="7" class="case"/>
         <path d="M18 62 A44 44 0 0 1 102 62" class="arc"/>
@@ -46,6 +49,7 @@ export class HUD {
     this.obj = el.querySelector('.obj') as HTMLElement;
     this.sub = el.querySelector('.subs') as HTMLElement;
     this.dot = el.querySelector('.dot') as HTMLElement;
+    this.lockHint = el.querySelector('.lockhint') as HTMLElement;
   }
 
   show(on: boolean): void { this.el.classList.toggle('shown', on); }
@@ -101,6 +105,9 @@ export class HUD {
     this.tc.textContent = `${h}:${String(m).padStart(2, '0')}:${String(x).padStart(2, '0')}`;
     this.rec.classList.toggle('blink', Math.floor(sec * 1.2) % 2 === 0);
   }
+
+  /** «Щёлкните, чтобы осмотреться»: миша ще не захоплена (ПК). */
+  setLockHint(on: boolean): void { this.lockHint.classList.toggle('on', on); }
 
   /** Підказка дії біля предмета: клавіша (`key`) або значок кнопки на дотику (`icon` — готовий svg). */
   setPrompt(text: string | null, key: string, icon?: string): void {
