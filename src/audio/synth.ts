@@ -267,3 +267,76 @@ export function phoneRing(ctx: BaseAudioContext): AudioBuffer {
   }
   return b;
 }
+
+/** Позивний гучного зв'язку: три удари «дзвіночка» донизу (як на вокзалі), з металевим призвуком рупора. */
+export function paChime(ctx: BaseAudioContext): AudioBuffer {
+  const sr = ctx.sampleRate, n = Math.floor(sr * 2.8);
+  const b = ctx.createBuffer(1, n, sr), d = b.getChannelData(0);
+  const notes = [784, 659, 523];
+  for (let i = 0; i < n; i++) {
+    const t = i / sr;
+    let v = 0;
+    notes.forEach((f, k) => {
+      const tk = t - k * 0.55;
+      if (tk < 0) return;
+      const e = Math.exp(-tk * 2.6) * Math.min(1, tk * 300);
+      v += (Math.sin(2 * Math.PI * f * tk) + 0.35 * Math.sin(2 * Math.PI * f * 2.76 * tk) * Math.exp(-tk * 6)) * e;
+    });
+    d[i] = Math.tanh(v * 1.6) * 0.45; // рупор трохи «рве» звук
+  }
+  return b;
+}
+
+/** Нерозбірливий голос із рупора: склади (дзижчання голосових зв'язок крізь смугу рупора) з паузами між словами. */
+export function paVoice(ctx: BaseAudioContext, seconds: number, seed: number): AudioBuffer {
+  const sr = ctx.sampleRate, n = Math.floor(sr * seconds);
+  const b = ctx.createBuffer(1, n, sr), d = b.getChannelData(0);
+  const r = rng(seed * 31 + 7);
+  // склади: [початок, тривалість, висота, «голосна»]
+  const syl: [number, number, number, number][] = [];
+  for (let t = 0.1; t < seconds - 0.3;) {
+    const len = 0.09 + r() * 0.16;
+    syl.push([t, len, 105 + r() * 35, r()]);
+    t += len + (r() < 0.22 ? 0.25 + r() * 0.3 : 0.02 + r() * 0.05);
+  }
+  let ph = 0, y1 = 0, y2 = 0, z1 = 0, z2 = 0, si = 0;
+  for (let i = 0; i < n; i++) {
+    const t = i / sr;
+    while (si < syl.length && t >= (syl[si] as [number, number, number, number])[0] + (syl[si] as [number, number, number, number])[1]) si++;
+    const c = syl[si], s = c && t >= c[0] ? c : undefined;
+    let src = 0;
+    if (s) {
+      const k = (t - s[0]) / s[1], env = Math.sin(Math.PI * k) ** 0.6;
+      ph += (2 * Math.PI * s[2] * (1 - 0.15 * k)) / sr;
+      const buzz = (ph / Math.PI) % 2 - 1; // пилка
+      src = (buzz * 0.7 + (r() * 2 - 1) * (s[3] < 0.3 ? 0.6 : 0.15)) * env;
+    }
+    // дві форманти (резонатори) — «голосна», що змінюється від складу до складу
+    const f1 = s ? 500 + s[3] * 400 : 600, f2 = s ? 1300 + s[3] * 900 : 1500;
+    const a1 = 2 * Math.cos(2 * Math.PI * f1 / sr) * 0.97, a2 = 2 * Math.cos(2 * Math.PI * f2 / sr) * 0.96;
+    const o1 = src + a1 * y1 - 0.94 * y2; y2 = y1; y1 = o1;
+    const o2 = src + a2 * z1 - 0.92 * z2; z2 = z1; z1 = o2;
+    d[i] = Math.tanh((o1 * 0.05 + o2 * 0.035) * 2.2) * 0.5 + (r() * 2 - 1) * 0.012; // рупор + шипіння лінії
+  }
+  return b;
+}
+
+/** Низький тиск під шкірою: два розстроєні тони (биття), повільне «дихання» гучності й темний шум. Безшовна петля. */
+export function tensionPad(ctx: BaseAudioContext, seconds = 12): AudioBuffer {
+  const sr = ctx.sampleRate, n = Math.floor(sr * seconds);
+  const b = ctx.createBuffer(2, n, sr);
+  const r = rng(91);
+  for (let c = 0; c < 2; c++) {
+    const d = b.getChannelData(c);
+    let lp = 0;
+    for (let i = 0; i < n; i++) {
+      const t = i / sr, k = t / seconds;
+      // частоти кратні 1/seconds — петля без клацання
+      const f1 = Math.round(49 * seconds) / seconds, f2 = Math.round((49.5 + c * 0.25) * seconds) / seconds, f3 = Math.round(73.5 * seconds) / seconds;
+      const breathe = 0.65 + 0.35 * Math.sin(2 * Math.PI * k * 2);
+      lp += ((r() * 2 - 1) - lp) * 0.02;
+      d[i] = (Math.sin(2 * Math.PI * f1 * t) * 0.32 + Math.sin(2 * Math.PI * f2 * t) * 0.32 + Math.sin(2 * Math.PI * f3 * t) * 0.08 * (1 - breathe)) * breathe + lp * 0.5;
+    }
+  }
+  return b;
+}

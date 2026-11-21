@@ -1,4 +1,4 @@
-// Рівень 0 «Жёлтые комнаты»: геометрія й запечене світло з Blender (шматки 12×12 м), матеріали TSL,
+// Рівень 0 «Бесконечный НИИ»: геометрія й запечене світло з Blender (шматки 12×12 м), матеріали TSL,
 // лампи, колізії Rapier зі спільного планування, атмосфера (серпанок, ліхтарик, гул ламп).
 import * as THREE from 'three/webgpu';
 import type { Assets } from '../assets/loader';
@@ -11,13 +11,14 @@ import { decorate, type Decor } from './decor';
 import { buildDecals } from './decals';
 import { Doors } from './doors';
 import { loadChunks, addLayoutColliders } from './chunks';
+import { buildNiiDetails } from './nii-details';
 
 export const LEVEL0_SEED = 1987;
 
 export interface PropSpot { id: string; x: number; y: number; z: number }
 
 export interface Level {
-  /** Номер рівня (0 — Жёлтые комнаты, 1 — «Глубина-1», 2 — Парковка). */
+  /** Номер рівня (0 — «Бесконечный НИИ», 1 — «Глубина-1», 2 — Парковка). */
   id: number;
   scene: THREE.Scene;
   layout: Layout;
@@ -32,6 +33,10 @@ export interface Level {
   /** Куди веде головний Шов; прихований розлом (лише рівень 0) — на рівень 2. */
   next: number;
   rift?: Seam;
+  /** Рупори гучного зв'язку (рівень 0) — звідки звучать «объявления». */
+  speakers?: { x: number; y: number; z: number }[];
+  /** Що висить на стінах і читається (графік чергувань, Доска почёта). */
+  boards?: { id: string; x: number; y: number; z: number; yaw: number }[];
   update(t: number, dt: number, camera: THREE.Camera): void;
 }
 
@@ -39,12 +44,12 @@ export async function buildLevel0(assets: Assets, physics: Physics, onProgress: 
   const layout = generateLayout({ seed: LEVEL0_SEED });
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x000000);
-  // теплий серпанок: далекі кімнати тонуть у жовтому мареві
-  scene.fog = new THREE.FogExp2(new THREE.Color().setRGB(0.42, 0.36, 0.17, THREE.SRGBColorSpace), 0.03);
+  // казенний серпанок НИИ: далекі кабінети тонуть у сірувато-оливковому мареві пилу й люмінесцентного світла
+  scene.fog = new THREE.FogExp2(new THREE.Color().setRGB(0.30, 0.30, 0.24, THREE.SRGBColorSpace), 0.032);
 
   const tex = await loadLevel0Textures(assets);
   onProgress(0.2);
-  await loadChunks(assets, 'level0', scene, makeLevel0Materials(tex), (p) => onProgress(0.2 + 0.7 * p));
+  await loadChunks(assets, 'level0', scene, makeLevel0Materials(tex, layout), (p) => onProgress(0.2 + 0.7 * p));
   addLayoutColliders(physics, layout);
   const H = layout.height;
 
@@ -60,7 +65,8 @@ export async function buildLevel0(assets: Assets, physics: Physics, onProgress: 
 
   // сліди часу: підтьоки, бруд, плями (атлас справжніх декалей, змішування множенням)
   scene.add(buildDecals(layout, decor, tex.decals));
-  const doors = new Doors(layout, decor, physics, tex);
+  // двері НИИ: полотна під лаком «під горіх», потемнілі (колір множиться на справжню текстуру фанери)
+  const doors = new Doors(layout, decor, physics, tex, { color: 0x9a6c46, roughness: 0.42 });
   scene.add(doors.group);
 
   // Шов прибуття: сьома експедиція проходить туди ж, куди й шість попередніх. Гравець отямлюється на підлозі
@@ -82,11 +88,15 @@ export async function buildLevel0(assets: Assets, physics: Physics, onProgress: 
   lamps.dimAround(riftAt.x, riftAt.z, 5.5, 0);
   scene.add(rift.group);
 
+  // наочна агітація, таблички, рупори — не на Швах
+  const details = await buildNiiDetails(layout, decor, [seamAt, arrivalAt, riftAt]);
+  scene.add(details.group);
+
   const spots = await placeProps(assets, physics, layout, scene);
   onProgress(1);
 
   return {
-    id: 0, next: 1, scene, layout, lamps, flashlight, seam, arrival, rift, spots, doors,
+    id: 0, next: 1, scene, layout, lamps, flashlight, seam, arrival, rift, spots, doors, speakers: details.speakers, boards: details.boards,
     update(t, dt) { lamps.update(t); seam.update(t); arrival.update(t); rift.update(t); doors.update(dt); }
   };
 }
@@ -216,6 +226,16 @@ async function placeProps(assets: Assets, physics: Physics, l: Layout, scene: TH
     lightProp(o, probeAt(l.lights, dx, dz));
     scene.add(o);
     if (file === 'clipboard') spots.order7 = { id: 'order7', x: q.x, y: deskTop + 0.02, z: q.z };
+  }
+  // «Инструкция оператору» — тонка брошура поруч із планшетом (підпис оператора в ній уже стоїть)
+  {
+    const q = rel(-0.62, -0.1);
+    const ins = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.004, 0.21), probeLit(new THREE.MeshStandardMaterial({ color: 0xcfc6a6, roughness: 0.9 }), probeAt(l.lights, dx, dz)));
+    ins.position.set(q.x, deskTop + 0.003, q.z);
+    ins.rotation.y = yaw - 0.25;
+    ins.castShadow = true; ins.receiveShadow = true;
+    scene.add(ins);
+    spots.instr = { id: 'instr', x: q.x, y: deskTop + 0.02, z: q.z };
   }
   // записка — аркуш на підлозі
   const paper = new THREE.Mesh(new THREE.PlaneGeometry(0.21, 0.297), probeLit(new THREE.MeshStandardMaterial({ color: 0xd9d4bf, roughness: 0.95 }), probeAt(l.lights, nx, nz)));

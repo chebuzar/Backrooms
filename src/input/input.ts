@@ -1,7 +1,7 @@
 // Керування: клавіатура+миша, геймпад, сенсорний екран — усе зводиться до одних «дій».
 import { TouchControls } from './touch';
 
-export type Action = 'interact' | 'flashlight' | 'pause' | 'camera' | 'journal' | 'dosimeter';
+export type Action = 'interact' | 'flashlight' | 'pause' | 'camera' | 'journal' | 'dosimeter' | 'zoom' | 'watch';
 
 export interface InputSettings {
   sensitivity: number; // 0.2..3
@@ -27,6 +27,9 @@ export class Input {
     addEventListener('keydown', (e) => this.onKey(e, true));
     addEventListener('keyup', (e) => this.onKey(e, false));
     addEventListener('blur', () => { this.keys.clear(); this.run = false; });
+    // колесо миші (з захопленим курсором) — приближення камери
+    let wheelT = 0;
+    addEventListener('wheel', (e) => { if (!this.pointerLocked || Math.abs(e.deltaY) < 4 || performance.now() - wheelT < 250) return; wheelT = performance.now(); this.pressed.add('zoom'); }, { passive: true });
     addEventListener('mousemove', (e) => {
       if (!this.enabled || document.pointerLockElement !== this.canvas) return;
       const k = 0.0021 * this.settings.sensitivity;
@@ -53,7 +56,7 @@ export class Input {
   private onKey(e: KeyboardEvent, down: boolean): void {
     this.lastDevice = 'keyboard';
     if (down && !e.repeat) {
-      const a = ({ KeyE: 'interact', KeyF: 'flashlight', Escape: 'pause', KeyP: 'pause', KeyV: 'camera', Tab: 'journal', KeyJ: 'journal', KeyR: 'dosimeter' } as Record<string, Action>)[e.code];
+      const a = ({ KeyE: 'interact', KeyF: 'flashlight', Escape: 'pause', KeyP: 'pause', KeyV: 'camera', KeyZ: 'zoom', KeyT: 'watch', Tab: 'journal', KeyJ: 'journal', KeyR: 'dosimeter' } as Record<string, Action>)[e.code];
       if (a) { this.pressed.add(a); if (e.code === 'Tab') e.preventDefault(); }
       if ((e.code === 'KeyC' || e.code === 'ControlLeft') && this.settings.crouchToggle) this.crouchLatched = !this.crouchLatched;
     }
@@ -97,6 +100,8 @@ export class Input {
       if (edge(8)) this.pressed.add('journal');
       if (edge(2)) this.pressed.add('camera');
       if (edge(5)) this.pressed.add('dosimeter');
+      if (edge(4)) this.pressed.add('zoom');
+      if (edge(12)) this.pressed.add('watch');
       if (edge(1)) this.crouchLatched = !this.crouchLatched;
       if (b[1] !== undefined) crouch = crouch || this.crouchLatched;
       this.padPrev = b;

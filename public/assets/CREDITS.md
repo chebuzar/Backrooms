@@ -23,6 +23,14 @@
 - `models/tape.glb` — «Portable Cassette Player» — Mateusz Sadek, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/portable_cassette_player
 - `models/phone.glb` — радянський дисковий телефон, власна модель (`scripts/blender/make_phone.py`), однотонні матеріали
 - `models/locker.glb` — сталеві шафки роздягальні, власна модель (`scripts/blender/make_locker.py`); текстура — кроп «Metal Plate 02» (Rob Tuytel, **CC0 1.0**, Poly Haven), перефарбований (`scripts/assets/make-locker-tex.py`)
+- `models/bed.glb` — «Old Bed Frame» — Luca B, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/old_bed_frame
+- `models/mdesk.glb` — «Metal Office Desk» — Ulan Cabanilla, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/metal_office_desk
+- `models/generator.glb` — «Portable Generator» — James Ray Cock, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/portable_generator
+- `models/radio.glb` — «Vintage Radio Transceiver» — Mateusz Sadek, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/vintage_radio_transceiver
+- `models/car.glb` — «Covered Car» — MP, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/covered_car
+- `models/cabinet.glb` — «Painted Wooden Cabinet» — Kirill Sannikov, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/painted_wooden_cabinet
+- `models/jerrycan.glb` — «Metal Jerrycan Green» — Ulan Cabanilla, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/metal_jerrycan_green
+- `models/microscope.glb` — «Industrial Microscope» — Lukas Walzer, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/industrial_microscope
 
 ## Текстури Poly Haven
 
@@ -38,10 +46,11 @@
 ## Текстури рівня 0 (обробка справжніх текстур скриптом `scripts/assets/make-level0-textures.py`)
 
 - `tex/level0/wall_c` — ShareTextures «Wallpaper 10», **CC0**: https://www.sharetextures.com/textures/wall/wallpaper-10 (перефарбовано)
-- `tex/level0/wall2_c` — ShareTextures «Wallpaper 26», **CC0**: https://www.sharetextures.com/textures/wall/wallpaper_26 (перефарбовано)
 - `tex/level0/wall_n`, `wall_r`, `dmg_c`, `mold` — ambientCG Wallpaper001A, Wallpaper001C, Wallpaper002C, **CC0**: https://ambientcg.com
 - `tex/level0/ceil_*` — ambientCG OfficeCeiling001, **CC0**: https://ambientcg.com/view?id=OfficeCeiling001
-- `tex/level0/carpet_*` — ambientCG Carpet011, **CC0**: https://ambientcg.com/view?id=Carpet011
+- `tex/level0/paint_*` — ambientCG PaintedPlaster017, **CC0**: https://ambientcg.com/view?id=PaintedPlaster017
+- `tex/level0/peel_*` — ambientCG Plaster007, **CC0**: https://ambientcg.com/view?id=Plaster007
+- `tex/level0/parquet_*` — ambientCG WoodFloor034, **CC0**: https://ambientcg.com/view?id=WoodFloor034
 - `tex/level0/decals` — ambientCG Leaking001, Leaking004–009, **CC0**: https://ambientcg.com
 
 ## Звуки (`public/assets/sfx`, скрипт `scripts/assets/make-sounds.py`)

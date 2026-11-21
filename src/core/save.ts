@@ -33,6 +33,16 @@ export interface Progress {
   battery: number;
   /** Підібрані батарейки поточного проходження (id) — щоб не з'являлися знову. */
   pickups: string[];
+  /** Заряд відеокамери 0..1. */
+  camCharge: number;
+  /** Нерви Оператора 0..1 (психологічний шар). */
+  nerves: number;
+  /** Карта олівцем: пройдені клітинки кожного рівня (base64 бітової карти). */
+  maps: Record<string, string>;
+  /** Тіла оператора там, де він загинув (лишаються в цьому проходженні). */
+  bodies: { level: number; x: number; z: number; yaw: number }[];
+  /** Речі задачі рівня (печатки, бланк, запобіжники, ключі) і події (id). */
+  items: string[];
 }
 
 interface SaveFile {
@@ -51,7 +61,7 @@ export const DEFAULT_SETTINGS: Settings = {
   sensitivity: 1, invertY: false, crouchToggle: false, fov: 75, subtitles: true, fpsLimit: '60'
 };
 
-const freshProgress = (): Progress => ({ checkpoint: null, docs: [], notes: [], tapes: [], completed: [], endings: [], playSeconds: 0, deaths: 0, battery: 1, pickups: [] });
+const freshProgress = (): Progress => ({ checkpoint: null, docs: [], notes: [], tapes: [], completed: [], endings: [], playSeconds: 0, deaths: 0, battery: 1, pickups: [], camCharge: 1, nerves: 0, maps: {}, bodies: [], items: [] });
 
 const num = (v: unknown, d: number, lo: number, hi: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d);
 const bool = (v: unknown, d: boolean) => (typeof v === 'boolean' ? v : d);
@@ -92,7 +102,13 @@ export function parseSave(raw: string | null): SaveFile {
       playSeconds: num(p.playSeconds, 0, 0, 1e9),
       deaths: num(p.deaths, 0, 0, 1e9),
       battery: typeof p.battery === 'number' && p.battery >= 0 && p.battery <= 1 ? p.battery : 1,
-      pickups: strs(p.pickups)
+      pickups: strs(p.pickups),
+      camCharge: num(p.camCharge, 1, 0, 1),
+      nerves: num(p.nerves, 0, 0, 1),
+      maps: p.maps && typeof p.maps === 'object' ? Object.fromEntries(Object.entries(p.maps as Record<string, unknown>).filter((e): e is [string, string] => typeof e[1] === 'string')) : {},
+      bodies: Array.isArray(p.bodies) ? (p.bodies as Record<string, unknown>[]).filter((b) => b && typeof b.level === 'number' && typeof b.x === 'number' && typeof b.z === 'number')
+        .map((b) => ({ level: b.level as number, x: b.x as number, z: b.z as number, yaw: typeof b.yaw === 'number' ? b.yaw : 0 })).slice(-12) : [],
+      items: strs(p.items)
     }
   };
 }

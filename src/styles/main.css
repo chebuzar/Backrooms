@@ -23,13 +23,16 @@ html, body { width: 100%; height: 100%; background: #000; color: var(--ink); ove
 .touch .tb .cap { font: 700 8px/1 'Anonymous Pro', 'Courier New', monospace; letter-spacing: .05em; color: rgba(233,228,214,.6); }
 .touch .tb.on, .touch .tb.latched { background: rgba(200,182,120,.26); border-color: rgba(217,194,122,.7); color: #f3ecd8; transform: scale(.94); }
 .touch .tb.on .cap, .touch .tb.latched .cap { color: rgba(243,236,216,.85); }
-.touch .tb-use { grid-column: 3; grid-row: 1; }
-.touch .tb-light { grid-column: 2; grid-row: 1; }
-.touch .tb-cam { grid-column: 1; grid-row: 1; width: 52px; height: 52px; align-self: end; justify-self: end; }
-.touch .tb-dosi { grid-column: 1; grid-row: 2; width: 52px; height: 52px; align-self: start; justify-self: end; }
-.touch .tb-dosi.latched { background: rgba(150,170,90,.32); border-color: rgba(190,210,120,.75); }
-.touch .tb-run { grid-column: 3; grid-row: 2; }
+.touch .tbtns { grid-template-columns: repeat(2, 64px); }
+.touch .tb-use { grid-column: 2; grid-row: 1; }
+.touch .tb-light { grid-column: 1; grid-row: 1; }
 .touch .tb-crouch { grid-column: 2; grid-row: 2; }
-.touch .tb-pause { position: fixed; top: calc(14px + env(safe-area-inset-top)); right: calc(16px + env(safe-area-inset-right)); width: 48px; height: 48px; }
-.touch .tb-pause svg { width: 20px; height: 20px; }
-.touch .tb-cam svg, .touch .tb-dosi svg { width: 20px; height: 20px; }
+.touch .tb-cam { grid-column: 1; grid-row: 2; }
+.touch .tb-zoom { position: fixed; right: calc(18px + env(safe-area-inset-right)); bottom: calc(176px + env(safe-area-inset-bottom)); width: 48px; height: 48px; display: none; }
+.touch.cam .tb-zoom { display: flex; }
+.touch .tb-zoom .cap { font-size: 13px; }
+/* дрібні рідкісні речі — рядком угорі праворуч */
+.touch .ttop { position: fixed; top: calc(12px + env(safe-area-inset-top)); right: calc(14px + env(safe-area-inset-right)); display: flex; gap: 10px; pointer-events: auto; }
+.touch .ttop .tb { width: 44px; height: 44px; }
+.touch .ttop .tb svg { width: 20px; height: 20px; }
+.touch .tb-dosi.latched { background: rgba(150,170,90,.32); border-color: rgba(190,210,120,.75); }

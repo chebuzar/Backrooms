@@ -9,7 +9,7 @@ import { bakeLevel } from '../world/materials';
 
 /** Значення ефектів «камери» за замовчуванням — щоб перемикач повертав саме їх. */
 const LOOK_DEFAULTS = {
-  grain: look.grain.value, vignette: look.vignette.value, aberration: look.aberration.value, distortion: look.distortion.value
+  grain: look.grain.value, vignette: look.vignette.value, aberration: look.aberration.value
 };
 
 export class DebugPanel {
@@ -21,7 +21,7 @@ export class DebugPanel {
   private fogDensity = 0;
   readonly fx = {
     preset: 'auto' as QualityName | 'auto', ao: true, traa: true, bloom: true,
-    grain: true, vignette: true, aberration: true, distortion: true,
+    grain: true, vignette: true, aberration: true,
     fog: true, lightmaps: true, flashlightShadow: true, autoScale: false, fpsCap: '60'
   };
 
@@ -58,8 +58,8 @@ export class DebugPanel {
     p.add(fx, 'bloom').name('Bloom').onChange(repost);
     p.add(look.exposure, 'value', 0.5, 4, 0.01).name('Експозиція');
     p.add(look.bloomStrength, 'value', 0, 1.5, 0.01).name('Сила bloom');
-    for (const k of ['grain', 'vignette', 'aberration', 'distortion'] as const) {
-      p.add(fx, k).name({ grain: 'Зерно', vignette: 'Віньєтка', aberration: 'Аберація', distortion: 'Дисторсія' }[k])
+    for (const k of ['grain', 'vignette', 'aberration'] as const) {
+      p.add(fx, k).name({ grain: 'Зерно', vignette: 'Віньєтка', aberration: 'Аберація' }[k])
         .onChange((v: boolean) => { look[k].value = v ? LOOK_DEFAULTS[k] : 0; });
     }
     const w = gui.addFolder('Світ');

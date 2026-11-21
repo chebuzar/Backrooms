@@ -17,6 +17,21 @@ const eye = (b: Brain): V3 => ({ x: b.pos.x, y: 1.6, z: b.pos.z });
 const run = (b: Brain, p: PlayerView, sec: number) => { let last = b.update(0, p, eye(b)); for (let i = 0; i < sec * 60; i++) last = b.update(1 / 60, p, eye(b)); return last; };
 
 describe('monster brain', () => {
+  it('during a search goes to a nearby hiding spot, stands there and checks it', () => {
+    const b = new Brain(base, straight, { los: () => true }, { x: 0, y: 0, z: 0 }, rng(7));
+    b.hideSpots = [{ x: 0.2, y: 0, z: 0.2, look: { x: 0.2, y: 1, z: 0.9 } }, { x: 40, y: 0, z: 40 }];
+    b.mem.last = { x: 1, y: 0, z: 1 };
+    (b as unknown as { set(s: string): void }).set('search');
+    const checked: number[] = [];
+    b.onCheck = (i) => checked.push(i);
+    const hidden = player({ hidden: true });
+    const first = b.update(1 / 60, hidden, eye(b));
+    expect(first.target).toBeNull(); // уже на місці: стоїть і дивиться на дверцята
+    expect(first.lookAt).toEqual({ x: 0.2, y: 1, z: 0.9 });
+    run(b, hidden, 3);
+    expect(checked).toEqual([0]); // далеку (за 12 м) не перевіряє
+  });
+
   it('sees a lit player in front and starts a chase', () => {
     let wall = false;
     const b = new Brain(base, straight, { los: () => !wall }, { x: 0, y: 0, z: 0 }, rng(1));

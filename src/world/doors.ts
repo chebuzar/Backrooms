@@ -51,10 +51,10 @@ export class Doors {
   private readonly leafLocal = new THREE.Matrix4();
   private readonly knobLocal = new THREE.Matrix4();
 
-  constructor(l: Layout, decor: Decor[], private readonly physics: Physics, tex: { door_c: THREE.Texture; door_n: THREE.Texture }) {
+  constructor(l: Layout, decor: Decor[], private readonly physics: Physics, tex: { door_c: THREE.Texture; door_n: THREE.Texture }, look: { color?: number; roughness?: number } = {}) {
     const r = rng(l.seed ^ 0xd00f);
     // стара фарбована фанера (справжня текстура ambientCG, перефарбована у вицвілий кремовий)
-    const paint = new THREE.MeshStandardMaterial({ map: tex.door_c, normalMap: tex.door_n, roughness: 0.66 });
+    const paint = new THREE.MeshStandardMaterial({ map: tex.door_c, normalMap: tex.door_n, color: look.color ?? 0xffffff, roughness: look.roughness ?? 0.66 });
     const metal = new THREE.MeshStandardMaterial({ color: 0x8a8578, roughness: 0.35, metalness: 0.8 });
     const all: { d: Decor; k: number; w: number; E: number; hingeNeg: boolean; roll: number; extra: number; dir: number }[] = [];
     decor.filter((d) => d.t === 'door').forEach((d, k) => {
@@ -115,6 +115,13 @@ export class Doors {
     d.target = 0;
     this.fast.add(d);
     this.onMove?.(d, false);
+  }
+
+  /** Тихо поставити полотно в інше положення (поки ніхто не дивиться): без рипу й руху. */
+  setSilently(d: Door, angle: number): void {
+    d.angle = angle; d.target = angle;
+    this.fast.delete(d);
+    this.apply(d);
   }
 
   /** Відчинити/зачинити. */
