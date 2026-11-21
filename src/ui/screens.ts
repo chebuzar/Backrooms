@@ -208,7 +208,7 @@ export class UI {
   /** «Управление»: клавіші (ПК) або кнопки екрана з іконками (iPad/iPhone). */
   controls(touch: boolean, onBack: Handler): void {
     const c = T.controls;
-    const iconOf = (k: string) => k in ICONS ? `<span class="ti">${svg(ICONS[k as keyof typeof ICONS])}</span>` : `<kbd>${k === 'stick' ? '◎' : '☝'}</kbd>`;
+    const iconOf = (k: string) => `<span class="ti">${svg(ICONS[k as keyof typeof ICONS] ?? '')}</span>`;
     const rows = touch ? c.touch.map(([k, t]) => `${iconOf(k)}<span>${esc(t)}</span>`) : c.keys.map(([k, t]) => `<kbd>${esc(k)}</kbd><span>${esc(t)}</span>`);
     const el = this.make('controls', 'dossier-wrap controls-screen', `<div class="dossier">
       <div class="head"><div>${T.menu.object}<br>${T.menu.caseNo}</div><div class="pencil">${esc(c.title.toLowerCase())}</div></div>

@@ -1,4 +1,4 @@
-// Керування, яке раніше нічого не робило: V / кнопка 📹 — зум камери 2× з написом «ZOOM 2×»; Tab / J — журнал документів.
+// Керування, яке раніше нічого не робило: V / кнопка камери — зум камери 2× з написом «ZOOM 2×»; Tab / J — журнал документів.
 // Плюс навчання на старті (підказки клавіш) і розділ «Управление» в паузі.
 //   node tests/e2e/controls.mjs [webkit|chromium] [--device "iPad Pro 11 landscape"]
 import { startServer, openPage, gotoGame, wait } from './lib.mjs';
@@ -64,13 +64,13 @@ if (!device) {
   const ctlText = hasCtl ? await page.evaluate(() => document.querySelector('.controls-screen')?.textContent ?? '') : '';
   check('в паузе — раздел «Управление» со всеми клавишами', hasCtl && ['Фонарик', 'Бег', 'Присесть', 'Действие', 'Журнал', 'Камера'].every((w) => ctlText.includes(w)));
 } else {
-  // iPad/iPhone: кнопка 📹 — зум
+  // iPad/iPhone: кнопка камери — зум
   const fov0 = await page.evaluate(() => window.__zk.game.camera.fov);
   await page.tap('.tb-cam');
   await wait(900);
   const z = await page.evaluate(() => ({ fov: window.__zk.game.camera.fov, shown: !!document.querySelector('.hud .zoom.on') }));
   await page.screenshot({ path: `.shots/controls-zoom-${which}${tag}.png` });
-  check('кнопка 📹 — зум 2×', z.fov < fov0 * 0.6 && z.shown, { fov0, fov: z.fov });
+  check('кнопка камеры — зум 2×', z.fov < fov0 * 0.6 && z.shown, { fov0, fov: z.fov });
 }
 check('консоль без ошибок', logs.length === 0, logs.slice(0, 5));
 await close(); await srv.close();

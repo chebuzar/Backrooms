@@ -102,10 +102,11 @@ export class HUD {
     this.rec.classList.toggle('blink', Math.floor(sec * 1.2) % 2 === 0);
   }
 
-  setPrompt(text: string | null, key: string): void {
+  /** Підказка дії біля предмета: клавіша (`key`) або значок кнопки на дотику (`icon` — готовий svg). */
+  setPrompt(text: string | null, key: string, icon?: string): void {
     this.prompt.classList.toggle('on', !!text);
     this.dot.classList.toggle('on', !!text);
-    if (text) this.prompt.innerHTML = `<kbd>${esc(key)}</kbd>${esc(text)}`;
+    if (text) this.prompt.innerHTML = `<kbd${icon ? ' class="ico"' : ''}>${icon ?? esc(key)}</kbd>${esc(text)}`;
   }
 
   setObjective(text: string): void {
