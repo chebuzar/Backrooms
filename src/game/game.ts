@@ -288,6 +288,7 @@ export class Game {
     if (this.player) this.setupInteractions(lvl);
     this.levelAudio();
     await this.hunt.setup(lvl, this.assets, this.physics);
+    this.setupHideChecks();
     return lvl;
   }
 
@@ -535,6 +536,31 @@ export class Game {
     this.hud.subtitle(SPECIAL.writing, 5);
     look.fear.value = Math.min(1, look.fear.value + 0.4);
     this.rig.shake = Math.max(this.rig.shake, 0.25);
+  }
+
+  /** Мисливець під час обшуку перевіряє шафки: стає перед дверцятами, смикає їх. Якщо гравець усередині —
+   *  знаходить не завжди: що гірше нерви (важке дихання), то вірогідніше. */
+  private setupHideChecks(): void {
+    const s = this.hunt.stalker;
+    if (!s) return;
+    s.brain.hideSpots = this.lockers.map((l) => {
+      const nx = Math.sin(l.yaw), nz = Math.cos(l.yaw);
+      return { x: l.door.x + nx * 0.55, y: 0, z: l.door.z + nz * 0.55, look: { x: l.door.x, y: 1.2, z: l.door.z } };
+    });
+    s.brain.onCheck = (i) => {
+      const l = this.lockers[i];
+      if (!l) return;
+      const b = this.sfx.get('metalclick'), shut = this.sfx.pick('doorclose');
+      if (b) this.audio.play3D(b, l.door.x, 1.1, l.door.z, { gain: 1, rate: 0.7, ref: 2, wet: 0.3 });
+      if (shut) this.audio.play3D(shut, l.door.x, 1.1, l.door.z, { gain: 0.6, rate: 1.3, ref: 2, wet: 0.3 });
+      const h = this.hide;
+      if (h && h.l === l) {
+        this.rig.shake = Math.max(this.rig.shake, 0.3);
+        look.fear.value = 1;
+        this.psyche.shock(0.2);
+        if (Math.random() < 0.3 + this.psyche.nerves * 0.4) h.seen = true; // почув дихання — відчиняє
+      }
+    };
   }
 
   /** Сховатися в шафку: камера за жалюзі, рух вимкнено, ліхтарик гасне. Мисливець, що бачив це, знайде. */

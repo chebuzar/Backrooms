@@ -78,6 +78,15 @@ export class Brain {
   private patrolTarget: V3 | null = null;
   private searchPoints: V3[] = [];
   private pause = 0;
+  /** Схованки (шафки): точка перед дверцятами. Під час обшуку перевіряє найближчі до місця, де втратив гравця. */
+  hideSpots: (V3 & { look?: V3 })[] = [];
+  private checked = new Set<number>();
+  private checking = -1;
+  private checkT = 0;
+  /** Стоїть перед схованкою й відчиняє її (індекс) — рішення, чи там гравець, ухвалює гра. */
+  onCheck: ((i: number) => void) | null = null;
+  /** Зараз біля схованки (для звуку й анімації). */
+  get checkingSpot(): number { return this.checkT > 0 ? this.checking : -1; }
   /** Бачить гравця в цей момент. */
   seesPlayer = false;
   /** Хоч раз помічав гравця (підозра дійшла до дії) — для stillUntilNoticed. */
@@ -93,7 +102,7 @@ export class Brain {
     this.state = s;
     this.stateT = 0;
     if (s !== 'patrol' && s !== 'idle') this.noticed = true;
-    if (s === 'search') this.searchPoints = [];
+    if (s === 'search') { this.searchPoints = []; this.checked.clear(); this.checking = -1; this.checkT = 0; }
     if (s === 'patrol') this.patrolTarget = null;
   }
 
@@ -229,8 +238,24 @@ export class Brain {
         return { target, speed: t.runSpeed, lookAt: p, attack: dist(this.pos, p) < 1.0 };
       }
       case 'search': {
-        // обшук: точки довкола останнього відомого місця, ширше з часом
+        // обшук: спершу схованки поблизу місця, де втратив гравця (стоїть перед кожною, відчиняє), потім — точки довкола
         const c = this.mem.last ?? this.pos;
+        if (this.checking < 0) {
+          let best = -1, bd = 12;
+          this.hideSpots.forEach((h, i) => { const d = dist(h, c); if (!this.checked.has(i) && d < bd) { bd = d; best = i; } });
+          this.checking = best;
+        }
+        if (this.checking >= 0) {
+          const h = this.hideSpots[this.checking] as V3 & { look?: V3 };
+          if (dist(this.pos, h) > 0.55 && this.checkT === 0) return { target: h, speed: t.walkSpeed * 1.1, lookAt: null, attack: false };
+          this.checkT += dt;
+          if (this.checkT > 2.4) {
+            this.onCheck?.(this.checking);
+            this.checked.add(this.checking);
+            this.checking = -1; this.checkT = 0;
+          }
+          return { target: null, speed: 0, lookAt: h.look ?? h, attack: false };
+        }
         if (!this.searchPoints.length || dist(this.pos, this.searchPoints[0] as V3) < 0.9) {
           this.searchPoints.shift();
           if (!this.searchPoints.length) this.searchPoints.push(this.nav.randomAround(c, 3 + this.stateT * 0.4));
