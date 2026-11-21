@@ -22,6 +22,12 @@ const info = await page.evaluate(() => {
   const s = window.__zk.game.sfx;
   return { state: window.__zk.game.audio.ctx?.state, step: !!s.get('step_0'), carpet: !!s.get('carpet_0'), door: !!s.pick('doorclose'), amb: !!s.get('amb_l0') };
 });
+// гучномовець: дзвін, голос і субтитр; луна й тиск рівня
+await page.waitForFunction(() => window.__zk.game.mode === 'play', null, { timeout: 120000 }).catch(() => {});
+await page.evaluate(() => { const g = window.__zk.game; const h = g.hud, o = h.subtitle.bind(h); window.__subs = []; h.subtitle = (t, n) => { window.__subs.push(t); o(t, n); }; g.soundscape.update(0.1, { x: g.player.pos.x, z: g.player.pos.z, dread: 0.5, silence: 0, danger: 0 }); g.soundscape.announce(g.player.pos.x, g.player.pos.z, 3); });
+await page.waitForFunction(() => window.__subs.some((t) => t.startsWith('Громкоговоритель')), null, { timeout: 15000 }).catch(() => {});
+info.pa = await page.evaluate(() => window.__subs.some((t) => t.startsWith('Громкоговоритель')));
+info.wet = await page.evaluate(() => +window.__zk.game.audio.reverbSend.gain.value.toFixed(2));
 console.log(which, JSON.stringify(info), 'console:', JSON.stringify(logs));
 await b.close(); await srv.close();
-if (logs.length || !info.step || !info.carpet || !info.door || !info.amb) process.exitCode = 1;
+if (logs.length || !info.step || !info.carpet || !info.door || !info.amb || !info.pa) process.exitCode = 1;

@@ -10,6 +10,7 @@ import { buildUnseen } from '../world/unseen';
 import { makeBody } from '../world/bodies';
 import { dressLevel } from '../world/dressing';
 import { Psyche } from './psyche';
+import { Soundscape, surfaceAt } from './soundscape';
 import { Tasks } from './tasks';
 import { RADIO } from '../story/tasks';
 import { lampDeficits } from '../world/materials';
@@ -162,6 +163,7 @@ export class Game {
   /** Гучність фону рівня (стихає в «тишу»). */
   private ambGain: GainNode | null = null;
   readonly psyche = new Psyche();
+  readonly soundscape = new Soundscape(this.audio, (t, sec) => this.hud.subtitle(t, sec));
   private genVoice: SpatialVoice | null = null;
   /** Обстановка рівня (для контрольних кадрів). */
   dressed: { x: number; z: number; yaw: number; kind: string }[] = [];
@@ -286,6 +288,7 @@ export class Game {
       for (const b of this.store.progress.bodies) if (b.level === id) lvl.scene.add(makeBody(gl.scene, b.x, b.z, b.yaw));
     } catch { /* без моделі гра йде далі без прихованого й тіл */ }
     this.psyche.attach(lvl, this.figureModel, unseen);
+    this.soundscape.attach(lvl);
     this.level = lvl;
     setFilm(lvl.id);
     this.saveMap();
@@ -362,10 +365,12 @@ export class Game {
   }
 
   private footstep(x: number, y: number, z: number, loud: number): void {
-    // записані кроки (на килимі — приглушені); поки бібліотека вантажиться — синтез
-    const rec = this.sfx.ready ? this.sfx.pick('carpet_') : null;
+    // кроки за поверхнею: паркет — дзвінкий дерев'яний стук, лінолеум — глухіший, бетон — нижчий і з луною
+    const surf = this.level ? surfaceAt(this.level, x, z) : 'linoleum';
+    const rec = this.sfx.ready ? this.sfx.pick(surf === 'linoleum' ? 'carpet_' : 'step_') : null;
     const b = rec ?? this.steps[this.stepIdx++ % Math.max(1, this.steps.length)];
-    if (b) this.audio.play3D(b, x, y + 0.05, z, { gain: 0.35 + loud * 0.65, rate: 0.94 + Math.random() * 0.12, ref: 2, wet: 0.25 });
+    const k = surf === 'parquet' ? { g: 0.75, r: 1.04, w: 0.22 } : surf === 'concrete' ? { g: 0.85, r: 0.9, w: 0.4 } : { g: 1, r: 1, w: 0.2 };
+    if (b) this.audio.play3D(b, x, y + 0.05, z, { gain: (0.35 + loud * 0.65) * k.g, rate: k.r * (0.94 + Math.random() * 0.12), ref: 2, wet: k.w });
     this.hunt.noise(x, y, z, loud);
   }
 
@@ -1063,6 +1068,7 @@ export class Game {
       look.fear.value = Math.max(0, look.fear.value - dt * 0.12);
       look.dread.value += (this.psyche.dread - look.dread.value) * Math.min(1, dt * 0.8);
       if (this.ambGain) this.ambGain.gain.value = 1 - this.psyche.silence;
+      if (this.mode === 'play' && !this.ending) this.soundscape.update(dt, { x: this.player.pos.x, z: this.player.pos.z, dread: this.psyche.dread, silence: this.psyche.silence, danger: this.hunt.danger });
       // живе згасання запеченого світла біля ламп, що мерехтять/згасли (оновлюємо кілька разів на секунду — дешево)
       this.dimT -= dt;
       if (this.dimT <= 0) { this.dimT = 0.05; lvl.lamps.fillDeficits(this.camera.position.x, this.camera.position.z, lampDeficits.array as THREE.Vector4[]); }
