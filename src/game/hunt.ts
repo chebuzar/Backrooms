@@ -71,6 +71,9 @@ export class Hunt {
     if (this.heartGain) this.heartGain.gain.value = 0;
   }
 
+  /** Мінімальне серцебиття від нервів Оператора (психологічний шар). */
+  heartFloor = 0;
+
   /** Серцебиття на шині музики: гучніше й частіше з небезпекою. */
   private heartbeat(dt: number, target: number): void {
     const ctx = this.audio.ctx, bus = this.audio.music;
@@ -86,8 +89,10 @@ export class Hunt {
       this.heart.start();
     }
     this.danger += (target - this.danger) * Math.min(1, dt * (target > this.danger ? 1.5 : 0.35));
-    (this.heartGain as GainNode).gain.value = Math.max(0, this.danger - 0.12) * 1.1;
-    this.heart.playbackRate.value = 0.85 + this.danger * 0.7;
+    // серце чути й від нервів, але небезпекою це не рахується (інакше нерви підганяли б самі себе)
+    const beat = Math.max(this.danger, this.heartFloor);
+    (this.heartGain as GainNode).gain.value = Math.max(0, beat - 0.12) * 1.1;
+    this.heart.playbackRate.value = 0.85 + beat * 0.7;
   }
 
   /** Шум від гравця чи дверей. */
@@ -98,7 +103,7 @@ export class Hunt {
   update(dt: number, lvl: Level, player: Player, cam: THREE.Camera, flashlightOn: boolean, physics: Physics,
     hidden: { x: number; z: number; seen: boolean } | null = null): void {
     const s = this.stalker;
-    if (!s) return;
+    if (!s) { this.heartbeat(dt, 0); return; } // без мисливця серце чути лише від нервів
     const v = this.view, sp = s.pos;
     Object.assign(v, { x: player.pos.x, y: player.pos.y, z: player.pos.z, vx: player.vx, vz: player.vz, flashlightOn, crouched: player.crouched, hidden: !!hidden, hiddenSeen: !!hidden?.seen });
     if (hidden) {

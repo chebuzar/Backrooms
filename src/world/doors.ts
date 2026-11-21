@@ -117,6 +117,13 @@ export class Doors {
     this.onMove?.(d, false);
   }
 
+  /** Тихо поставити полотно в інше положення (поки ніхто не дивиться): без рипу й руху. */
+  setSilently(d: Door, angle: number): void {
+    d.angle = angle; d.target = angle;
+    this.fast.delete(d);
+    this.apply(d);
+  }
+
   /** Відчинити/зачинити. */
   toggle(d: Door): void {
     d.target = d.target > 0.1 ? 0 : 1.5;

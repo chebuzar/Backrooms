@@ -94,8 +94,8 @@ export function buildUnseen(l: Layout, figure: THREE.Object3D | null, seed: numb
         if (mm.isMesh) { mm.material = dark; mm.frustumCulled = false; mm.layers.set(LAYER_CAM); }
         const b = o as THREE.Bone;
         if (b.isBone) {
-          if (b.name === 'upperarm_l') b.rotation.y += 1.25;
-          if (b.name === 'upperarm_r') b.rotation.y -= 1.25;
+          if (b.name === 'upperarm_l') { b.rotation.y += 1.25; b.rotation.z -= 1.25; }
+          if (b.name === 'upperarm_r') { b.rotation.y -= 1.25; b.rotation.z += 1.25; }
           if (b.name === 'neck_01') b.rotation.x += 0.5; // голова опущена
         }
       });

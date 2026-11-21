@@ -227,6 +227,16 @@ async function placeProps(assets: Assets, physics: Physics, l: Layout, scene: TH
     scene.add(o);
     if (file === 'clipboard') spots.order7 = { id: 'order7', x: q.x, y: deskTop + 0.02, z: q.z };
   }
+  // «Инструкция оператору» — тонка брошура поруч із планшетом (підпис оператора в ній уже стоїть)
+  {
+    const q = rel(-0.62, -0.1);
+    const ins = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.004, 0.21), probeLit(new THREE.MeshStandardMaterial({ color: 0xcfc6a6, roughness: 0.9 }), probeAt(l.lights, dx, dz)));
+    ins.position.set(q.x, deskTop + 0.003, q.z);
+    ins.rotation.y = yaw - 0.25;
+    ins.castShadow = true; ins.receiveShadow = true;
+    scene.add(ins);
+    spots.instr = { id: 'instr', x: q.x, y: deskTop + 0.02, z: q.z };
+  }
   // записка — аркуш на підлозі
   const paper = new THREE.Mesh(new THREE.PlaneGeometry(0.21, 0.297), probeLit(new THREE.MeshStandardMaterial({ color: 0xd9d4bf, roughness: 0.95 }), probeAt(l.lights, nx, nz)));
   paper.rotation.set(-Math.PI / 2, 0, 0.7);

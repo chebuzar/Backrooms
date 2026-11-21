@@ -6,7 +6,7 @@
 import * as THREE from 'three/webgpu';
 import {
   texture, uv, uniform, uniformArray, Loop, vec2, vec3, float, mix, smoothstep, clamp, floor, min, int, dot, step,
-  positionWorld, normalMap, normalWorld, Fn
+  positionWorld, normalMap, normalWorld, Fn, luminance
 } from 'three/tsl';
 import type { Layout, ZoneStyle } from './layout';
 import type { Assets } from '../assets/loader';
@@ -143,7 +143,7 @@ export function makeLevel0Materials(t: Level0Textures, layout: Layout) {
   const pUV = positionWorld.xz.div(PARQ_M), lUV = positionWorld.xz.div(LINO_M);
   const isLino = Fn(() => { const z = zoneAt(); return isZ(z, 2).add(isZ(z, 3)); });
   const floorColor = Fn(() => {
-    const parq = texture(t.parquet_c, pUV).rgb.mul(vec3(0.6, 0.52, 0.48)), lino = texture(t.lino_c, lUV).rgb.mul(vec3(0.95, 0.9, 0.85));
+    const pq = texture(t.parquet_c, pUV).rgb, parq = mix(vec3(luminance(pq)), pq, 0.62).mul(vec3(0.66, 0.58, 0.52)), lino = texture(t.lino_c, lUV).rgb.mul(vec3(0.95, 0.9, 0.85));
     const c = mix(parq, lino, isLino());
     // затерті доріжки (світліше, без лаку) і вологі темні плями
     const worn = smoothstep(0.55, 0.85, maskAt(positionWorld.xz, 0.03, 0.27));

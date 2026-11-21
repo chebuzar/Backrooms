@@ -7,6 +7,8 @@ import { Camcorder } from './camcorder';
 import { Notebook } from '../ui/notebook';
 import { MapMemory } from './mapmem';
 import { buildUnseen } from '../world/unseen';
+import { makeBody } from '../world/bodies';
+import { Psyche } from './psyche';
 import { lampDeficits } from '../world/materials';
 import { PROFILES, QualityGovernor, autoQuality, type QualityProfile } from '../render/quality';
 import type { DeviceInfo } from '../core/device';
@@ -22,7 +24,7 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { HUD } from '../ui/hud';
 import { Ambience } from './ambience';
 import { Interactions } from './interact';
-import { DOCS, NOTES, TAPES, FINDINGS, SPECIAL, PROLOGUE, OBJECTIVES, HINTS, LEVEL_END, LEVEL_TITLES, type Doc } from '../story/ru';
+import { DOCS, NOTES, PSY_DOCS, TAPES, FINDINGS, SPECIAL, PROLOGUE, OBJECTIVES, HINTS, LEVEL_END, LEVEL_TITLES, type Doc } from '../story/ru';
 import { placeFindings, type Finding } from '../world/findings';
 import { placeLockers, type Locker } from '../world/lockers';
 import { placeSpecialRooms, type Special } from '../world/special-rooms';
@@ -154,6 +156,15 @@ export class Game {
   private ending = false;
   private steps: AudioBuffer[] = [];
   private ambSrc: AudioBufferSourceNode | null = null;
+  /** Гучність фону рівня (стихає в «тишу»). */
+  private ambGain: GainNode | null = null;
+  readonly psyche = new Psyche();
+  private figureModel: THREE.Object3D | null = null;
+  /** Горизонтальна відстань до стіни/дверей на висоті очей (для психологічного шару). */
+  private readonly ray = (x: number, z: number, dx: number, dz: number, max: number): number => {
+    const l = Math.hypot(dx, dz) || 1;
+    return this.physics.raycast(x, 1.3, z, dx / l, 0, dz / l, max) ?? max;
+  };
   private seamVoices: SpatialVoice[] = [];
   private stepIdx = 0;
 
@@ -168,6 +179,15 @@ export class Game {
     this.hud = new HUD(uiRoot);
     this.notebook = new Notebook(uiRoot);
     this.rig = new CameraRig(this.camera);
+    this.psyche.events = {
+      // кінець тиші: десь зовсім поруч за спиною грюкають двері — і гул повертається
+      silenceEnd: (x, z) => {
+        const b = this.sfx.pick('doorclose');
+        if (b) this.audio.play3D(b, x, 1.2, z, { gain: 0.9, ref: 2, wet: 0.5, rate: 0.8 });
+      },
+      // крізь видошукач — людина лицем до стіни, якої очима не видно
+      sawStill: () => { this.rig.shake = Math.max(this.rig.shake, 0.25); look.fear.value = Math.min(1, look.fear.value + 0.35); }
+    };
     const tt = T.tutorial, touch = this.device.touch;
     this.tutorial = new Tutorial([
       { id: 'light', key: 'F', icon: touch ? svg(ICONS.light) : undefined, text: tt.light },
@@ -199,6 +219,7 @@ export class Game {
     this.player.yaw = s.yaw;
     this.bat.level = this.store.progress.battery;
     this.cam.charge = this.store.progress.camCharge;
+    this.psyche.nerves = this.store.progress.nerves;
     this.player.onFootstep = (e) => this.footstep(e.x, e.y, e.z, e.loudness);
     // взаємодії потребують гравця: при першому завантаженні рівня його ще не було (loadLevel їх пропустив)
     this.setupInteractions(lvl);
@@ -239,8 +260,17 @@ export class Game {
       } catch { /* без моделі гра йде без Фигуры */ }
     }
     // приховане, що видно лише крізь камеру: шлях експедиції до Шва й люди, що лишилися тут
-    try { const gl = await this.assets.model('assets/models/figure.glb'); lvl.scene.add(buildUnseen(lvl.layout, gl.scene, lvl.id * 977 + 13)); }
-    catch { /* без моделі — лише стрілки не буде теж; гра йде далі */ }
+    let unseen: THREE.Object3D | null = null;
+    this.figureModel = null;
+    try {
+      const gl = await this.assets.model('assets/models/figure.glb');
+      this.figureModel = gl.scene;
+      unseen = buildUnseen(lvl.layout, gl.scene, lvl.id * 977 + 13);
+      lvl.scene.add(unseen);
+      // тіла з минулих спроб на цьому рівні
+      for (const b of this.store.progress.bodies) if (b.level === id) lvl.scene.add(makeBody(gl.scene, b.x, b.z, b.yaw));
+    } catch { /* без моделі гра йде далі без прихованого й тіл */ }
+    this.psyche.attach(lvl, this.figureModel, unseen);
     this.level = lvl;
     setFilm(lvl.id);
     this.saveMap();
@@ -267,7 +297,8 @@ export class Game {
     if (!lvl || !this.sfx.ready) return;
     this.ambSrc?.stop();
     const amb = this.sfx.get(`amb_l${lvl.id}`), bus = this.audio.music;
-    this.ambSrc = amb && bus ? this.audio.play2D(amb, 0.32, 1, bus) : null;
+    if (!this.ambGain && this.audio.ctx && bus) { this.ambGain = this.audio.ctx.createGain(); this.ambGain.connect(bus); }
+    this.ambSrc = amb && this.ambGain ? this.audio.play2D(amb, 0.32, 1, this.ambGain) : null;
     if (this.ambSrc) this.ambSrc.loop = true;
     // телефон у порожній кімнаті дзвонить (рівень 0), доки не знімеш трубку
     this.phoneVoice?.stop(0.05); this.phoneVoice = null;
@@ -362,7 +393,7 @@ export class Game {
       canContinue: !!this.store.progress.checkpoint,
       onContinue: () => void this.continueGame(),
       onStart: () => {
-        const start = () => { this.store.newGame(); this.bat.newGame(); this.cam.charge = 1; this.cam.tape = 0; this.mapmem?.load(undefined); void this.startNewGame(); };
+        const start = () => { this.store.newGame(); this.bat.newGame(); this.cam.charge = 1; this.cam.tape = 0; this.psyche.nerves = 0; this.mapmem?.load(undefined); void this.startNewGame(); };
         // є збереження — спершу спитати: випадкове натискання не має стирати проходження
         if (!this.store.progress.checkpoint) { start(); return; }
         const m = T.menu;
@@ -535,6 +566,7 @@ export class Game {
   private persist(): void {
     this.store.progress.battery = this.bat.level;
     this.store.progress.camCharge = this.cam.charge;
+    this.store.progress.nerves = this.psyche.nerves;
     this.saveMap();
     this.store.save();
   }
@@ -592,7 +624,7 @@ export class Game {
   private docOf(id: string): Doc | undefined {
     const t = TAPES[id];
     if (t) return { id, kind: 'tape', title: t.title, meta: t.meta, body: t.lines.map(([, l]) => l).join('\n'), sign: 'Расшифровка записи' };
-    return DOCS[id] ?? NOTES[id];
+    return DOCS[id] ?? NOTES[id] ?? PSY_DOCS[id];
   }
 
   /** Увімкнути плівку: шипіння магнітофона на підлозі, розшифровка субтитрами; запис потрапляє в журнал. */
@@ -697,6 +729,13 @@ export class Game {
     this.flashOverride = null;
     this.rig.shake = 0;
     this.store.progress.deaths++;
+    // тіло лишається тут назавжди (і в наступних спробах), нерви — не обнуляються
+    if (this.level) {
+      const body = { level: this.level.id, x: p.x, z: p.z, yaw: this.player.yaw };
+      this.store.progress.bodies = [...this.store.progress.bodies, body].slice(-12);
+      if (this.figureModel) this.level.scene.add(makeBody(this.figureModel, body.x, body.z, body.yaw));
+    }
+    this.psyche.afterDeath();
     this.bat.afterDeath();
     this.persist();
     this.mode = 'pause';
@@ -831,8 +870,8 @@ export class Game {
     if (b) this.audio.play2D(b, 0.25, 1.3);
   }
 
-  /** Чи бреше годинник (перевизначається шаром нервів). */
-  watchLies(): boolean { return false; }
+  /** Чи бреше годинник: що гірше нервам, то частіше показує 01:23. */
+  watchLies(): boolean { return this.psyche.lies(); }
 
   private applyFov(): void {
     const t = Math.tan((this.baseFov * Math.PI) / 360) / (1 + this.cam.zoomK);
@@ -949,11 +988,18 @@ export class Game {
       this.figure?.update(dt, this.camera, this.mode === 'play');
       if (this.mode === 'play' && !this.ending) {
         this.hunt.update(dt, lvl, this.player, this.camera, this.flashlightOn, this.physics, this.hide ? { x: this.hide.l.eye.x, z: this.hide.l.eye.z, seen: this.hide.seen } : null);
+        this.psyche.update(dt, {
+          x: this.player.pos.x, z: this.player.pos.z, yaw: this.player.yaw, camera: this.camera, camUp: this.cam.k > 0.5,
+          flashlight: this.flashlightOn, danger: this.hunt.danger, hidden: !!this.hide, playing: true, ray: this.ray
+        });
+        this.hunt.heartFloor = Math.max(0, this.psyche.nerves - 0.55) * 0.9;
         const omen = this.tension.update(dt, this.hunt.danger);
         if (omen) this.omens.play(omen, lvl, { x: this.player.pos.x, z: this.player.pos.z, yaw: this.player.yaw }, this.camera);
       }
       this.omens.update(dt);
       look.fear.value = Math.max(0, look.fear.value - dt * 0.12);
+      look.dread.value += (this.psyche.dread - look.dread.value) * Math.min(1, dt * 0.8);
+      if (this.ambGain) this.ambGain.gain.value = 1 - this.psyche.silence;
       // живе згасання запеченого світла біля ламп, що мерехтять/згасли (оновлюємо кілька разів на секунду — дешево)
       this.dimT -= dt;
       if (this.dimT <= 0) { this.dimT = 0.05; lvl.lamps.fillDeficits(this.camera.position.x, this.camera.position.z, lampDeficits.array as THREE.Vector4[]); }
@@ -992,7 +1038,8 @@ export class Game {
           h.lamp = li;
         });
       }
-      for (const h of this.humVoices) h.voice.gain.gain.value = h.lamp >= 0 ? 0.45 * lvl.lamps.levelOf(h.lamp) : 0;
+      const quiet = 1 - this.psyche.silence;
+      for (const h of this.humVoices) h.voice.gain.gain.value = h.lamp >= 0 ? 0.45 * lvl.lamps.levelOf(h.lamp) * quiet : 0;
     }
     const c = this.camera, f = new THREE.Vector3(0, 0, -1).applyQuaternion(c.quaternion);
     if (this.mode === 'play' && this.interact) {
@@ -1013,7 +1060,7 @@ export class Game {
       this.store.progress.playSeconds += dt;
       this.tapes.update(dt);
       if ((this.persistT -= dt) <= 0) { this.persistT = 10; this.persist(); }
-      this.ambience.update(dt, this.player);
+      if (this.psyche.silence < 0.3) this.ambience.update(dt, this.player);
       if (this.mapmem && (this.mapT -= dt) <= 0) { this.mapT = 0.25; this.mapmem.mark(this.player.pos.x, this.player.pos.z); }
     } else this.hud.setPrompt(null, '');
     // ПК: миша ще не захоплена (після прологу браузер не дає захопити без кліку) — підказати клікнути
