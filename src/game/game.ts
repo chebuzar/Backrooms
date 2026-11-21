@@ -169,7 +169,7 @@ export class Game {
   dressed: { x: number; z: number; yaw: number; kind: string }[] = [];
   readonly tasks = new Tasks({
     have: (k) => this.store.progress.items.includes(k),
-    give: (k) => { if (!this.store.progress.items.includes(k)) { this.store.progress.items.push(k); this.persist(); } },
+    give: (k) => { if (!this.store.progress.items.includes(k)) { this.store.progress.items.push(k); this.persist(); this.firstMinutes(k); } },
     say: (t, sec) => this.hud.subtitle(t, sec),
     objective: (t) => this.setObjective(t),
     sound: (n, x, y, z) => this.taskSound(n, x, y, z),
@@ -289,6 +289,8 @@ export class Game {
     } catch { /* без моделі гра йде далі без прихованого й тіл */ }
     this.psyche.attach(lvl, this.figureModel, unseen);
     this.soundscape.attach(lvl);
+    // НИИ, ще без печаток: за пів хвилини рупор кличе Оператора № 7 на вахту — так гравець дізнається, куди йти й що його чекають
+    if (lvl.id === 0 && !this.store.progress.items.some((i) => i.startsWith('0:stamp_'))) this.soundscape.schedule(0, 30);
     this.level = lvl;
     setFilm(lvl.id);
     this.saveMap();
@@ -362,6 +364,14 @@ export class Game {
       const v = this.audio.play3D(hum, 0, -100, 0, { loop: true, gain: 0.45, ref: 1.1, wet: 0.12, rate: 0.985 + i * 0.006 });
       if (v) this.humVoices.push({ voice: v, lamp: -1 });
     }
+  }
+
+  /** Перші хвилини на рівні 0: печатки ведуть не лише до вахти. Перша — рупор кличе на ім'я, друга — хтось стоїть у кінці коридору. */
+  private firstMinutes(k: string): void {
+    const stamps = this.store.progress.items.filter((i) => i.startsWith('0:stamp_')).length;
+    if (!k.startsWith('0:stamp_')) return;
+    if (stamps === 1) this.soundscape.schedule(4, 7);
+    if (stamps === 2) this.psyche.scriptGhost(9);
   }
 
   private footstep(x: number, y: number, z: number, loud: number): void {

@@ -182,7 +182,24 @@ async function readDoc(spot, label) {
   return log(`закрыть: ${label}`, back) ? 'ok' : 'stuck';
 }
 
+/** Завдання рівня (печатки / запобіжники / ключ, потім вахта / щит / генератор) — пішки й клавішею E. */
+async function doTasks(label) {
+  const its = await page.evaluate(() => window.__zk.game.interact.items.filter((i) => i.id.startsWith('task-') && i.id !== 'task-radio')
+    .map((i) => ({ id: i.id, x: i.x, y: i.y, z: i.z })).sort((a, b) => (a.id === 'task-gate') - (b.id === 'task-gate')));
+  for (const it of its) {
+    if (await page.evaluate(() => window.__zk.game.tasks.gateOpen)) break;
+    const r = await useAt(it.x, it.y, it.z, `${label}-${it.id}`);
+    if (r !== 'ok') return r;
+    await wait(1200);
+  }
+  const open = await page.evaluate(() => window.__zk.game.tasks.gateOpen);
+  await shot(`${label}-gate`);
+  return log(`задание уровня: ${label}`, open) ? 'ok' : 'gate';
+}
+
 async function throughSeam(target, label) {
+  const t = await doTasks(`tasks${target - 1}`);
+  if (t !== 'ok') return t;
   const sp = await page.evaluate(() => { const s = window.__zk.game.level.seam.group; return { x: s.position.x + Math.sin(s.rotation.y) * 0.6, z: s.position.z + Math.cos(s.rotation.y) * 0.6, sx: s.position.x, sz: s.position.z }; });
   const r = await useAt(sp.sx, 1.3, sp.sz, label, { stop: 1.3, beforeUse: async () => { seamBattery = await page.evaluate(() => window.__zk.game.battery); } });
   if (r !== 'ok') return r;

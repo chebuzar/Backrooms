@@ -34,6 +34,8 @@ export class Soundscape {
   private zoneT = 0;
   private lastPa = -1;
   private roomFor = -1;
+  /** Сюжетне оголошення: [через скільки секунд гри, номер рядка]. */
+  private queued: [number, number] | null = null;
 
   constructor(private readonly audio: AudioEngine, private readonly say: (t: string, sec: number) => void) {}
 
@@ -41,8 +43,12 @@ export class Soundscape {
     this.lvl = lvl;
     this.paCd = 45 + Math.random() * 40;
     this.roomFor = -1;
+    this.queued = null;
     this.prepare();
   }
+
+  /** Оголосити рядок idx через delay секунд гри (для сюжетних моментів перших хвилин). */
+  schedule(idx: number, delay: number): void { this.queued = [delay, idx]; this.paCd = Math.max(this.paCd, delay + 40); }
 
   private prepare(): void {
     const ctx = this.audio.ctx;
@@ -95,6 +101,7 @@ export class Soundscape {
     }
     // гучномовець: не під час погоні й не в тиші
     if (s.danger > 0.5 || s.silence > 0.1) return;
+    if (this.queued && (this.queued[0] -= dt) <= 0) { const i = this.queued[1]; this.queued = null; this.announce(s.x, s.z, i); return; }
     if ((this.paCd -= dt) > 0) return;
     this.paCd = 95 + Math.random() * 70;
     this.announce(s.x, s.z);

@@ -44,6 +44,8 @@ export class Psyche {
   private figure: THREE.Object3D | null = null;
   private ghost: { o: THREE.Object3D; age: number; seen: boolean; away: number } | null = null;
   private ghostCd = 50;
+  /** Сюжетна галюцинація: з'явиться незалежно від нервів. */
+  private ghostForced = false;
   private silenceCd = 80;
   private silenceT = 0;
   private silenceHold = 0;
@@ -60,12 +62,16 @@ export class Psyche {
     this.figure = figure;
     this.ghost = null;
     this.silence = 0; this.silenceT = 0;
+    this.ghostForced = false;
     this.ghostCd = 45 + rnd() * 30; this.silenceCd = 70 + rnd() * 50; this.doorCd = 30 + rnd() * 20;
     this.stills = [];
     unseen?.traverse((o) => {
       if (o.parent === unseen && !(o as THREE.InstancedMesh).isInstancedMesh) this.stills.push({ p: o.position.clone().setY(1.2), seen: false });
     });
   }
+
+  /** Перша зустріч: людина вдалині з'явиться через delay секунд (коли попереду буде довгий прохід). */
+  scriptGhost(delay: number): void { if (!this.ghost) { this.ghostForced = true; this.ghostCd = delay; } }
 
   /** Смерть: нерви не обнуляються. */
   afterDeath(): void { this.nerves = Math.max(this.nerves, NERVES.afterDeath); this.removeGhost(); }
@@ -117,14 +123,15 @@ export class Psyche {
       }
       return;
     }
-    if (!this.figure || this.nerves < 0.35 || c.camUp || c.hidden) return;
-    this.ghostCd -= dt * (0.6 + this.nerves);
+    if (!this.figure || (this.nerves < 0.35 && !this.ghostForced) || c.camUp || c.hidden) return;
+    this.ghostCd -= dt * (this.ghostForced ? 1 : 0.6 + this.nerves);
     if (this.ghostCd > 0) return;
     this.ghostCd = 55 + rnd() * 50;
     // точка попереду, у полі зору, 7–15 м, на прямій видимості
     const fx = -Math.sin(c.yaw), fz = -Math.cos(c.yaw);
     const far = c.ray(c.x, c.z, fx, fz, 16) - 0.7;
-    if (far < 7) { this.ghostCd = 8; return; }
+    if (far < 7) { this.ghostCd = this.ghostForced ? 1.5 : 8; return; }
+    this.ghostForced = false;
     const d = Math.min(far, 9 + rnd() * 6);
     const x = c.x + fx * d, z = c.z + fz * d;
     const o = cloneSkinned(this.figure);
