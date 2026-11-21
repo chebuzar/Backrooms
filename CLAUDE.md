@@ -184,7 +184,7 @@
 - Залишився від старої гри (акаунти, хмарні сейви, звіти, push). Новою грою поки не використовується; `public/release.json` не видаляти — його читає задача сервера. Секрети (`ADMIN_KEY`, `VAPID_*`) — лише в Ample.
 
 ## Деплой
-**Тестова версія (поки нова гра не в `main`)** — https://zakulisye.ample.run (статичний застосунок `zakulisye-preview`, Ample, акаунт власника). Оновлення: `npm run build`, `tar -czf <tmp>/preview.tar.gz -C dist .` (≤ 32 МБ), `ample_upload_create(archive, name=zakulisye-preview, deploy)` → `curl -T <tar> <upload_url>` → `ample_upload_get(wait)`.
+**Тестова версія** — https://zakulisye.ample.run (застосунок `zakulisye-preview`, Ample, акаунт власника). Гра (~70 МБ) більша за ліміт Ample (32 МБ), тому викладається обгортка `scripts/preview-site/`, яка збирає гру з GitHub на коміті з `commit.txt` — кроки в `scripts/preview-site/README.md`; `/build.txt` на сайті показує коміт.
 
 Push у `main` → `.github/workflows/deploy.yml`: lint → typecheck → test → build (`BASE_PATH=/Backrooms/`) → smoke → GitHub Pages (https://chebuzar.github.io/Backrooms/).
 

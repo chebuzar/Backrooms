@@ -1,0 +1,7 @@
+{
+  "name": "zakulisye-preview",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": { "build": "node build.mjs", "start": "node serve.mjs" }
+}
