@@ -1,42 +1,51 @@
-// Рівні 1–2: перехід крізь Шов (справжній шлях гри), кадри з кількох точок, без помилок консолі.
-// node tests/e2e/levels.mjs [webkit|chromium]  → .shots/lv<n>-<k>.png
-import { webkit, chromium } from 'playwright';
-import { createServer } from 'vite';
-const which = process.argv[2] ?? 'webkit';
-const srv = await createServer({ root: process.cwd(), server: { port: 5191, strictPort: true }, logLevel: 'error' });
-await srv.listen();
-const b = which === 'chromium'
-  ? await chromium.launch({ args: ['--enable-unsafe-webgpu', '--enable-features=Vulkan', '--use-vulkan=swiftshader', '--use-webgpu-adapter=swiftshader', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] })
-  : await webkit.launch();
-const page = await (await b.newContext({ viewport: { width: 1280, height: 720 } })).newPage();
-const logs = [];
-page.on('console', (m) => { if (['error', 'warning'].includes(m.type())) logs.push(m.text()); });
-page.on('pageerror', (e) => logs.push('pageerror: ' + e.message));
-await page.goto('http://localhost:5191/?debug&nodbg');
-await page.waitForFunction(() => window.__zk?.ready, null, { timeout: 180000 });
-await page.click('.age [data-go]');
-await page.waitForTimeout(500);
-await page.click('[data-s]');
-await page.waitForTimeout(1200);
-await page.mouse.click(640, 360); await page.waitForTimeout(200); await page.mouse.click(640, 360);
-await page.waitForFunction(() => window.__zk.game.input.enabled, null, { timeout: 30000 });
-const out = [];
-for (const [lv, via] of [[1, 'seam'], [2, 'seam']]) {
-  // справжній перехід: Шов поточного рівня
-  await page.evaluate((v) => { const g = window.__zk.game; void g.enterSeam(v === 'rift' ? g.level.rift : g.level.seam, g.level.next); }, via);
-  await page.waitForFunction((n) => window.__zk.game.level?.id === n && window.__zk.game.input.enabled, lv, { timeout: 120000 });
-  await page.waitForTimeout(800);
-  await page.screenshot({ path: `.shots/lv${lv}-0.png` });
-  // ще кілька точок: світильники вздовж плану
-  const pts = await page.evaluate(() => { const L = window.__zk.game.level.layout; const on = L.lights.filter((l) => l.state === 'on'); return [0.2, 0.5, 0.8].map((f) => on[Math.floor(f * on.length)]); });
-  let k = 1;
-  for (const p of pts) {
-    await page.evaluate(([x, z, y]) => window.__zk.tp(x + 1.0, z + 1.0, y, 0.05), [p.x, p.z, k * 1.7]);
-    await page.waitForTimeout(900);
-    await page.screenshot({ path: `.shots/lv${lv}-${k++}.png` });
+// Огляд рівнів 1 і 2: кілька кадрів у різних зонах (ліхтарик увімкнено) — для оцінки вигляду бази й парковки.
+// node tests/e2e/levels.mjs [webkit|chromium] [назва]  →  .shots/levels-<назва>-<браузер>.png
+import { startServer, openPage, gotoGame, wait } from './lib.mjs';
+import { execFileSync } from 'node:child_process';
+
+const which = process.argv[2] ?? 'webkit', name = process.argv[3] ?? 'cur';
+const srv = await startServer();
+const { page, logs, close } = await openPage(which, {});
+const files = [];
+try {
+  await gotoGame(page);
+  for (let k = 0; k < 6; k++) {
+    await page.evaluate(() => window.__zk.play());
+    await wait(1500);
+    if (await page.evaluate(() => window.__zk.game.mode === 'play')) break;
   }
-  out.push({ lv, id: await page.evaluate(() => window.__zk.game.level.id), calls: await page.evaluate(() => window.__zk.game.gfx.renderer.info.render.drawCalls) });
+  for (const id of [1, 2]) {
+    await page.evaluate(async (id) => { const g = window.__zk.game; await g.loadLevel(id); g.enterLevelStart(false); g.play(); }, id);
+    await page.evaluate(() => { document.querySelector('.touch')?.classList.remove('shown'); });
+    await wait(3000);
+    const pts = await page.evaluate(() => {
+      const l = window.__zk.game.level.layout, out = [];
+      const free = (x, z) => !l.walls.some((w) => Math.abs(x - w.x) < w.w / 2 + 0.5 && Math.abs(z - w.z) < w.d / 2 + 0.5);
+      out.push([l.spawn.x, l.spawn.z, l.spawn.yaw + Math.PI]);
+      const W = l.cols * l.cell, D = l.rows * l.cell;
+      for (const [fx, fz, yaw] of [[0.25, 0.3, 0.8], [0.7, 0.25, 2.4], [0.5, 0.6, 4], [0.8, 0.8, 5.5]]) {
+        let x = fx * W, z = fz * D;
+        for (let r = 0; r < 8 && !free(x, z); r += 0.4) { x += 0.6; z += 0.3; }
+        out.push([x, z, yaw]);
+      }
+      for (const d of window.__zk.game.dressed.slice(0, 4)) out.push([d.x + Math.sin(d.yaw) * 1.9, d.z + Math.cos(d.yaw) * 1.9, d.yaw, d.kind]);
+      return out.slice(0, 7);
+    });
+    for (const [i, [x, z, yaw]] of pts.entries()) {
+      await page.evaluate(([x, z, yaw, i]) => { window.__zk.tp(x, z, yaw, i > 4 ? -0.45 : -0.05); window.__zk.game.flashlightOn = i % 2 === 1 || i > 4; }, [x, z, yaw, i]);
+      await wait(2400);
+      const f = `.shots/lv-${name}-${which}-${id}-${i}.png`;
+      await page.screenshot({ path: f }); files.push(f);
+    }
+  }
+} finally {
+  await close(); await srv.close();
 }
-console.log(which, JSON.stringify(out), 'console:', JSON.stringify(logs));
-await b.close(); await srv.close();
+execFileSync('python3', ['-c', `
+import sys
+from PIL import Image
+fs=sys.argv[2:]; W=Image.new('RGB',(7*512,2*288))
+for i,f in enumerate(fs): W.paste(Image.open(f).resize((512,288)),((i%7)*512,(i//7)*288))
+W.save(sys.argv[1])`, `.shots/levels-${name}-${which}.png`, ...files]);
+console.log('console:', JSON.stringify(logs));
 if (logs.length) process.exitCode = 1;

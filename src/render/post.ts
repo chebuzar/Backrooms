@@ -52,9 +52,9 @@ const film = {
 };
 /** Палітри рівнів (ART.md §2): 0 НИИ — охра й оливкові тіні; 1 база — холодна зелень; 2 парковка — натрій і синя тінь. */
 export const FILM: Record<number, FilmLook> = {
-  0: { shadow: [-0.012, 0.006, -0.004], high: [0.024, 0.012, -0.03], lift: [0.026, 0.026, 0.02], sat: 0.82, contrast: 1.06, halation: [1.0, 0.78, 0.64] },
-  1: { shadow: [-0.018, 0.01, 0.006], high: [0.0, 0.016, 0.006], lift: [0.018, 0.026, 0.024], sat: 0.78, contrast: 1.08, halation: [0.86, 0.92, 0.9] },
-  2: { shadow: [-0.014, -0.002, 0.02], high: [0.03, 0.01, -0.03], lift: [0.02, 0.02, 0.028], sat: 0.84, contrast: 1.1, halation: [1.0, 0.7, 0.5] }
+  0: { shadow: [-0.012, 0.006, -0.004], high: [0.024, 0.012, -0.03], lift: [0.009, 0.009, 0.007], sat: 0.82, contrast: 1.06, halation: [1.0, 0.78, 0.64] },
+  1: { shadow: [-0.009, 0.005, 0.003], high: [0.0, 0.016, 0.006], lift: [0.003, 0.004, 0.0035], sat: 0.78, contrast: 1.08, halation: [0.86, 0.92, 0.9] },
+  2: { shadow: [-0.006, -0.001, 0.008], high: [0.03, 0.01, -0.03], lift: [0.0035, 0.003, 0.004], sat: 0.84, contrast: 1.1, halation: [1.0, 0.7, 0.5] }
 };
 export function setFilm(level: number): void {
   const f = FILM[level] ?? FILM[0] as FilmLook;
@@ -145,7 +145,8 @@ export class PostPipeline {
       col.assign(clamp(col.sub(0.42).mul(film.contrast).add(0.42), 0, 1));
       const lum = dot(col, vec3(0.2126, 0.7152, 0.0722));
       // розщеплене тонування: відтінок тіней і світел палітри рівня
-      col.addAssign(film.shadow.mul(float(1).sub(smoothstep(0, 0.45, lum))));
+      // (у лінійному просторі: чисті чорні не тонуємо — інакше темрява стає синьою/бірюзовою після sRGB)
+      col.addAssign(film.shadow.mul(smoothstep(0, 0.1, lum)).mul(float(1).sub(smoothstep(0, 0.45, lum))));
       col.addAssign(film.high.mul(smoothstep(0.45, 1, lum)));
       col.assign(mix(vec3(lum), col, film.sat.mul(look.saturation).mul(float(1).sub(look.dread.mul(0.35)))));
       col.assign(col.mul(float(1).sub(film.lift)).add(film.lift));

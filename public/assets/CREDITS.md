@@ -23,6 +23,14 @@
 - `models/tape.glb` — «Portable Cassette Player» — Mateusz Sadek, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/portable_cassette_player
 - `models/phone.glb` — радянський дисковий телефон, власна модель (`scripts/blender/make_phone.py`), однотонні матеріали
 - `models/locker.glb` — сталеві шафки роздягальні, власна модель (`scripts/blender/make_locker.py`); текстура — кроп «Metal Plate 02» (Rob Tuytel, **CC0 1.0**, Poly Haven), перефарбований (`scripts/assets/make-locker-tex.py`)
+- `models/bed.glb` — «Old Bed Frame» — Luca B, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/old_bed_frame
+- `models/mdesk.glb` — «Metal Office Desk» — Ulan Cabanilla, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/metal_office_desk
+- `models/generator.glb` — «Portable Generator» — James Ray Cock, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/portable_generator
+- `models/radio.glb` — «Vintage Radio Transceiver» — Mateusz Sadek, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/vintage_radio_transceiver
+- `models/car.glb` — «Covered Car» — MP, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/covered_car
+- `models/cabinet.glb` — «Painted Wooden Cabinet» — Kirill Sannikov, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/painted_wooden_cabinet
+- `models/jerrycan.glb` — «Metal Jerrycan Green» — Ulan Cabanilla, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/metal_jerrycan_green
+- `models/microscope.glb` — «Industrial Microscope» — Lukas Walzer, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/industrial_microscope
 
 ## Текстури Poly Haven
 

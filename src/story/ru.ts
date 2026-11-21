@@ -263,6 +263,7 @@ export const HINTS = {
   read: 'Читать',
   close: 'Закрыть',
   enterSeam: 'Пройти',
+  seamShut: 'Шов не пускает',
   doorOpen: 'Открыть',
   doorShut: 'Закрыть',
   battery: 'Взять батарейки',

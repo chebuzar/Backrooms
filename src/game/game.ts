@@ -8,7 +8,10 @@ import { Notebook } from '../ui/notebook';
 import { MapMemory } from './mapmem';
 import { buildUnseen } from '../world/unseen';
 import { makeBody } from '../world/bodies';
+import { dressLevel } from '../world/dressing';
 import { Psyche } from './psyche';
+import { Tasks } from './tasks';
+import { RADIO } from '../story/tasks';
 import { lampDeficits } from '../world/materials';
 import { PROFILES, QualityGovernor, autoQuality, type QualityProfile } from '../render/quality';
 import type { DeviceInfo } from '../core/device';
@@ -159,6 +162,18 @@ export class Game {
   /** Гучність фону рівня (стихає в «тишу»). */
   private ambGain: GainNode | null = null;
   readonly psyche = new Psyche();
+  private genVoice: SpatialVoice | null = null;
+  /** Обстановка рівня (для контрольних кадрів). */
+  dressed: { x: number; z: number; yaw: number; kind: string }[] = [];
+  readonly tasks = new Tasks({
+    have: (k) => this.store.progress.items.includes(k),
+    give: (k) => { if (!this.store.progress.items.includes(k)) { this.store.progress.items.push(k); this.persist(); } },
+    say: (t, sec) => this.hud.subtitle(t, sec),
+    objective: (t) => this.setObjective(t),
+    sound: (n, x, y, z) => this.taskSound(n, x, y, z),
+    noise: (x, z, loud) => this.hunt.noise(x, 1, z, loud),
+    radio: (x, z) => this.tapes.play(RADIO, x, z)
+  });
   private figureModel: THREE.Object3D | null = null;
   /** Горизонтальна відстань до стіни/дверей на висоті очей (для психологічного шару). */
   private readonly ray = (x: number, z: number, dx: number, dz: number, max: number): number => {
@@ -283,6 +298,10 @@ export class Game {
     this.hide = null;
     this.lockers = lvl.id === 1 ? await placeLockers(this.assets, this.physics, lvl, [0.33, 0.5, 0.7]) : [];
     this.specials = lvl.id === 0 ? await placeSpecialRooms(this.assets, this.physics, lvl, [...this.findings, ...this.pickups].map((f) => ({ x: f.x, z: f.z }))) : [];
+    this.genVoice?.stop(0.2); this.genVoice = null;
+    const busy = [...this.findings, ...this.pickups, ...this.specials, ...this.lockers].map((f) => ({ x: f.x, z: f.z }));
+    await this.tasks.build(this.assets, this.physics, lvl, busy);
+    this.dressed = lvl.id > 0 ? await dressLevel(this.assets, this.physics, lvl, [...busy, ...this.tasks.spots(), ...Object.values(lvl.spots)]) : [];
     this.phoneAnswered = false; this.writingSeen = false;
     this.setScene(lvl.scene);
     if (this.player) this.setupInteractions(lvl);
@@ -429,7 +448,7 @@ export class Game {
       this.audio.unlock(); this.prepareAudio();
       await this.hud.titleCard(card.title, card.sub, async () => { await this.loadLevel(cp.level); });
       this.enterLevelStart(false);
-      this.setObjective(cp.level === 1 ? OBJECTIVES.level1Start : OBJECTIVES.level2Start);
+      this.setObjective(this.tasks.objective() ?? OBJECTIVES.level1Start);
     }
     this.play();
   }
@@ -538,6 +557,20 @@ export class Game {
     this.rig.shake = Math.max(this.rig.shake, 0.25);
   }
 
+  /** Звуки задач: печатка (глухий стук), запобіжник (клацання), генератор (гуркіт, що не стихає). */
+  private taskSound(n: 'take' | 'stamp' | 'fuse' | 'gen' | 'radio', x: number, y: number, z: number): void {
+    const ctx = this.audio.ctx;
+    if (n === 'gen') {
+      if (!ctx || this.genVoice) return;
+      this.genVoice = this.audio.play3D(humLoop(ctx, 4, 9), x, y, z, { loop: true, gain: 2.2, rate: 0.42, ref: 5, wet: 0.6 });
+      const hit = this.sfx.pick('hit_');
+      if (hit) this.audio.play3D(hit, x, y, z, { gain: 0.8, rate: 0.6, ref: 4, wet: 0.5 });
+      return;
+    }
+    const b = n === 'stamp' ? this.sfx.pick('doorclose') : this.sfx.get('metalclick');
+    if (b) this.audio.play3D(b, x, y, z, { gain: n === 'stamp' ? 0.5 : 0.7, rate: n === 'stamp' ? 2.1 : n === 'fuse' ? 0.75 : 1.2, ref: 1.6, wet: 0.3 });
+  }
+
   /** Мисливець під час обшуку перевіряє шафки: стає перед дверцятами, смикає їх. Якщо гравець усередині —
    *  знаходить не завжди: що гірше нерви (важке дихання), то вірогідніше. */
   private setupHideChecks(): void {
@@ -601,11 +634,15 @@ export class Game {
     this.interact = new Interactions(this.physics);
     for (const s of Object.values(lvl.spots)) {
       const id = s.id;
-      const after = id === 'order7' ? () => { if (this.stage === 'desk') { this.stage = 'seam'; this.setObjective(OBJECTIVES.level0Find); } } : undefined;
+      const after = id === 'order7' ? () => { if (this.stage === 'desk') { this.stage = 'seam'; this.setObjective(this.tasks.objective() ?? OBJECTIVES.level0Find); } } : undefined;
       this.interact.add({ id, x: s.x, y: s.y, z: s.z, reach: 1.9, prompt: HINTS.read, enabled: true, use: () => this.readDoc(id, after) });
     }
     const sp = lvl.seam.group.position;
-    this.interact.add({ id: 'seam', x: sp.x, y: 1.3, z: sp.z, reach: 1.7, prompt: HINTS.enterSeam, enabled: true, use: () => void this.enterSeam(lvl.seam, lvl.next) });
+    const tasks = this.tasks;
+    this.interact.add({ id: 'seam', x: sp.x, y: 1.3, z: sp.z, reach: 1.7, enabled: true,
+      get prompt() { return tasks.gateOpen ? HINTS.enterSeam : HINTS.seamShut; },
+      use: () => { if (tasks.gateOpen) void this.enterSeam(lvl.seam, lvl.next); else this.hud.subtitle(tasks.objective() ?? '', 3); } });
+    this.tasks.register(this.interact);
     for (const b of this.pickups) this.addPickup(b);
     // записки й магнітофони з плівками Савельєва
     for (const f of this.findings) {
@@ -718,7 +755,7 @@ export class Game {
     this.ending = false;
     await this.arrive();
     this.play();
-    this.setObjective(target === 1 ? OBJECTIVES.level1Start : OBJECTIVES.level2Start);
+    this.setObjective(this.tasks.objective() ?? (target === 1 ? OBJECTIVES.level1Start : OBJECTIVES.level2Start));
   }
 
   /** Мисливець схопив: різкий поворот до нього, удар, темрява → запис відновлюється з початку рівня. */
@@ -867,7 +904,7 @@ export class Game {
   }
 
   /** Речі задачі рівня для блокнота (заповнюється задачами рівнів). */
-  taskItems(): { text: string; done: boolean }[] { return []; }
+  taskItems(): { text: string; done: boolean }[] { return this.tasks.items(); }
 
   /** ДП-5: клацання за відстанню до найближчого Шва (головний і прихований розлом), стрілка, шум для «Слепого». */
   private updateDosimeter(dt: number): void {
@@ -1085,6 +1122,7 @@ export class Game {
       }
       this.store.progress.playSeconds += dt;
       this.tapes.update(dt);
+      this.tasks.update(dt);
       if ((this.persistT -= dt) <= 0) { this.persistT = 10; this.persist(); }
       if (this.psyche.silence < 0.3) this.ambience.update(dt, this.player);
       if (this.mapmem && (this.mapT -= dt) <= 0) { this.mapT = 0.25; this.mapmem.mark(this.player.pos.x, this.player.pos.z); }
