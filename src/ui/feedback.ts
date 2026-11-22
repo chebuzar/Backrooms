@@ -27,32 +27,46 @@ export function frameRendered(canvas: HTMLCanvasElement): void {
   for (const f of w) f(canvas);
 }
 
-function grab(canvas: HTMLCanvasElement, maxW: number): string | null {
+/** Кадр у JPEG; 'empty' — полотно ще чорне (WebKit віддає порожній буфер при першому читанні WebGL-полотна). */
+function grab(canvas: HTMLCanvasElement, maxW: number): string | null | 'empty' {
   const w = Math.min(maxW, canvas.width), h = Math.round((w * canvas.height) / Math.max(1, canvas.width));
   if (!w || !h) return null;
   const c = document.createElement('canvas');
   c.width = w; c.height = h;
-  const g = c.getContext('2d');
+  const g = c.getContext('2d', { willReadFrequently: true });
   if (!g) return null;
   g.drawImage(canvas, 0, 0, w, h);
-  return c.toDataURL('image/jpeg', 0.72);
+  const px = g.getImageData(0, 0, w, h).data;
+  let lit = 0;
+  for (let i = 0; i < px.length; i += 4 * 211) lit += (px[i] as number) + (px[i + 1] as number) + (px[i + 2] as number);
+  return lit === 0 ? 'empty' : c.toDataURL('image/jpeg', 0.72);
 }
 
 /** Знімок того, що бачить гравець (JPEG, до maxW пікселів завширшки), або null. */
 export function captureView(canvas: HTMLCanvasElement, maxW = 960): Promise<string | null> {
   return new Promise((done) => {
-    let finished = false;
-    const finish = (cv: HTMLCanvasElement) => { if (finished) return; finished = true; try { done(grab(cv, maxW)); } catch { done(null); } };
+    let tries = 0, finished = false;
+    const finish = (cv: HTMLCanvasElement) => {
+      if (finished) return;
+      let r: string | null | 'empty' = null;
+      try { r = grab(cv, maxW); } catch { r = null; }
+      if (r === 'empty' && ++tries < 6) { waiters.push(finish); return; } // наступний намальований кадр
+      finished = true;
+      done(r === 'empty' ? null : r);
+    };
     waiters.push(finish);
-    setTimeout(() => { waiters = waiters.filter((f) => f !== finish); requestAnimationFrame(() => finish(canvas)); }, 600);
+    // гра не малює (зупинена) — узяти найближчий кадр браузера
+    setTimeout(() => { if (!finished) { waiters = waiters.filter((f) => f !== finish); requestAnimationFrame(() => { tries = 6; finish(canvas); }); } }, 1500);
   });
 }
 
 function entryRow(m: MyEntry): string {
   const f = T.feedback, st = m.status ?? 'new';
   const date = new Date(m.at).toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' });
-  return `<li class="fb-entry st-${st}"><span class="no">№ ${m.no}</span><span class="what">${esc(f.kinds[m.kind])} · ${date}<br><q>${esc(m.excerpt)}${m.excerpt.length >= 80 ? '…' : ''}</q>
-    ${m.note ? `<span class="answer">${esc(m.note)}</span>` : ''}</span><span class="st">${esc(f.statuses[st])}</span></li>`;
+  // відповідь розробника — найважливіше, тому вона повністю; текст гравця — один рядок для впізнавання
+  return `<li class="fb-entry st-${st}"><span class="no">№ ${m.no}</span><span class="what">
+    <span class="meta">${esc(f.kinds[m.kind])} · ${date} — <b class="st">${esc(f.statuses[st])}</b></span>
+    <q>${esc(m.excerpt)}</q>${m.note ? `<span class="answer">${esc(m.note)}</span>` : ''}</span></li>`;
 }
 
 function renderMine(el: HTMLElement): void {
