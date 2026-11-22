@@ -222,7 +222,8 @@ async function placeProps(assets: Assets, physics: Physics, l: Layout, scene: TH
   const note = l.points.note1 ?? sp;
   const [nx, nz] = freeNear(l, note.x, note.z, 0.5);
   const [wx, wz] = freeNear(l, note.x + 0.9, note.z + 0.6, 0.45);
-  defs.push({ file: 'wetsign', x: wx, z: wz, yaw: 1.1, collide: true });
+  // відро прибиральниці біля записки (жовтий пластиковий знак «мокра підлога» — не СРСР 70-х)
+  defs.push({ file: 'wooden-bucket-01', x: wx, z: wz, yaw: 1.1, collide: true });
   const spots: Record<string, PropSpot> = {};
   let deskTop = 0.76;
   for (const d of defs) {

@@ -8,6 +8,7 @@
 // кожну частину моделі (зона відсікається камерою цілком), освітленість кожної речі — атрибут інстанса.
 import * as THREE from 'three/webgpu';
 import { instancedBufferAttribute } from 'three/tsl';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { Assets } from '../assets/loader';
 import type { Physics } from '../physics/physics';
 import { G } from '../physics/physics';
@@ -57,19 +58,18 @@ class Batch {
     for (const [file, places] of this.items) {
       const root = (await assets.model(`assets/models/${file}.glb`)).scene;
       root.updateMatrixWorld(true);
-      const meshes: THREE.Mesh[] = [];
-      root.traverse((o) => { if ((o as THREE.Mesh).isMesh) meshes.push(o as THREE.Mesh); });
+      const parts = partsByMaterial(root);
+      // дрібниця (папери, лампа) тіней не кидає: тінь від неї не видно, а прохід тіні — це ще один виклик малювання
+      const shadow = !SMALL.has(file);
       for (let zone = 0; zone < 9; zone++) {
         const ps = places.filter((p) => p.zone === zone);
         if (!ps.length) continue;
         const E = new THREE.InstancedBufferAttribute(new Float32Array(ps.map((p) => p.E)), 1);
         const eNode = instancedBufferAttribute(E) as unknown as THREE.Node<'float'>;
-        for (const mesh of meshes) {
-          const mat = probeLit(mesh.material as THREE.Material, eNode);
-          const im = new THREE.InstancedMesh(mesh.geometry, mat, ps.length);
-          const t = new THREE.Matrix4();
-          ps.forEach((p, i) => im.setMatrixAt(i, t.multiplyMatrices(p.m, mesh.matrixWorld)));
-          im.castShadow = true; im.receiveShadow = true;
+        for (const { geometry, material } of parts) {
+          const im = new THREE.InstancedMesh(geometry, probeLit(material, eNode), ps.length);
+          ps.forEach((p, i) => im.setMatrixAt(i, p.m));
+          im.castShadow = shadow; im.receiveShadow = true;
           im.computeBoundingSphere();
           group.add(im);
         }
@@ -84,6 +84,48 @@ class Batch {
     }
     return group;
   }
+}
+
+const SMALL = new Set(['notepads', 'desk-lamp']);
+
+/**
+ * Частини моделі, зведені за матеріалом: у Poly Haven стіл — 9 окремих сіток з одним матеріалом, а кожна сітка
+ * в InstancedMesh — окремий виклик малювання (ще й у кожній зоні й у проході тіні). Злиті — 1–3 на модель.
+ */
+function partsByMaterial(root: THREE.Object3D): { geometry: THREE.BufferGeometry; material: THREE.Material }[] {
+  const by = new Map<THREE.Material, THREE.BufferGeometry[]>();
+  root.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (!m.isMesh) return;
+    const mat = m.material as THREE.Material;
+    // моделі квантовані (KHR_mesh_quantization: цілі координати + масштаб у вузлі) — спершу у float, потім у світ вузла
+    const g = new THREE.BufferGeometry();
+    for (const [k, at] of Object.entries(m.geometry.attributes)) {
+      const n = at.count, sz = at.itemSize, f = new Float32Array(n * sz);
+      for (let i = 0; i < n; i++) for (let c = 0; c < sz; c++) f[i * sz + c] = at.getComponent(i, c);
+      g.setAttribute(k, new THREE.BufferAttribute(f, sz));
+    }
+    if (m.geometry.index) g.setIndex(Array.from(m.geometry.index.array));
+    g.applyMatrix4(m.matrixWorld);
+    by.set(mat, [...(by.get(mat) ?? []), g]);
+  });
+  const out: { geometry: THREE.BufferGeometry; material: THREE.Material }[] = [];
+  for (const [material, gs] of by) {
+    if (gs.length === 1) { out.push({ geometry: gs[0] as THREE.BufferGeometry, material }); continue; }
+    // спільні атрибути; індекси або в усіх, або в жодної
+    const keys = Object.keys((gs[0] as THREE.BufferGeometry).attributes).filter((k) => gs.every((g) => g.getAttribute(k)));
+    const indexed = gs.every((g) => g.index);
+    const ready = gs.map((g) => {
+      const n = indexed ? g : g.index ? g.toNonIndexed() : g;
+      for (const k of Object.keys(n.attributes)) if (!keys.includes(k)) n.deleteAttribute(k);
+      n.morphAttributes = {};
+      return n;
+    });
+    const merged = mergeGeometries(ready, false);
+    if (merged) out.push({ geometry: merged, material });
+    else for (const g of gs) out.push({ geometry: g, material }); // несумісні — як були
+  }
+  return out;
 }
 
 /** Точка в системі речі (вперед — від стіни) → світові координати. */
