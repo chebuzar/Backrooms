@@ -20,8 +20,8 @@ jobs:
       # Сайт живёт по адресу <user>.github.io/<repo>/ — сборка и smoke-тест должны знать этот путь.
       BASE_PATH: /${{ github.event.repository.name }}/
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -35,7 +35,7 @@ jobs:
         run: npx playwright install --with-deps chromium webkit
       - name: Smoke test (Chromium + WebKit)
         run: npm run smoke
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         if: github.event_name != 'pull_request'
         with:
           path: dist
@@ -52,4 +52,4 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
