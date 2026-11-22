@@ -55,6 +55,8 @@ export class Player {
   /** Плавна висота очей (переходить між стоячи/присівши). */
   eye = PLAYER.eyeStand;
   stamina = 1;
+  /** Множник швидкості від поверхні (у воді — повільніше). */
+  slow = 1;
   exhausted = false;
   running = false;
   /** Фаза кроку, рад (для похитування камери). */
@@ -127,7 +129,7 @@ export class Player {
     if (this.stamina <= 0.02) this.exhausted = true;
     else if (this.exhausted && this.stamina > 0.35) this.exhausted = false;
 
-    const speed = this.crouched ? PLAYER.crouchSpeed : wantRun ? PLAYER.run : PLAYER.walk;
+    const speed = (this.crouched ? PLAYER.crouchSpeed : wantRun ? PLAYER.run : PLAYER.walk) * this.slow;
     const tx = wx * speed * Math.min(1, len), tz = wz * speed * Math.min(1, len);
     const k = 1 - Math.exp(-(moving ? PLAYER.accel : PLAYER.decel) * dt);
     this.vx += (tx - this.vx) * k;

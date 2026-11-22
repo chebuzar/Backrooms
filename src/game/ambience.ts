@@ -2,6 +2,7 @@
 // коли гравець зупиняється, дихання після бігу. Напруга без монстра.
 import type { AudioEngine } from '../audio/audio';
 import { distantThud, scrape, breath, footstepCarpet } from '../audio/synth';
+import { radioPips, typingBurst, busyTone } from '../audio/synth-soviet';
 import type { Player } from './player';
 
 export class Ambience {
@@ -12,6 +13,11 @@ export class Ambience {
   private steps: AudioBuffer[] = [];
   private follow = { left: 0, t: 0, x: 0, z: 0 };
   private breathT = 0;
+  private typing: AudioBuffer[] = [];
+  private pips: AudioBuffer | null = null;
+  private busy: AudioBuffer | null = null;
+  /** Поточний рівень: друкарська машинка — у НИИ й на базі; радіоточка — скрізь, де є дроти. */
+  level = 0;
 
   constructor(private readonly audio: AudioEngine) {}
 
@@ -22,6 +28,9 @@ export class Ambience {
     for (let i = 0; i < 2; i++) this.scrapes.push(scrape(ctx, i + 1));
     for (let i = 0; i < 3; i++) this.breaths.push(breath(ctx, i + 1));
     for (let i = 0; i < 6; i++) this.steps.push(footstepCarpet(ctx, 40 + i));
+    for (let i = 0; i < 3; i++) this.typing.push(typingBurst(ctx, i + 1));
+    this.pips = radioPips(ctx);
+    this.busy = busyTone(ctx);
   }
 
   private behind(p: Player, dist: number, spread = 1.2): [number, number] {
@@ -35,11 +44,21 @@ export class Ambience {
     if (this.next <= 0) {
       this.next = 25 + Math.random() * 45;
       const roll = Math.random();
-      if (roll < 0.4) {
+      // радянський «побут за стіною»: хтось друкує в сусідньому кабінеті; радіоточка дає сигнали точного часу;
+      // у покладеній трубці — «занято». Людей тут немає, а звуки є.
+      if (roll > 0.72) {
+        const [x, z] = this.behind(p, 7 + Math.random() * 7, 2.8);
+        const k = Math.random();
+        const typing = this.level <= 1 && k < 0.55 ? this.typing[Math.floor(Math.random() * this.typing.length)] : null;
+        const b = typing ?? (k < 0.85 ? this.pips : this.busy);
+        if (b) this.audio.play3D(b, x, 1.2, z, { gain: typing ? 0.7 : 0.45, occlusion: 0.7, ref: 2.5, wet: 0.6 });
+        return;
+      }
+      if (roll < 0.3) {
         const b = this.thuds[Math.floor(Math.random() * this.thuds.length)];
         const [x, z] = this.behind(p, 14 + Math.random() * 10);
         if (b) this.audio.play3D(b, x, 1, z, { gain: 0.9, occlusion: 0.75, ref: 3, wet: 0.7 });
-      } else if (roll < 0.7) {
+      } else if (roll < 0.52) {
         const b = this.scrapes[Math.floor(Math.random() * this.scrapes.length)];
         const [x, z] = this.behind(p, 18 + Math.random() * 8, 2.5);
         if (b) this.audio.play3D(b, x, 1, z, { gain: 0.6, occlusion: 0.8, ref: 3, wet: 0.8 });

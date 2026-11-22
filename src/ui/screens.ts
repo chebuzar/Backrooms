@@ -6,7 +6,7 @@ import { ICONS, svg } from '../input/touch';
 
 type Handler = () => void;
 
-const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] as string);
+import { esc } from './esc';
 
 export class UI {
   private readonly root: HTMLElement;
@@ -175,7 +175,6 @@ export class UI {
 
   pause(o: { onResume: Handler; onSettings: Handler; onControls?: Handler; onMenu: Handler; onFeedback?: Handler; docs?: { id: string; title: string }[]; onDoc?: (id: string) => void }): void {
     const p = T.pause;
-    const esc = (t: string) => t.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] as string);
     // журнал: знайдені документи й записки — можна перечитати
     const docs = o.docs?.length ? `<div class="pencil journal-h">${p.journal}</div><nav class="menu journal">${o.docs.map((d) =>
       `<button class="line-btn minor" data-doc="${esc(d.id)}">${esc(d.title)}</button>`).join('')}</nav>` : '';

@@ -40,6 +40,15 @@ export class Nav implements NavLike {
       quad([x0, 0, z0], [x0, 0, z1], [x0, H, z1], [x0, H, z0]);
       quad([x1, 0, z1], [x1, 0, z0], [x1, H, z0], [x1, H, z1]);
     }
+    // чаші басейну — перешкоди (до 1 м заввишки): по воді мисливець не ходить, обходить по бортику
+    for (const q of l.pools) {
+      const x0 = q.x - q.w / 2, x1 = q.x + q.w / 2, z0 = q.z - q.d / 2, z1 = q.z + q.d / 2, h = 1.0;
+      quad([x0, h, z0], [x0, h, z1], [x1, h, z1], [x1, h, z0]);
+      quad([x0, 0, z1], [x1, 0, z1], [x1, h, z1], [x0, h, z1]);
+      quad([x1, 0, z0], [x0, 0, z0], [x0, h, z0], [x1, h, z0]);
+      quad([x0, 0, z0], [x0, 0, z1], [x0, h, z1], [x0, h, z0]);
+      quad([x1, 0, z1], [x1, 0, z0], [x1, h, z0], [x1, h, z1]);
+    }
     const cs = 0.1, ch = 0.1;
     const res = generateSoloNavMesh(pos, idx, {
       cs, ch,

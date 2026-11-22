@@ -11,6 +11,15 @@ describe('flashlight battery', () => {
     expect(b.level).toBeCloseTo(0.5, 2);
   });
 
+  it('drains faster on the deep levels (kindergarten, pool)', () => {
+    const b = new Battery(1);
+    b.forLevel(3);
+    b.update(210, true);
+    expect(b.level).toBeCloseTo(0.5, 2);
+    b.forLevel(1);
+    expect(b.seconds).toBe(BATTERY.seconds);
+  });
+
   it('is full on «Начать заново» and when entering a new level', () => {
     const b = new Battery(0.1);
     b.newGame();

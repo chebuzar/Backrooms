@@ -1,6 +1,7 @@
 // Рівень 0 «Бесконечный НИИ»: геометрія й запечене світло з Blender (шматки 12×12 м), матеріали TSL,
 // лампи, колізії Rapier зі спільного планування, атмосфера (серпанок, ліхтарик, гул ламп).
 import * as THREE from 'three/webgpu';
+import { Fn, length, exp, smoothstep, sin, mix, vec3 } from 'three/tsl';
 import type { Assets } from '../assets/loader';
 import type { Physics } from '../physics/physics';
 import { generateLayout, type Layout } from './layout';
@@ -12,6 +13,7 @@ import { buildDecals } from './decals';
 import { Doors } from './doors';
 import { loadChunks, addLayoutColliders } from './chunks';
 import { buildNiiDetails } from './nii-details';
+import type { Water } from './water';
 
 export const LEVEL0_SEED = 1987;
 
@@ -37,6 +39,8 @@ export interface Level {
   speakers?: { x: number; y: number; z: number }[];
   /** Що висить на стінах і читається (графік чергувань, Доска почёта). */
   boards?: { id: string; x: number; y: number; z: number; yaw: number }[];
+  /** Вода (басейн): чаші й калюжі. */
+  water?: Water;
   update(t: number, dt: number, camera: THREE.Camera): void;
 }
 
@@ -103,8 +107,22 @@ export async function buildLevel0(assets: Assets, physics: Physics, onProgress: 
 
 /** Ліхтарик гравця (тепла лампа розжарювання, м'яка пляма, тінь) + розсіяне світло відбивача і слабке заповнення. */
 export function addFlashlight(scene: THREE.Scene, ambient = 0x2a2412): THREE.SpotLight {
-  const flashlight = new THREE.SpotLight(0xffe2b8, 0, 28, 0.42, 0.92, 2);
+  const flashlight = new THREE.SpotLight(0xffe2b8, 0, 28, 0.46, 0.55, 2);
   flashlight.castShadow = true;
+  // профіль променя старого ліхтарика з параболічним відбивачем (а не рівний диск): гаряча пляма в центрі,
+  // світле кільце-каустика від відбивача, ледь помітні концентричні нерівності скла й тепліший, тьмяніший ореол.
+  // lc — координати в конусі (0..1); r = 0 у центрі, 1 на краю конуса.
+  // (colorNode має бути Fn TSL — three викликає його з координатами й бере getCacheKey)
+  (flashlight as unknown as { colorNode: unknown }).colorNode = Fn(([lc]: [THREE.Node<'vec3'>]) => {
+    const r = length(lc.xy.sub(0.5)).mul(2);
+    const hot = exp(r.div(0.2).pow(2).negate()).mul(0.62);
+    const ring = exp(r.sub(0.36).div(0.075).pow(2).negate()).mul(0.2);
+    const halo = smoothstep(1.0, 0.25, r).mul(0.3);
+    const ripple = sin(r.mul(71)).mul(0.035).mul(smoothstep(0.75, 0.1, r)).add(1);
+    const k = hot.add(ring).add(halo).mul(ripple);
+    // до краю світло тепліше (скло й відбивач «з'їдають» синє)
+    return mix(vec3(1.0, 0.86, 0.66), vec3(1.0, 1.0, 1.0), smoothstep(0.7, 0.1, r)).mul(k).mul(1.45);
+  });
   flashlight.shadow.mapSize.set(1024, 1024);
   flashlight.shadow.bias = -0.0004;
   flashlight.shadow.camera.near = 0.1;
@@ -120,6 +138,12 @@ export function addFlashlight(scene: THREE.Scene, ambient = 0x2a2412): THREE.Spo
   const spill = new THREE.SpotLight(0xffd9a8, 0, 18, 0.95, 1.0, 2);
   flashlight.add(spill);
   spill.target = flashlight.target;
+  // відбите світло: пляма ліхтарика освітлює кімнату довкола себе (дешева підробка GI — точкове світло без тіні
+  // трохи перед місцем, куди влучив промінь; гра ставить його щокадру, див. game.ts)
+  const bounce = new THREE.PointLight(0xffd6a6, 0, 7, 2);
+  bounce.name = 'flash-bounce';
+  scene.add(bounce);
+  flashlight.userData.bounce = bounce;
   scene.add(new THREE.AmbientLight(ambient, 0.25));
   return flashlight;
 }
@@ -198,7 +222,8 @@ async function placeProps(assets: Assets, physics: Physics, l: Layout, scene: TH
   const note = l.points.note1 ?? sp;
   const [nx, nz] = freeNear(l, note.x, note.z, 0.5);
   const [wx, wz] = freeNear(l, note.x + 0.9, note.z + 0.6, 0.45);
-  defs.push({ file: 'wetsign', x: wx, z: wz, yaw: 1.1, collide: true });
+  // відро прибиральниці біля записки (жовтий пластиковий знак «мокра підлога» — не СРСР 70-х)
+  defs.push({ file: 'wooden-bucket-01', x: wx, z: wz, yaw: 1.1, collide: true });
   const spots: Record<string, PropSpot> = {};
   let deskTop = 0.76;
   for (const d of defs) {

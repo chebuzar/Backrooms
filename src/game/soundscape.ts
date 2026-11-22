@@ -12,13 +12,17 @@ import { PA } from '../story/tasks';
 export const ROOMS: Record<number, { seconds: number; decay: number; wet: number; hall: number }> = {
   0: { seconds: 1.6, decay: 3.2, wet: 0.22, hall: 0.12 },
   1: { seconds: 2.3, decay: 2.6, wet: 0.3, hall: 0.1 },
-  2: { seconds: 3.6, decay: 2.1, wet: 0.38, hall: 0.08 }
+  2: { seconds: 3.6, decay: 2.1, wet: 0.38, hall: 0.08 },
+  3: { seconds: 1.3, decay: 3.4, wet: 0.18, hall: 0.12 },
+  4: { seconds: 4.4, decay: 1.7, wet: 0.46, hall: 0.1 }
 };
 
-export type Surface = 'parquet' | 'linoleum' | 'concrete';
+export type Surface = 'parquet' | 'linoleum' | 'concrete' | 'tile';
 
 /** Під ногами: у НИИ — паркет у кабінетах і залі, лінолеум у коридорах; база й парковка — бетон. */
 export function surfaceAt(lvl: Level, x: number, z: number): Surface {
+  if (lvl.id === 3) return 'linoleum';
+  if (lvl.id === 4) return 'tile';
   if (lvl.id !== 0) return 'concrete';
   const zn = zoneOf(lvl.layout, x, z);
   return zn === 'rooms' || zn === 'hall' ? 'parquet' : 'linoleum';

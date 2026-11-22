@@ -17,6 +17,8 @@ export interface ThemeLook {
   paint: { wall: [number, number, number] | null; low: [number, number, number] | null };
   /** Висота панелі, м. */
   paintH: number;
+  /** Підсилення фарби для темних вихідних фактур (типово 1). */
+  gain?: { wall?: number; low?: number };
 }
 
 export async function loadThemeTextures(a: Assets, dir: string): Promise<ThemeTextures> {
@@ -39,17 +41,17 @@ export function makeThemeMaterials(t: ThemeTextures, look: ThemeLook) {
   const mask = (p: THREE.Node<'vec2'>, k: number, off: number) => texture(t.mold, p.mul(k).add(off)).r;
   const gp = vec2(positionWorld.x.add(positionWorld.z), positionWorld.y);
   // фарба поверх справжньої фактури: яскравість текстури × колір фарби (фактура, тріщини й плями лишаються)
-  const repaint = (c: THREE.Node<'vec3'>, paint: [number, number, number] | null) =>
-    paint ? srgb(paint).mul(dot(c, vec3(0.299, 0.587, 0.114)).mul(2.0)) : c;
+  const repaint = (c: THREE.Node<'vec3'>, paint: [number, number, number] | null, gain = 1) =>
+    paint ? srgb(paint).mul(dot(c, vec3(0.299, 0.587, 0.114)).mul(2.0 * gain)) : c;
   const aged = (c: THREE.Node<'vec3'>) => {
     // підтьоки сирості й кіптява під стелею
     const wet = smoothstep(0.5, 0.85, mask(gp, 0.1, 0.0).oneMinus());
     const top = smoothstep(look.paintH + 0.6, 3.2, positionWorld.y).mul(0.3);
     return mix(c, c.mul(vec3(0.55, 0.52, 0.45)), wet.mul(0.5).add(top));
   };
-  const wallColor = Fn(() => aged(repaint(texture(t.wall_c, uv(0).div(look.scale.wall)).rgb, look.paint.wall)));
+  const wallColor = Fn(() => aged(repaint(texture(t.wall_c, uv(0).div(look.scale.wall)).rgb, look.paint.wall, look.gain?.wall)));
   const lowColor = Fn(() => {
-    const c = repaint(texture(t.low_c, uv(0).div(look.scale.low)).rgb, look.paint.low);
+    const c = repaint(texture(t.low_c, uv(0).div(look.scale.low)).rgb, look.paint.low, look.gain?.low);
     // панель знизу затерта й обдерта біля підлоги
     return aged(c.mul(float(1).sub(smoothstep(0.4, 0.0, positionWorld.y).mul(0.25))));
   });

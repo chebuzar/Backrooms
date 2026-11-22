@@ -3,7 +3,7 @@
 import type { MapMemory } from '../game/mapmem';
 import { T } from '../i18n/ru';
 
-const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] as string);
+import { esc } from './esc';
 
 export interface NotebookData {
   level: string;

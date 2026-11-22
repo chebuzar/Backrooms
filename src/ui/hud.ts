@@ -5,10 +5,12 @@ import type { Doc } from '../story/ru';
 import { prologueTimeline } from './prologue-time';
 import { T } from '../i18n/ru';
 
-const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] as string);
+import { esc } from './esc';
 
 export class HUD {
   private readonly el: HTMLElement;
+  /** Шар поверх гри для повноекранних сцен (пролог, фінал). */
+  get root(): HTMLElement { return this.el.parentElement ?? document.body; }
   private readonly rec: HTMLElement;
   private readonly tc: HTMLElement;
   private readonly prompt: HTMLElement;
@@ -230,29 +232,33 @@ export class HUD {
   }
 
   /** Заставка переходу: чорний екран, назва рівня друкується; work() виконується під нею (завантаження). */
+  /** Звук друкарської машинки для заставок (гра ставить сама, коли звук готовий). */
+  typeSound: (() => void) | null = null;
+
+  /** Заставка між рівнями / після смерті: картка журналу експедиції — шапка, назва, підзаголовок друкується машинкою. */
   async titleCard(title: string, sub: string, work: () => Promise<void>): Promise<void> {
     const el = document.createElement('div');
     el.className = 'prologue title-card';
-    el.innerHTML = `<div class="tc"><p class="tc-t">${esc(title)}</p><p class="tc-s">${esc(sub)}</p></div>`;
+    el.innerHTML = `<div class="tc"><p class="tc-h">Объект 4-Б · экспедиция № 7</p><p class="tc-t">${esc(title)}</p>`
+      + `<p class="tc-s"><span class="tc-typed"></span><span class="tc-caret"></span></p><div class="tc-rule"></div></div>`;
     this.el.parentElement?.appendChild(el);
     requestAnimationFrame(() => el.classList.add('shown'));
     const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
-    await Promise.all([work(), wait(3200)]);
+    const typed = el.querySelector('.tc-typed') as HTMLElement;
+    const type = async () => {
+      await wait(700);
+      for (const ch of sub) {
+        typed.textContent += ch;
+        if (ch !== ' ') this.typeSound?.();
+        await wait(ch === ' ' ? 70 : 38 + Math.random() * 40);
+      }
+      el.classList.add('typed');
+    };
+    await Promise.all([work(), wait(3400), type()]);
+    await wait(500);
     el.classList.remove('shown');
     await wait(900);
     el.remove();
   }
 
-  /** Кінець рівня: картка поверх затемнення. */
-  levelEnd(title: string, body: string, note: string, onDone: () => void): void {
-    const el = document.createElement('div');
-    el.className = 'reader doc end';
-    el.innerHTML = `<article class="sheet"><header><h2>${esc(title)}</h2></header>
-      <div class="body">${body.split('\n').map((l) => `<p>${esc(l)}</p>`).join('')}</div>
-      <p class="sign">${esc(note)}</p><button class="line-btn close">В меню</button></article>`;
-    this.el.parentElement?.appendChild(el);
-    requestAnimationFrame(() => el.classList.add('shown'));
-    el.querySelector('.close')?.addEventListener('click', () => { el.remove(); onDone(); });
-    (el.querySelector('.close') as HTMLElement).focus({ preventScroll: true });
-  }
 }

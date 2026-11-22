@@ -25,6 +25,12 @@ export interface Traits {
   cutsOff?: boolean;
   /** Не блукає: стоїть на місці, доки вперше не помітить гравця (далі — звичайні стани). */
   stillUntilNoticed?: boolean;
+  /** Не заходить у світло ламп (стоїть на межі тіні). */
+  darkOnly?: boolean;
+  /** Швидкість у мілкій воді (множник). */
+  waterSpeed?: number;
+  /** Ховається під водою в чаші, доки не почує; втративши слід — повертається. */
+  submerges?: boolean;
 }
 
 export interface PlayerView {
@@ -108,7 +114,7 @@ export class Brain {
 
   /** Почути шум: що гучніший і ближчий, то сильніша підозра; стіни глушать (шлях довший за пряму). */
   hear(n: Noise): void {
-    if (this.traits.hearing <= 0) return;
+    if (this.traits.hearing <= 0 || this.calm > 0) return;
     const straight = Math.hypot(n.x - this.pos.x, n.z - this.pos.z);
     const radius = n.loudness * 22 * this.traits.hearing;
     if (straight > radius) return;
@@ -145,11 +151,23 @@ export class Brain {
   headX = 0;
   headZ = 1;
 
+  /** Шлях закритий (світло, вода): обрати нову точку патрулю/обшуку. */
+  repick(): void { this.patrolTarget = null; this.searchPoints = []; }
+
+  /** Відступитися від гравця (напр. «Утопленник» висихає на плитці): забути слід і `seconds` с не реагувати на звук і погляд. */
+  giveUp(seconds: number): void {
+    this.mem.last = null; this.mem.suspicion = 0; this.mem.confidence = 0;
+    this.calm = seconds;
+    this.set('lost');
+  }
+  private calm = 0;
+
   update(dt: number, p: PlayerView, eye: V3): Intent {
     const t = this.traits;
     this.stateT += dt;
     this.mem.age += dt;
-    const vis = this.visibility(p, eye);
+    this.calm = Math.max(0, this.calm - dt);
+    const vis = this.calm > 0 ? 0 : this.visibility(p, eye);
     this.seesPlayer = vis > 0;
     if (vis > 0) {
       this.mem.suspicion = Math.min(1, this.mem.suspicion + vis * t.alertness * dt * (this.state === 'chase' ? 3 : 1));
