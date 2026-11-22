@@ -258,7 +258,10 @@ export function makeBot(page, { log, shot }) {
     const r = await useAt(sp.x, 1.3, sp.z, label, { stop: 1.3 });
     if (r !== 'ok') return r;
     if (target === 5) return 'ok';
-    const ok = await page.waitForFunction((n) => window.__zk.game.level?.id === n && window.__zk.game.input.enabled, target, { timeout: 90000 }).then(() => true, () => false);
+    // перехід: Шов → титр → завантаження (у контейнері під час запікання Blender на тих самих ядрах — до кількох хвилин)
+    const t0 = Date.now();
+    const ok = await page.waitForFunction((n) => window.__zk.game.level?.id === n && window.__zk.game.input.enabled, target, { timeout: 300000 }).then(() => true, () => false);
+    log(`переход на уровень ${target}`, ok, { seconds: Math.round((Date.now() - t0) / 1000), level: await page.evaluate(() => window.__zk.game.level?.id), input: await page.evaluate(() => window.__zk.game.input.enabled), mode: await page.evaluate(() => window.__zk.game.mode) });
     await wait(800);
     return ok ? 'ok' : 'noload';
   }
