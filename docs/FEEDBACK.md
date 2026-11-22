@@ -61,8 +61,26 @@ Dev-сервер і автотести без `?server=` нікуди не на�
 6. Звіт Назару (українською, коротко, таблицею): скільки нових, що виправлено (PR), що прийнято/відхилено й чому, що чекає його рішення.
    **Злиття в `main` — лише з його згоди** (`CLAUDE.md`).
 
-## Що потрібно один раз (Назар)
+## Доступ Claude (з 22.11.2026 — без участі Назара)
 
-Щоб Claude читав відгуки, серверу й середовищу Claude потрібен один і той самий секретний ключ — покрокова інструкція в звіті PR
+Сервер викладено (застосунок `zakulisye-server` в Ample, сервер `srv_dacfbdd4`); `FEEDBACK_KEY` і `FEEDBACK_SECRET` згенерував Claude і
+зберігаються **лише** в змінних Ample. Ключ у середовище Claude класти не треба: Claude читає скриньку через конектор Ample —
+`ample_server_exec` на `srv_dacfbdd4`, команда бере ключ із середовища запущеного процесу й звертається до сервера зсередини:
+
+```sh
+for d in /proc/[0-9]*; do case "$(tr '\0' ' ' < $d/cmdline 2>/dev/null)" in *server.mjs*)
+  tr '\0' '\n' < $d/environ 2>/dev/null | grep -q '^FEEDBACK_KEY=' && P=${d#/proc/};; esac; done
+K=$(tr '\0' '\n' < /proc/$P/environ | sed -n 's/^FEEDBACK_KEY=//p'); PORT=$(tr '\0' '\n' < /proc/$P/environ | sed -n 's/^PORT=//p')
+curl -s -H "x-admin-key: $K" "http://localhost:$PORT/admin/feedback?status=new"     # ключ не друкувати
+# статус і відповідь гравцю:
+# curl -s -X POST -H "x-admin-key: $K" -H 'Content-Type: application/json' -d '{"status":"fixed","note":"…"}' http://localhost:$PORT/admin/feedback/ID
+```
+
+Щоденний розбір — запланована задача «Розбір відгуків гравців «Закулисье»» о 19:41 (Берлін): нових записів немає — мовчить.
+`npm run feedback` з контейнера працює, лише якщо ключ є в `ZK_FEEDBACK_KEY` або мережевих секретах (необов'язково).
+
+## Необов'язково (Назар)
+
+Для `npm run feedback` прямо з контейнера Claude той самий ключ можна додати й у середовище Claude
 (Ample → змінна `FEEDBACK_KEY`; Claude → Project settings → Cloud environment → Network secrets для хоста сервера,
 заголовок `x-admin-key`). Ключ ніколи не кладеться в код, git чи чат.
