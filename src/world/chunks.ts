@@ -91,6 +91,8 @@ export function addLayoutColliders(physics: Physics, layout: Layout): void {
   physics.addBox(W / 2, -0.5, D / 2, W / 2 + 1, 0.5, D / 2 + 1);
   physics.addBox(W / 2, H + 0.5, D / 2, W / 2 + 1, 0.5, D / 2 + 1);
   for (const w of layout.walls) physics.addBox(w.x, H / 2, w.z, w.w / 2, H / 2, w.d / 2);
+  // чаші басейну: низька невидима перешкода над краєм (у воду не впасти), промені зору над нею проходять
+  for (const q of layout.pools) physics.addBox(q.x, -0.5, q.z, q.w / 2, 1.5, q.d / 2);
   physics.step();
 }
 

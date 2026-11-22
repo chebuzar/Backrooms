@@ -1,4 +1,4 @@
-// Полювання на рівнях 1–2: створює мисливця рівня (navmesh, модель, «дім» далеко від старту), щокадру складає для його
+// Полювання на рівнях 1–4: створює мисливця рівня (navmesh, модель, «дім» далеко від старту), щокадру складає для його
 // мозку «що він знає про гравця» (світло, ліхтарик, чи гравець на нього дивиться), веде звук (клацання «Слепого»,
 // його кроки) і передає шум від гравця (кроки, двері, клацання ліхтарика).
 import * as THREE from 'three/webgpu';
@@ -12,6 +12,7 @@ import type { Assets } from '../assets/loader';
 import type { Physics } from '../physics/physics';
 import type { AudioEngine, SpatialVoice } from '../audio/audio';
 import { tongueClicks, heartbeat } from '../audio/synth';
+import { splashStep, drownedBreath, giggle } from '../audio/synth2';
 import { blindClickRate } from '../ai/traits';
 import type { SoundBank } from '../audio/bank';
 import type { Player } from './player';
@@ -31,12 +32,25 @@ export class Hunt {
 
   constructor(private readonly audio: AudioEngine, private readonly sfx: SoundBank, private readonly ev: HuntEvents) {}
 
-  /** Мисливець для рівня (лише 1 і 2). */
+  private splashes: AudioBuffer[] = [];
+
+  /** Хлюпіт (кешовані варіанти). */
+  splash(): AudioBuffer | null {
+    const ctx = this.audio.ctx;
+    if (!ctx) return null;
+    if (!this.splashes.length) for (let i = 0; i < 5; i++) this.splashes.push(splashStep(ctx, i + 1));
+    return this.splashes[Math.floor(Math.random() * this.splashes.length)] ?? null;
+  }
+
+  /** Мисливець для рівня (1–4; на рівні 0 — лише «Шов» і нерви). */
   async setup(lvl: Level, assets: Assets, physics: Physics): Promise<void> {
     this.dispose();
-    const kind: StalkerKind | null = lvl.id === 1 ? 'watcher' : lvl.id === 2 ? 'blind' : null;
+    const KINDS: Record<number, StalkerKind> = { 1: 'watcher', 2: 'blind', 3: 'smiler', 4: 'drowned' };
+    const kind = KINDS[lvl.id] ?? null;
     if (!kind) return;
-    const [nav, gl] = await Promise.all([Nav.fromLayout(lvl.layout), assets.model(`assets/models/${kind}.glb`)]);
+    // модель свого монстра; якщо файл не завантажився — тіло «Наблюдателя» (з власною поведінкою й кольором шкіри)
+    const model = assets.model(`assets/models/${kind}.glb`).catch(() => assets.model('assets/models/watcher.glb'));
+    const [nav, gl] = await Promise.all([Nav.fromLayout(lvl.layout), model]);
     this.nav = nav;
     const L = lvl.layout;
     // «дім» — клітинка на ~60 % найдовшого шляху від старту: далеко, але не в глухому куті
@@ -46,19 +60,40 @@ export class Hunt {
     for (let c = 0; c < L.dist.length; c++) {
       if (L.dist[c] === Math.floor(far * 0.6)) { home = { x: ((c % L.cols) + 0.5) * L.cell, y: 0, z: (Math.floor(c / L.cols) + 0.5) * L.cell }; break; }
     }
-    home = nav.closest(home);
+    // «Утопленник» живе в чаші: дім — на бортику тієї чаші, що найближча до цієї точки
+    const pool = kind === 'drowned' ? lvl.water?.nearestPool(home.x, home.z) ?? null : null;
+    if (pool) {
+      const sides = [[0, -pool.d / 2 - 0.7], [0, pool.d / 2 + 0.7], [-pool.w / 2 - 0.7, 0], [pool.w / 2 + 0.7, 0]] as const;
+      let best = Infinity;
+      for (const [ox, oz] of sides) {
+        const want = { x: pool.x + ox, y: 0, z: pool.z + oz }, got = nav.closest(want);
+        const err = Math.hypot(got.x - want.x, got.z - want.z) + Math.abs(got.y) * 4;
+        if (err < best) { best = err; home = got; }
+      }
+    } else home = nav.closest(home);
     const s = new Stalker(kind, cloneSkinned(gl.scene), nav, physics, lvl.lamps, lvl.doors, home, {
       onCatch: () => this.ev.onCatch(),
       onCloser: (_s, by) => this.ev.onCloser(by)
-    });
-    s.onStep = (x, z, loud) => {
-      const b = this.sfx.pick('step_');
-      if (b) this.audio.play3D(b, x, 0.05, z, { gain: 0.25 + loud * 0.5, rate: 0.62 + Math.random() * 0.08, ref: 2.5, wet: 0.45 });
+    }, lvl.water ?? null);
+    if (pool) s.poolAt = { x: pool.x, z: pool.z };
+    s.onStep = (x, z, loud, wet) => {
+      const b = wet ? this.splash() : this.sfx.pick('step_');
+      if (b) this.audio.play3D(b, x, 0.05, z, { gain: (0.25 + loud * 0.5) * (wet ? 1.3 : 1), rate: wet ? 0.8 + Math.random() * 0.1 : 0.62 + Math.random() * 0.08, ref: 2.5, wet: 0.45 });
+    };
+    const ctx = this.audio.ctx;
+    s.onCue = (cue, x, z) => {
+      if (!ctx) return;
+      if (cue === 'giggle') this.audio.play3D(giggle(ctx, Math.floor(Math.random() * 1000)), x, 1.9, z, { gain: 0.85, ref: 2.2, wet: 0.6 });
+      else {
+        // підвівся з води — важкий сплеск і стікання; пірнув — глухий бульк
+        const b = this.splash();
+        if (b) this.audio.play3D(b, x, 0, z, { gain: cue === 'emerge' ? 1.6 : 1.0, rate: cue === 'emerge' ? 0.55 : 0.45, ref: 3, wet: 0.6 });
+      }
     };
     lvl.scene.add(s.root);
     this.stalker = s;
-    const ctx = this.audio.ctx;
     if (kind === 'blind' && ctx) this.voice = this.audio.play3D(tongueClicks(ctx, 3), home.x, 1.6, home.z, { loop: true, gain: 0.7, ref: 2.2, wet: 0.5 });
+    if (kind === 'drowned' && ctx) this.voice = this.audio.play3D(drownedBreath(ctx), home.x, 0.4, home.z, { loop: true, gain: 0.3, ref: 2, wet: 0.5 });
   }
 
   dispose(): void {
@@ -126,8 +161,11 @@ export class Hunt {
     const st = s.brain.state, dist = Math.hypot(sp.x - v.x, sp.z - v.z);
     const close = Math.max(0, 1 - dist / 14);
     this.heartbeat(dt, st === 'chase' ? 1 : Math.max(close * (v.looksAtMe ? 1 : 0.6), st === 'investigate' || st === 'search' ? 0.45 : 0));
-    // клацання голосніші, коли він полює
-    if (this.voice) {
+    // «Утопленник»: під водою — ледь чутні бульбашки; вийшов — хрипкий мокрий подих
+    if (this.voice && s.kind === 'drowned') {
+      this.voice.setPosition(sp.x, 1.4 - s.sub * 1.5, sp.z);
+      this.voice.gain.gain.value = 0.18 + (1 - s.sub) * (st === 'chase' ? 1.0 : 0.65);
+    } else if (this.voice) { // клацання голосніші, коли він полює
       this.voice.setPosition(sp.x, 1.6, sp.z);
       const hunting = s.brain.state === 'chase' || s.brain.state === 'investigate';
       this.voice.gain.gain.value = hunting ? 1.0 : s.brain.state === 'suspicious' ? 0.8 : 0.45;

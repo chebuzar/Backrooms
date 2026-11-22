@@ -12,6 +12,7 @@ import { buildDecals } from './decals';
 import { Doors } from './doors';
 import { loadChunks, addLayoutColliders } from './chunks';
 import { buildNiiDetails } from './nii-details';
+import type { Water } from './water';
 
 export const LEVEL0_SEED = 1987;
 
@@ -37,6 +38,8 @@ export interface Level {
   speakers?: { x: number; y: number; z: number }[];
   /** Що висить на стінах і читається (графік чергувань, Доска почёта). */
   boards?: { id: string; x: number; y: number; z: number; yaw: number }[];
+  /** Вода (басейн): чаші й калюжі. */
+  water?: Water;
   update(t: number, dt: number, camera: THREE.Camera): void;
 }
 

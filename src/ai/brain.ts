@@ -25,6 +25,12 @@ export interface Traits {
   cutsOff?: boolean;
   /** Не блукає: стоїть на місці, доки вперше не помітить гравця (далі — звичайні стани). */
   stillUntilNoticed?: boolean;
+  /** Не заходить у світло ламп (стоїть на межі тіні). */
+  darkOnly?: boolean;
+  /** Швидкість у мілкій воді (множник). */
+  waterSpeed?: number;
+  /** Ховається під водою в чаші, доки не почує; втративши слід — повертається. */
+  submerges?: boolean;
 }
 
 export interface PlayerView {
@@ -144,6 +150,9 @@ export class Brain {
 
   headX = 0;
   headZ = 1;
+
+  /** Шлях закритий (світло, вода): обрати нову точку патрулю/обшуку. */
+  repick(): void { this.patrolTarget = null; this.searchPoints = []; }
 
   update(dt: number, p: PlayerView, eye: V3): Intent {
     const t = this.traits;

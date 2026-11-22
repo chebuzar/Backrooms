@@ -88,6 +88,16 @@ export class Lamps {
 
   levelOf(i: number): number { return this.level[i] ?? 0; }
 
+  /** Скільки живого світла в точці зараз (як probeAt, але з мерехтінням і приглушенням ламп). */
+  lightAt(x: number, z: number): number {
+    let e = 0;
+    this.panels.forEach((p, i) => {
+      const d2 = (p.x - x) ** 2 + (p.z - z) ** 2;
+      if (d2 < 49) e += (0.62 / (1 + d2 / 2.6)) * (this.level[i] ?? 0) * this.master.value;
+    });
+    return e;
+  }
+
   /** Лампа перегоріла назавжди (лопнула): більше не світить і не мерехтить. */
   kill(i: number): void {
     this.base[i] = 0; this.level[i] = 0;

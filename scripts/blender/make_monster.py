@@ -84,6 +84,41 @@ PRESETS = {
         "noeyes": True,
         "scale": 1.0,
     },
+    # «Улыбака» (рівень 3) — «воспитатель»: дуже висока, вузька, у білому халаті; рот розтягнутий у неприродну усмішку.
+    "smiler": {
+        "macro": {"gender": 0.0, "age": 0.45, "height": 1.0, "weight": 0.0, "muscle": 0.1, "proportions": 0.0},
+        "targets": {
+            "arms/measure-upperarm-length-incr": 1.2, "arms/measure-lowerarm-length-incr": 1.5,
+            "arms/l-upperarm-fat-decr": 1.0, "arms/r-upperarm-fat-decr": 1.0, "arms/l-lowerarm-fat-decr": 1.0, "arms/r-lowerarm-fat-decr": 1.0,
+            "legs/l-lowerleg-fat-decr": 1.0, "legs/r-lowerleg-fat-decr": 1.0,
+            "neck/neck-scale-vert-incr": 1.6, "neck/neck-scale-horiz-decr": 0.8,
+            "torso/torso-scale-horiz-decr": 0.8, "stomach/stomach-pregnant-decr": 1.0,
+            "head/head-fat-decr": 1.0, "head/head-scale-vert-incr": 0.4,
+            "mouth/mouth-laugh-lines-in": 1.5, "mouth/mouth-dimples-in": 1.0,
+            "cheek/l-cheek-bones-incr": 1.0, "cheek/r-cheek-bones-incr": 1.0,
+        },
+        "skin": "young_caucasian_female",
+        "clothes": ["female_elegantsuit01"],
+        "hair": "bob01",
+        "teeth": "teeth_base",
+        "grin": float(os.environ.get("GRIN", "1.0")),
+        "scale": 1.0,
+    },
+    # «Утопленник» (рівень 4) — роздутий, важкий, у купальній шапочці; руки звисають, шкіра сіро-синя.
+    "drowned": {
+        "macro": {"gender": 1.0, "age": 0.55, "height": 0.55, "weight": 1.0, "muscle": 0.0, "proportions": 0.0},
+        "targets": {
+            "stomach/stomach-pregnant-incr": 0.9, "head/head-fat-incr": 1.0, "neck/neck-scale-horiz-incr": 0.8,
+            "torso/torso-scale-horiz-incr": 0.5, "torso/torso-scale-depth-incr": 0.6,
+            "arms/l-upperarm-fat-incr": 0.8, "arms/r-upperarm-fat-incr": 0.8, "arms/measure-lowerarm-length-incr": 0.8,
+            "legs/l-upperleg-fat-incr": 0.8, "legs/r-upperleg-fat-incr": 0.8,
+            "eyes/l-eye-bag-incr": 1.0, "eyes/r-eye-bag-incr": 1.0, "mouth/mouth-angles-down": 1.4, "mouth/mouth-scale-vert-incr": 0.6,
+        },
+        "skin": "middleage_caucasian_male",
+        "clothes": [],
+        "hair": "short02",
+        "scale": 1.0,
+    },
 }
 P = PRESETS[args.preset]
 
@@ -112,9 +147,72 @@ for c in P["clothes"]:
     mhclo = os.path.join(udata, "clothes", c, c + ".mhclo")
     if os.path.exists(mhclo):
         HS.add_mhclo_asset(mhclo, h, asset_type="Clothes", subdiv_levels=0)
+for kind, key in (("hair", "hair"), ("teeth", "teeth")):
+    if P.get(key):
+        f = os.path.join(udata, kind, P[key], P[key] + ".mhclo")
+        if os.path.exists(f):
+            HS.add_mhclo_asset(f, h, asset_type=kind.capitalize(), subdiv_levels=0)
+        else:
+            print("NO", kind, f)
 eyes = os.path.join(udata, "eyes", "low-poly", "low-poly.mhclo")
 if os.path.exists(eyes) and not P.get("noeyes"):
     HS.add_mhclo_asset(eyes, h, asset_type="Eyes", subdiv_levels=0)
+
+if P.get("grin"):
+    # усмішка «до вух»: розсунути кутики рота вбік і вгору, розімкнути губи (видно зуби й темряву за ними)
+    import mathutils
+    teeth = next(o for o in bpy.data.objects if "teeth" in o.name.lower())
+    tw = [teeth.matrix_world @ v.co for v in teeth.data.vertices]
+    mc = sum(tw, mathutils.Vector()) / len(tw)
+    front = min(v.y for v in tw)
+    fz = [v.z for v in tw if v.y < front + 0.004]
+    mc = mathutils.Vector((mc.x, mc.y, sum(fz) / len(fz)))  # лінія змикання зубів ≈ лінія губ
+    print("MOUTH", tuple(round(c, 3) for c in mc), "front", round(front, 3))
+    g = P["grin"]
+
+    def grin(co):
+        dx, dz = co.x - mc.x, co.z - mc.z
+        if co.y > mc.y + 0.01:
+            return co
+        r = math.hypot(dx / 0.06, dz / 0.04)
+        if r >= 1:
+            return co
+        w = (1 - r * r) ** 2 * g
+        n = co.copy()
+        n.x += dx * 1.0 * w
+        n.z += (abs(dx) / 0.025) ** 2 * 0.013 * w
+        lip = math.exp(-((abs(dx) / 0.022) ** 2))  # губи розходяться посередині сильніше
+        if dz > 0.0:
+            n.z += 0.005 * w * lip
+        else:
+            n.z -= 0.009 * w * lip
+        return n
+
+    body = h
+    mw, mi = body.matrix_world, body.matrix_world.inverted()
+    ks = body.data.shape_keys
+    print("KEYS", [(k.name, round(k.value, 2), k.relative_key.name) for k in ks.key_blocks] if ks else None)
+    if body.data.shape_keys:
+        for kb in body.data.shape_keys.key_blocks:
+            for v in kb.data:
+                v.co = mi @ grin(mw @ v.co)
+    L = R = 0
+    for v in body.data.vertices:
+        a = mw @ v.co
+        b = grin(a)
+        if (b - a).length > 1e-5:
+            if a.x < mc.x: L += 1
+            else: R += 1
+        v.co = mi @ b
+    print("GRIN L/R", L, R, "mw", [tuple(round(x, 3) for x in r) for r in mw])
+    # зуби — ширші, щоб заповнили розтягнутий рот
+    tm, ti = teeth.matrix_world, teeth.matrix_world.inverted()
+    for v in teeth.data.vertices:
+        c = tm @ v.co
+        c.x = mc.x + (c.x - mc.x) * 1.5
+        c.z += (abs(c.x - mc.x) / 0.025) ** 2 * 0.006
+        v.co = ti @ c
+    bpy.context.view_layer.update()
 
 rig.scale = (P["scale"],) * 3
 bpy.context.view_layer.update()
@@ -172,7 +270,7 @@ if args.preview:
     sc = bpy.context.scene
     sc.render.engine = "BLENDER_WORKBENCH"
     sc.display.shading.light = "STUDIO"
-    sc.display.shading.color_type = "MATERIAL"
+    sc.display.shading.color_type = "TEXTURE"
     sc.render.resolution_x, sc.render.resolution_y = 600, 800
     cam = bpy.data.objects.new("cam", bpy.data.cameras.new("cam"))
     sc.collection.objects.link(cam)
@@ -183,7 +281,7 @@ if args.preview:
                            ("face", (0, -1.4, top * 0.93), (math.radians(90), 0, 0))):
         cam.location = loc
         cam.rotation_euler = rot
-        cam.data.lens = 50 if name != "face" else 55
+        cam.data.lens = 50 if name != "face" else float(os.environ.get("FACE_LENS", "55"))
         sc.render.filepath = os.path.abspath(args.preview.replace(".png", f"-{name}.png"))
         bpy.ops.render.render(write_still=True)
     print("PREVIEW", args.preview, "height", round(top, 2))

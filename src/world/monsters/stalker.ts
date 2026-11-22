@@ -11,6 +11,8 @@ import type { Physics } from '../../physics/physics';
 import type { Lamps } from '../lamps';
 import type { Doors } from '../doors';
 import { probeLit } from '../materials';
+import type { Water } from '../water';
+import { smilerPose, drownedPose } from './gaits';
 
 import { TRAITS, type StalkerKind } from '../../ai/traits';
 export { TRAITS, type StalkerKind };
@@ -57,12 +59,26 @@ export class Stalker {
   /** Швидкість в останньому кадрі, м/с. */
   speedNow = 0;
   private stepT = 0;
-  /** Крок (для звуку): позиція й гучність 0..1. */
-  onStep: ((x: number, z: number, loud: number) => void) | null = null;
+  /** Крок (для звуку): позиція й гучність 0..1; wet — у воді. */
+  onStep: ((x: number, z: number, loud: number, wet?: boolean) => void) | null = null;
+  /** «Улыбака» стоїть на межі світла / у промені; «Утопленник» підвівся з води чи пірнув. */
+  onCue: ((cue: 'giggle' | 'emerge' | 'submerge', x: number, z: number) => void) | null = null;
+  /** «Утопленник»: 1 — лежить на дні чаші (не видно), 0 — стоїть. */
+  sub = 0;
+  private subGoal = 0;
+  private blockedT = 0;
+  private litT = 0;
+  private giggleCd = 0;
+  private tilt = 1;
+  /** «Утопленник»: центр чаші, біля якої він живе (лежачи на дні, тіло зміщене до води). */
+  poolAt: { x: number; z: number } | null = null;
 
   constructor(readonly kind: StalkerKind, model: THREE.Object3D, private readonly nav: NavLike, physics: Physics,
-    private readonly lamps: Lamps, private readonly doors: Doors, private readonly home: V3, private readonly ev: StalkerEvents = {}) {
+    private readonly lamps: Lamps, private readonly doors: Doors, private readonly home: V3, private readonly ev: StalkerEvents = {},
+    private readonly water: Water | null = null) {
     this.pos = { ...home };
+    if (TRAITS[kind].submerges) { this.sub = this.subGoal = 1; }
+    this.tilt = Math.random() < 0.5 ? 1 : -1;
     this.root.add(model);
     model.traverse((o) => {
       const m = o as THREE.SkinnedMesh;
@@ -71,9 +87,15 @@ export class Stalker {
         const mat = probeLit(src, 0.55);
         const n = src.name.toLowerCase(), c = (r: number, g: number, b: number) => new THREE.Color().setRGB(r, g, b, THREE.SRGBColorSpace);
         // мертва шкіра: знекровлена, сірувато-воскова, волога; очі «Наблюдателя» — суцільно чорні; роба — брудна, темна
-        if (n.includes('body')) { mat.color = kind === 'blind' ? c(0.62, 0.6, 0.56) : c(0.4, 0.38, 0.36); mat.roughness = 0.48; }
+        if (n.includes('body')) {
+          mat.color = kind === 'blind' ? c(0.62, 0.6, 0.56) : kind === 'smiler' ? c(0.78, 0.74, 0.7) : kind === 'drowned' ? c(0.5, 0.58, 0.6) : c(0.4, 0.38, 0.36);
+          mat.roughness = kind === 'drowned' ? 0.25 : 0.48; // утоплений — мокрий, блищить
+        }
         else if (n.includes('worksuit')) { mat.map = null; mat.color = c(0.09, 0.095, 0.085); mat.roughness = 0.9; } // роба, чорна від бруду й часу
-        else if (n.includes('low-poly') || n.includes('eye')) { mat.color = c(0.01, 0.01, 0.01); mat.roughness = 0.15; }
+        else if (n.includes('elegantsuit')) { mat.map = null; mat.color = c(0.62, 0.6, 0.53); mat.roughness = 0.85; } // білий халат вихователя, посірілий
+        else if (n.includes('short02')) { mat.map = null; mat.color = c(0.05, 0.08, 0.1); mat.roughness = 0.3; } // гумова купальна шапочка
+        else if (n.includes('teeth')) { mat.color = c(0.55, 0.5, 0.38); }
+        else if (n.includes('low-poly') || n.includes('eye')) { mat.color = kind === 'drowned' ? c(0.45, 0.47, 0.44) : c(0.01, 0.01, 0.01); mat.roughness = 0.15; } // в утопленика — білясті, каламутні
         m.material = mat;
         m.castShadow = true;
         m.frustumCulled = false;
@@ -93,7 +115,14 @@ export class Stalker {
     const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
     fwd.y = 0; fwd.normalize();
     this.yaw = Math.atan2(cam.position.x - (cam.position.x + fwd.x), cam.position.z - (cam.position.z + fwd.z));
-    this.applyPose(this.kind === 'watcher'
+    this.sub = this.subGoal = 0;
+    this.applyPose(this.kind === 'smiler'
+      // «Улыбака»: голова лягає на плече, руки обіймають з боків
+      ? { neck_01: [0, 0, 1.1 * this.tilt], head: [-0.1, 0, 0.6 * this.tilt], upperarm_l: [-1.4, 0, -0.9], upperarm_r: [-1.4, 0, 0.9], lowerarm_l: [0, 0, -0.9], lowerarm_r: [0, 0, 0.9] }
+      : this.kind === 'drowned'
+      // «Утопленник»: важко навалюється, руки на плечі, голова з відкритим ротом угору
+      ? { spine_01: [0.3, 0, 0], neck_01: [-0.5, 0, 0.2], head: [-0.3, 0, 0.2], upperarm_l: [-1.3, 0, -0.4], upperarm_r: [-1.3, 0, 0.4], lowerarm_l: [-0.6, 0, 0], lowerarm_r: [-0.6, 0, 0] }
+      : this.kind === 'watcher'
       // «Наблюдатель»: руки тягнуться до камери, голова схилена набік — дивиться впритул чорними очима
       ? { upperarm_l: [-1.2, 0, -0.5], upperarm_r: [-1.2, 0, 0.5], lowerarm_l: [-0.5, 0, 0], lowerarm_r: [-0.5, 0, 0], neck_01: [-0.15, 0, 0.3], head: [-0.2, 0, 0.35] }
       // «Слепой»: згорблений, але голова задерта — порожні очниці просто в об'єктив
@@ -120,6 +149,7 @@ export class Stalker {
     this.brain.noticed = false;
     this.grabbed = false;
     this.root.position.y = 0; // після «схопив» (голову підіймали до камери)
+    if (this.brain.traits.submerges) this.sub = this.subGoal = 1;
     this.catchCd = 4;
     this.seenAt = null;
     this.lamps.dimAround(this.pos.x, this.pos.z, 6, 1);
@@ -150,9 +180,31 @@ export class Stalker {
 
   update(dt: number, p: PlayerView): void {
     this.catchCd = Math.max(0, this.catchCd - dt);
-    const eye = { x: this.pos.x, y: this.kind === 'watcher' ? 2.0 : 1.5, z: this.pos.z };
-    const intent = this.brain.update(dt, p, eye);
+    this.giggleCd = Math.max(0, this.giggleCd - dt);
+    const t = this.brain.traits;
+    const eye = { x: this.pos.x, y: this.kind === 'watcher' || this.kind === 'smiler' ? 2.0 : 1.5, z: this.pos.z };
+    // з-під води не бачить — лише чує (кожен хлюпіт)
+    const intent = this.brain.update(dt, this.sub > 0.5 ? { ...p, light: 0, flashlightOn: false, litByFlashlight: false } : p, eye);
+    // «Утопленник»: під водою чекає звуку; почув — підводиться (стоїть, поки не встав); заспокоївся — назад у чашу
+    if (t.submerges) {
+      const st = this.brain.state, dry = (this.water?.drain ?? 0) > 0.85;
+      if (this.subGoal === 1 && !dry && (st === 'investigate' || st === 'chase' || st === 'search')) { this.subGoal = 0; this.onCue?.('emerge', this.pos.x, this.pos.z); }
+      if (dry && this.subGoal === 1) { this.subGoal = 0; this.onCue?.('emerge', this.pos.x, this.pos.z); }
+      if (this.subGoal === 0 && !dry && st === 'patrol') {
+        intent.target = this.home; intent.speed = t.walkSpeed;
+        if (Math.hypot(this.home.x - this.pos.x, this.home.z - this.pos.z) < 0.6) { this.subGoal = 1; this.onCue?.('submerge', this.pos.x, this.pos.z); }
+      }
+      this.sub += Math.sign(this.subGoal - this.sub) * Math.min(Math.abs(this.subGoal - this.sub), dt / (this.subGoal ? 2.5 : 2.0));
+      if (this.sub > 0.02) { intent.target = null; intent.attack = false; } // поки не встав (чи вже пірнає) — на місці
+    }
+    // «Улыбака» в промені ліхтарика: хихикає й закривається
+    if (t.fearsLight) {
+      this.litT = p.litByFlashlight ? this.litT + dt : 0;
+      if (this.litT > 0.4 && this.giggleCd <= 0) { this.giggleCd = 5; this.onCue?.('giggle', this.pos.x, this.pos.z); }
+    }
     let moved = 0;
+    const wet = !!this.water?.wetAt(this.pos.x, this.pos.z);
+    if (wet && t.waterSpeed) intent.speed *= t.waterSpeed;
     if (intent.target && intent.speed > 0) {
       this.repath -= dt;
       if (this.repath <= 0 || !this.path.length) {
@@ -163,6 +215,18 @@ export class Stalker {
       while (step > 0 && this.path.length) {
         const n = this.path[0] as V3;
         const dx = n.x - this.pos.x, dz = n.z - this.pos.z, d = Math.hypot(dx, dz);
+        // «Улыбака» не ступає у світло: стоїть на межі тіні (й посміхається)
+        if (t.darkOnly && d > 1e-3) {
+          const k = Math.min(1, (step + 0.35) / d);
+          if (this.lamps.lightAt(this.pos.x + dx * k, this.pos.z + dz * k) > 0.55) {
+            this.blockedT += dt;
+            this.turnTo(p.x, p.z, dt * 3);
+            if (this.blockedT > 1.2 && this.giggleCd <= 0 && this.brain.state === 'chase') { this.giggleCd = 7; this.onCue?.('giggle', this.pos.x, this.pos.z); }
+            if (this.blockedT > 1.6 && this.brain.state !== 'chase') { this.brain.repick(); this.path = []; this.blockedT = 0; }
+            break;
+          }
+          this.blockedT = 0;
+        }
         if (d <= step) { this.pos.x = n.x; this.pos.z = n.z; step -= d; moved += d; this.path.shift(); continue; }
         this.pos.x += (dx / d) * step; this.pos.z += (dz / d) * step; moved += step;
         this.turnTo(n.x, n.z, dt * 8);
@@ -174,10 +238,14 @@ export class Stalker {
     this.speedNow = dt > 0 ? moved / dt : 0;
     this.place();
     this.openDoorsNear();
-    if (this.kind === 'watcher') { this.watcherLook(p); this.watcherSteps(dt); } else this.blindGait(dt);
+    if (this.kind === 'watcher') { this.watcherLook(p); this.watcherSteps(dt); }
+    else if (this.kind === 'smiler') this.smilerGait(dt, p);
+    else if (this.kind === 'drowned') this.drownedGait(dt, wet);
+    else this.blindGait(dt);
     this.tension(dt, p);
     const d = Math.hypot(p.x - this.pos.x, p.z - this.pos.z);
     let can = this.kind === 'watcher' ? !p.looksAtMe : intent.attack || this.brain.state === 'chase' || this.brain.state === 'investigate';
+    if (this.sub > 0.3 || (this.kind === 'smiler' && p.litByFlashlight)) can = false;
     // у шафці: знайде, лише якщо бачив, як гравець ховався (тоді відчиняє дверцята й хапає)
     if (p.hidden) can = !!p.hiddenSeen;
     if (this.catchCd <= 0 && d < 1.05 && can) {
@@ -232,6 +300,34 @@ export class Stalker {
     this.root.position.y = -0.12 - Math.abs(s) * 0.04 * a;
     this.stepT += dt;
     if (a > 0.2 && this.stepT > Math.PI / rate) { this.stepT = 0; this.onStep?.(this.pos.x, this.pos.z, 0.3 + a * 0.7); }
+  }
+
+  /** «Улыбака»: рівна, неквапна хода (майже без звуку босих ніг), у погоні — руки вперед. */
+  private smilerGait(dt: number, p: PlayerView): void {
+    const v = this.speedNow, a = Math.min(1, v / 1.6);
+    this.gait += dt * (1.4 + v * 2.0);
+    const hunt = this.brain.state === 'chase';
+    this.applyPose(smilerPose(this.gait, a, hunt, p.litByFlashlight, this.tilt));
+    this.root.position.y = 0;
+    this.stepT += dt;
+    if (a > 0.2 && this.stepT > Math.PI / (1.4 + v * 2.0)) { this.stepT = 0; this.onStep?.(this.pos.x, this.pos.z, 0.12 + a * 0.25); }
+  }
+
+  /** «Утопленник»: важкий перевалець, з води підводиться повільно (тіло опущене під поверхню). */
+  private drownedGait(dt: number, wet: boolean): void {
+    const v = this.speedNow, a = Math.min(1, v / 1.4);
+    this.gait += dt * (1.2 + v * 1.8);
+    const hunt = this.brain.state === 'chase' || this.brain.state === 'investigate';
+    this.applyPose(drownedPose(this.gait, a, hunt, 1 - this.sub));
+    this.root.position.y = -this.sub * 2.3;
+    this.root.visible = this.sub < 0.97;
+    // на дні він у чаші, не на бортику: тіло зсунуте до води й вилазить через край
+    if (this.poolAt) {
+      const dx = this.poolAt.x - this.pos.x, dz = this.poolAt.z - this.pos.z, d = Math.hypot(dx, dz);
+      if (d > 1e-3) { const k = Math.min(1.7, d) * Math.min(1, this.sub * 1.6) / d; this.root.position.x = this.pos.x + dx * k; this.root.position.z = this.pos.z + dz * k; }
+    }
+    this.stepT += dt;
+    if (a > 0.15 && this.stepT > Math.PI / (1.2 + v * 1.8)) { this.stepT = 0; this.onStep?.(this.pos.x, this.pos.z, 0.35 + a * 0.5, wet); }
   }
 
   /** Двері на шляху відчиняє сам (з рипом — гравець чує, що хтось іде). */
