@@ -13,14 +13,14 @@ export function humLoop(ctx: BaseAudioContext, seconds = 4, seed = 1): AudioBuff
   for (let c = 0; c < 2; c++) {
     const d = b.getChannelData(c);
     const ph = harm.map(() => r() * Math.PI * 2);
-    let lp = 0, buzz = 0;
+    let lp = 0;
     for (let i = 0; i < n; i++) {
       const t = i / sr;
       let v = 0;
       harm.forEach(([f, a], k) => { v += a * Math.sin(2 * Math.PI * f * t + (ph[k] ?? 0)); });
       // «дзижчання» — обрізана синусоїда 100 Гц (дросель)
       const s = Math.sin(2 * Math.PI * 100 * t);
-      buzz = Math.max(-0.4, Math.min(0.4, s * 3)) * 0.06;
+      const buzz = Math.max(-0.4, Math.min(0.4, s * 3)) * 0.06;
       lp += (r() * 2 - 1 - lp) * 0.08;
       d[i] = (v * 0.35 + buzz + lp * 0.05) * 0.6;
     }

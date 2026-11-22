@@ -15,7 +15,7 @@ export default defineConfig({
     chunkSizeWarningLimit: 2000,
     rolldownOptions: {
       output: {
-        advancedChunks: {
+        codeSplitting: {
           groups: [
             { name: 'three', test: /node_modules[\\/]three[\\/]/ },
             { name: 'rapier', test: /node_modules[\\/]@dimforge/ },

@@ -1153,6 +1153,6 @@ export class Game {
   }
 
   start(): void {
-    this.gfx.renderer.setAnimationLoop(() => this.frame());
+    void this.gfx.renderer.setAnimationLoop(() => this.frame()); // рендерер уже ініціалізовано: проміс лише чекає init()
   }
 }

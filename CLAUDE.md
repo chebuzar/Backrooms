@@ -222,7 +222,7 @@ what was logged, in one line; "none logged" stays in the file. This is the
 backstop: it catches a session in which the skill never ran.
 
 The task-observer workspace for this project is:
-  /home/user/Backrooms/.task-observer
+  /home/user/backrooms/.task-observer
 Every path the skill uses derives from that root, never from the current
 working directory.
 
