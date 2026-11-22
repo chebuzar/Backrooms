@@ -10,7 +10,7 @@ import { buildUnseen } from '../world/unseen';
 import { makeBody } from '../world/bodies';
 import { dressLevel } from '../world/dressing';
 import { Psyche } from './psyche';
-import { Soundscape, surfaceAt } from './soundscape';
+import { Soundscape } from './soundscape';
 import { Tasks } from './tasks';
 import { RADIO } from '../story/tasks';
 import { lampDeficits } from '../world/materials';
@@ -20,10 +20,9 @@ import { Physics, G } from '../physics/physics';
 import { Player } from './player';
 import { CameraRig } from './camera-rig';
 import { Input } from '../input/input';
-import { AudioEngine, type SpatialVoice } from '../audio/audio';
-import { humLoop, footstepCarpet, typeClick, paperRustle, seamDrone, geigerClick, phoneRing } from '../audio/synth';
+import { AudioEngine } from '../audio/audio';
 import { SoundBank } from '../audio/bank';
-import { musicBox, splashStep, pumpLoop, kinderAmbience, poolAmbience } from '../audio/synth2';
+import { GameSound } from './game-sound';
 import { Figure } from '../world/monsters/figure';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { HUD } from '../ui/hud';
@@ -90,8 +89,6 @@ export class Game {
   level: Level | null = null;
   assets!: Assets;
   private loading: Promise<void> | null = null;
-  private humVoices: { voice: SpatialVoice; lamp: number }[] = [];
-  private humT = 0;
   private dimT = 0;
   /** Записані звуки (CC0): кроки, двері, папір, ліхтарик, тканина, удари, фон. */
   readonly sfx = new SoundBank();
@@ -144,29 +141,22 @@ export class Game {
   private lockers: Locker[] = [];
   /** Особливі кімнати рівня 0 і дзвінок телефона (доки не знімеш трубку). */
   private specials: Special[] = [];
-  private phoneVoice: SpatialVoice | null = null;
   private phoneAnswered = false;
   private writingSeen = false;
   hide: { l: Locker; dyaw: number; dpitch: number; seen: boolean } | null = null;
+  /** Звук поза мисливцями: кроки, фон, гул ламп і Швів, завдання, машинка, дозиметр. */
+  readonly snd = new GameSound(this.audio, this.sfx, this.hunt);
   readonly tapes = new TapePlayer(this.audio, this.sfx, (t, sec) => this.hud.subtitle(t, sec));
-  private geiger: AudioBuffer[] = [];
   private dosiNoiseT = 0;
   /** Батарейки, що лежать на поточному рівні. */
   private pickups: Pickup[] = [];
   hud!: HUD;
   readonly ambience = new Ambience(this.audio);
   interact!: Interactions;
-  private clicks: AudioBuffer[] = [];
-  private rustle: AudioBuffer | null = null;
   private stage: 'desk' | 'seam' | 'done' = 'desk';
   private ending = false;
-  private steps: AudioBuffer[] = [];
-  private ambSrc: AudioBufferSourceNode | null = null;
-  /** Гучність фону рівня (стихає в «тишу»). */
-  private ambGain: GainNode | null = null;
   readonly psyche = new Psyche();
   readonly soundscape = new Soundscape(this.audio, (t, sec) => this.hud.subtitle(t, sec));
-  private genVoice: SpatialVoice | null = null;
   /** Обстановка рівня (для контрольних кадрів). */
   dressed: { x: number; z: number; yaw: number; kind: string }[] = [];
   readonly tasks = new Tasks({
@@ -174,7 +164,7 @@ export class Game {
     give: (k) => { if (!this.store.progress.items.includes(k)) { this.store.progress.items.push(k); this.persist(); this.firstMinutes(k); } },
     say: (t, sec) => this.hud.subtitle(t, sec),
     objective: (t) => this.setObjective(t),
-    sound: (n, x, y, z) => this.taskSound(n, x, y, z),
+    sound: (n, x, y, z) => this.snd.task(n, x, y, z),
     noise: (x, z, loud) => this.hunt.noise(x, 1, z, loud),
     radio: (x, z) => this.tapes.play(RADIO, x, z)
   });
@@ -184,8 +174,6 @@ export class Game {
     const l = Math.hypot(dx, dz) || 1;
     return this.physics.raycast(x, 1.3, z, dx / l, 0, dz / l, max) ?? max;
   };
-  private seamVoices: SpatialVoice[] = [];
-  private stepIdx = 0;
 
   constructor(readonly gfx: RendererHandle, readonly device: DeviceInfo, forced: QualityProfile | null) {
     const canvas = gfx.renderer.domElement;
@@ -239,7 +227,7 @@ export class Game {
     this.bat.level = this.store.progress.battery;
     this.cam.charge = this.store.progress.camCharge;
     this.psyche.nerves = this.store.progress.nerves;
-    this.player.onFootstep = (e) => this.footstep(e.x, e.y, e.z, e.loudness);
+    this.player.onFootstep = (e) => this.snd.footstep(this.level, e.x, e.y, e.z, e.loudness);
     // взаємодії потребують гравця: при першому завантаженні рівня його ще не було (loadLevel їх пропустив)
     this.setupInteractions(lvl);
     this.applySettings(this.store.settings);
@@ -294,6 +282,7 @@ export class Game {
     // НИИ, ще без печаток: за пів хвилини рупор кличе Оператора № 7 на вахту — так гравець дізнається, куди йти й що його чекають
     if (lvl.id === 0 && !this.store.progress.items.some((i) => i.startsWith('0:stamp_'))) this.soundscape.schedule(0, 30);
     this.level = lvl;
+    this.bat.forLevel(lvl.id);
     setFilm(lvl.id);
     this.saveMap();
     this.mapmem = new MapMemory(lvl.layout);
@@ -305,7 +294,7 @@ export class Game {
     this.hide = null;
     this.lockers = lvl.id === 1 ? await placeLockers(this.assets, this.physics, lvl, [0.33, 0.5, 0.7]) : [];
     this.specials = lvl.id === 0 ? await placeSpecialRooms(this.assets, this.physics, lvl, [...this.findings, ...this.pickups].map((f) => ({ x: f.x, z: f.z }))) : [];
-    this.genVoice?.stop(0.2); this.genVoice = null;
+    this.snd.stopGen();
     const busy = [...this.findings, ...this.pickups, ...this.specials, ...this.lockers].map((f) => ({ x: f.x, z: f.z }));
     await this.tasks.build(this.assets, this.physics, lvl, busy);
     this.dressed = lvl.id > 0 ? await dressLevel(this.assets, this.physics, lvl, [...busy, ...this.tasks.spots(), ...Object.values(lvl.spots)]) : [];
@@ -321,23 +310,9 @@ export class Game {
   /** Фон рівня й гул Швів — до нового рівня. */
   private levelAudio(): void {
     const lvl = this.level;
-    if (!lvl || !this.sfx.ready) return;
-    this.ambSrc?.stop();
-    const ctx0 = this.audio.ctx;
-    // рівні 3–4 — синтезований фон (дитсадок: тиша й далека скринька; басейн: краплі й вода)
-    const amb = this.sfx.get(`amb_l${lvl.id}`) ?? (ctx0 && lvl.id === 3 ? kinderAmbience(ctx0) : ctx0 && lvl.id === 4 ? poolAmbience(ctx0) : null), bus = this.audio.music;
-    if (!this.ambGain && this.audio.ctx && bus) { this.ambGain = this.audio.ctx.createGain(); this.ambGain.connect(bus); }
-    this.ambSrc = amb && this.ambGain ? this.audio.play2D(amb, 0.32, 1, this.ambGain) : null;
-    if (this.ambSrc) this.ambSrc.loop = true;
-    // телефон у порожній кімнаті дзвонить (рівень 0), доки не знімеш трубку
-    this.phoneVoice?.stop(0.05); this.phoneVoice = null;
-    const ph = this.specials.find((s) => s.id === 'phone'), ctx = this.audio.ctx;
-    if (ph && ctx && !this.phoneAnswered) this.phoneVoice = this.audio.play3D(phoneRing(ctx), ph.x, ph.y, ph.z, { loop: true, gain: 0.9, ref: 2.2, wet: 0.45 });
-    const seams: (Seam | undefined)[] = [lvl.seam, lvl.rift];
-    this.seamVoices.forEach((v, i) => {
-      const p = seams[i]?.group.position;
-      v.setPosition(p ? p.x : 0, p ? 1.3 : -100, p ? p.z : 0);
-    });
+    if (!lvl) return;
+    const ph = this.specials.find((s) => s.id === 'phone');
+    this.snd.levelAudio(lvl, ph && !this.phoneAnswered ? ph : null);
   }
 
   private setScene(s: THREE.Scene): void {
@@ -346,28 +321,9 @@ export class Game {
   }
 
   private prepareAudio(): void {
-    const ctx = this.audio.ctx;
-    if (!ctx || this.steps.length) return;
-    for (let i = 0; i < 8; i++) this.steps.push(footstepCarpet(ctx, i + 1));
-    for (let i = 0; i < 6; i++) this.clicks.push(typeClick(ctx, i + 1));
-    this.rustle = paperRustle(ctx, 1);
-    for (let i = 0; i < 4; i++) this.geiger.push(geigerClick(ctx, i + 1));
-    // тихий фоновий трек рівня (наш, ACE-Step): шар під гулом ламп
-    void this.sfx.load(ctx, `${import.meta.env.BASE_URL}assets/sfx/`).then(() => this.levelAudio());
+    this.snd.prepare(() => this.levelAudio());
     this.ambience.prepare();
-    // гул Шва і (тихіше, глухіше) прихованого розлому
-    const drone = seamDrone(ctx);
-    for (const [gain, ref] of [[0.9, 1.5], [0.5, 0.9]] as const) {
-      const v = this.audio.play3D(drone, 0, -100, 0, { loop: true, gain, ref, wet: 0.4, rate: ref < 1 ? 0.8 : 1 });
-      if (v) this.seamVoices.push(v);
-    }
     this.levelAudio();
-    const hum = humLoop(ctx, 4, 3);
-    // гул: 6 голосів «переїжджають» до найближчих ламп, що світять
-    for (let i = 0; i < 6; i++) {
-      const v = this.audio.play3D(hum, 0, -100, 0, { loop: true, gain: 0.45, ref: 1.1, wet: 0.12, rate: 0.985 + i * 0.006 });
-      if (v) this.humVoices.push({ voice: v, lamp: -1 });
-    }
   }
 
   /** Перші хвилини на рівні 0: печатки ведуть не лише до вахти. Перша — рупор кличе на ім'я, друга — хтось стоїть у кінці коридору. */
@@ -376,23 +332,6 @@ export class Game {
     if (!k.startsWith('0:stamp_')) return;
     if (stamps === 1) this.soundscape.schedule(4, 7);
     if (stamps === 2) this.psyche.scriptGhost(9);
-  }
-
-  private footstep(x: number, y: number, z: number, loud: number): void {
-    // кроки за поверхнею: паркет — дзвінкий дерев'яний стук, лінолеум — глухіший, бетон — нижчий і з луною
-    const surf = this.level ? surfaceAt(this.level, x, z) : 'linoleum';
-    // по воді — хлюпіт; він гучніший за звичайний крок (його чує «Утопленник»)
-    if (this.level?.water?.wetAt(x, z)) {
-      const sp = this.hunt.splash();
-      if (sp) this.audio.play3D(sp, x, y + 0.02, z, { gain: 0.55 + loud * 0.6, rate: 0.92 + Math.random() * 0.16, ref: 2, wet: 0.5 });
-      this.hunt.noise(x, y, z, Math.min(1.4, loud * 2.2 + 0.25));
-      return;
-    }
-    const rec = this.sfx.ready ? this.sfx.pick(surf === 'linoleum' ? 'carpet_' : 'step_') : null;
-    const b = rec ?? this.steps[this.stepIdx++ % Math.max(1, this.steps.length)];
-    const k = surf === 'parquet' ? { g: 0.75, r: 1.04, w: 0.22 } : surf === 'concrete' ? { g: 0.85, r: 0.9, w: 0.4 } : surf === 'tile' ? { g: 0.9, r: 1.12, w: 0.55 } : { g: 1, r: 1, w: 0.2 };
-    if (b) this.audio.play3D(b, x, y + 0.05, z, { gain: (0.35 + loud * 0.65) * k.g, rate: k.r * (0.94 + Math.random() * 0.12), ref: 2, wet: k.w });
-    this.hunt.noise(x, y, z, loud);
   }
 
   applySettings(s: Settings): void {
@@ -483,11 +422,10 @@ export class Game {
     this.ui.closeAll();
     this.input.enabled = false;
     this.audio.unlock(); this.prepareAudio();
-    let k = 0;
     // якщо гравець був на іншому рівні — рівень 0 вантажиться під час прологу
     // рівень 0 ще міг не довантажитися після «18+» — пролог іде поверх завантаження
     const reload = (this.loading ?? Promise.resolve()).then(() => (this.level?.id !== 0 ? this.loadLevel(0).then(() => {}) : this.resetPickups()));
-    await this.hud.prologue(PROLOGUE, () => { const b = this.clicks[k++ % Math.max(1, this.clicks.length)]; if (b) this.audio.play2D(b, 0.5, 0.95 + Math.random() * 0.1); });
+    await this.hud.prologue(PROLOGUE, () => this.snd.typeClick());
     await reload;
     // отямлюється на підлозі обличчям до стіни, крізь яку випав (стіл експедиції — за спиною)
     this.enterLevelStart();
@@ -566,7 +504,7 @@ export class Game {
   private answerPhone(): void {
     if (this.phoneAnswered) return;
     this.phoneAnswered = true;
-    this.phoneVoice?.stop(0.05); this.phoneVoice = null;
+    this.snd.phoneVoice?.stop(0.05); this.snd.phoneVoice = null;
     this.interact.remove('phone');
     const sp = this.specials.find((s) => s.id === 'phone');
     if (sp) this.tapes.play({ id: 'phone', title: '', meta: '', speaker: '', lines: SPECIAL.phone }, sp.x, sp.z);
@@ -584,40 +522,6 @@ export class Game {
   }
 
   /** Звуки задач: печатка (глухий стук), запобіжник (клацання), генератор (гуркіт, що не стихає). */
-  private taskSound(n: 'take' | 'stamp' | 'fuse' | 'gen' | 'radio' | 'valve' | 'pin' | 'pump' | 'canister', x: number, y: number, z: number): void {
-    const ctx = this.audio.ctx;
-    if (n === 'valve') {
-      const c = this.sfx.pick('creak'), m = this.sfx.get('metalclick');
-      if (c) this.audio.play3D(c, x, y, z, { gain: 1, rate: 0.55, ref: 2.5, wet: 0.5 });
-      if (m) this.audio.play3D(m, x, y, z, { gain: 0.8, rate: 0.5, ref: 2, wet: 0.4 });
-      return;
-    }
-    if (n === 'canister') {
-      const c = this.sfx.pick('cloth') ?? this.sfx.get('metalclick');
-      if (c) this.audio.play3D(c, x, y, z, { gain: 0.8, rate: 0.7, ref: 2, wet: 0.3 });
-      if (ctx) this.audio.play3D(splashStep(ctx, 3), x, y + 0.3, z, { gain: 0.5, rate: 1.4, ref: 1.5, wet: 0.3 });
-      return;
-    }
-    if (n === 'pin') {
-      const m = this.sfx.get('metalclick');
-      if (m) this.audio.play3D(m, x, y, z, { gain: 0.5, rate: 2.2, ref: 1.5, wet: 0.2 });
-      // десь у групі заводиться музична скринька
-      if (ctx) setTimeout(() => this.audio.play3D(musicBox(ctx), x + 6, 1.0, z - 4, { gain: 1.1, ref: 3, wet: 0.7 }), 1400);
-      return;
-    }
-    if (n === 'gen' || n === 'pump') {
-      if (!ctx || this.genVoice) return;
-      this.genVoice = n === 'pump'
-        ? this.audio.play3D(pumpLoop(ctx), x, y, z, { loop: true, gain: 2.4, ref: 5, wet: 0.7 })
-        : this.audio.play3D(humLoop(ctx, 4, 9), x, y, z, { loop: true, gain: 2.2, rate: 0.42, ref: 5, wet: 0.6 });
-      const hit = this.sfx.pick('hit_');
-      if (hit) this.audio.play3D(hit, x, y, z, { gain: 0.8, rate: 0.6, ref: 4, wet: 0.5 });
-      return;
-    }
-    const b = n === 'stamp' ? this.sfx.pick('doorclose') : this.sfx.get('metalclick');
-    if (b) this.audio.play3D(b, x, y, z, { gain: n === 'stamp' ? 0.5 : 0.7, rate: n === 'stamp' ? 2.1 : n === 'fuse' ? 0.75 : 1.2, ref: 1.6, wet: 0.3 });
-  }
-
   /** Мисливець під час обшуку перевіряє шафки: стає перед дверцятами, смикає їх. Якщо гравець усередині —
    *  знаходить не завжди: що гірше нерви (важке дихання), то вірогідніше. */
   private setupHideChecks(): void {
@@ -748,7 +652,7 @@ export class Game {
   private readDoc(id: string, after?: () => void): void {
     const d = this.docOf(id);
     if (!d) return;
-    const flip = this.sfx.pick('bookflip') ?? this.rustle;
+    const flip = this.sfx.pick('bookflip') ?? this.snd.rustle;
     if (flip) this.audio.play2D(flip, 0.8);
     const list = d.kind === 'note' ? this.store.progress.notes : this.store.progress.docs;
     if (!list.includes(id)) { list.push(id); this.store.save(); }
@@ -788,8 +692,7 @@ export class Game {
       this.store.save();
       this.stage = 'done';
       // за останнім Швом — фінал: вибір, кінцівка, ім'я, титри; потім меню (проходження завершене)
-      const k = { n: 0 };
-      await runFinale(this.hud, this.hud.root, this.store.progress, () => { const b = this.clicks[k.n++ % Math.max(1, this.clicks.length)]; if (b) this.audio.play2D(b, 0.5, 0.95 + Math.random() * 0.1); });
+      await runFinale(this.hud, this.hud.root, this.store.progress, () => this.snd.typeClick());
       this.store.save();
       look.fade.value = 0; look.fear.value = 0; seam.open.value = 0; this.ending = false;
       this.showMenu();
@@ -934,7 +837,7 @@ export class Game {
     this.hud.show(false);
     this.input.enabled = false; this.input.touch?.show(false);
     if (document.pointerLockElement) document.exitPointerLock();
-    const flip = this.sfx.pick('bookflip') ?? this.rustle;
+    const flip = this.sfx.pick('bookflip') ?? this.snd.rustle;
     if (flip) this.audio.play2D(flip, 0.55, 1.1);
     this.tried.add('book');
     const docs = [...this.store.progress.docs, ...this.store.progress.notes, ...this.store.progress.tapes].map((id) => ({ id, title: this.docOf(id)?.title ?? id }));
@@ -963,10 +866,7 @@ export class Game {
     let d = Infinity;
     for (const s of [lvl.seam, lvl.rift]) if (s) d = Math.min(d, Math.hypot(s.group.position.x - p.x, s.group.position.z - p.z));
     const clicks = this.dosi.update(dt, d, this.mode !== 'play');
-    for (let i = 0; i < clicks; i++) {
-      const b = this.geiger[(Math.random() * this.geiger.length) | 0];
-      if (b) this.audio.play2D(b, 0.32 + Math.random() * 0.1, 0.92 + Math.random() * 0.16);
-    }
+    this.snd.geigerClicks(clicks);
     // тріск приладу — теж звук: «Слепой» його чує (тихо, але постійно)
     if (this.dosi.rate > 0 && (this.dosiNoiseT -= dt) <= 0) { this.dosiNoiseT = 1; this.hunt.noise(p.x, p.y + 1, p.z, 0.12 + 0.1 * (this.dosi.rate / 9)); }
     this.hud.setDosimeter(this.dosi.on && this.mode === 'play' ? this.dosi.needle * 0.7 : null); // повний фон ≈ 3.5 мР/ч, не в червоній зоні
@@ -1111,7 +1011,6 @@ export class Game {
       this.omens.update(dt);
       look.fear.value = Math.max(0, look.fear.value - dt * 0.12);
       look.dread.value += (this.psyche.dread - look.dread.value) * Math.min(1, dt * 0.8);
-      if (this.ambGain) this.ambGain.gain.value = 1 - this.psyche.silence;
       if (this.mode === 'play' && !this.ending) this.soundscape.update(dt, { x: this.player.pos.x, z: this.player.pos.z, dread: this.psyche.dread, silence: this.psyche.silence, danger: this.hunt.danger });
       // живе згасання запеченого світла біля ламп, що мерехтять/згасли (оновлюємо кілька разів на секунду — дешево)
       this.dimT -= dt;
@@ -1139,20 +1038,7 @@ export class Game {
       fl.target.position.set(0, -0.08, -6).applyQuaternion(c.quaternion).add(c.position);
       const fo = this.flashOverride;
       if (fo) { fl.position.copy(fo.from); fl.target.position.copy(fo.at); fl.intensity = fo.intensity; }
-      this.humT -= dt;
-      if (this.humT <= 0 && this.humVoices.length) {
-        this.humT = 0.4;
-        const near = lvl.lamps.nearest(c.position.x, c.position.z, this.humVoices.length);
-        this.humVoices.forEach((h, i) => {
-          const li = near[i];
-          if (li === undefined) { h.voice.setPosition(0, -100, 0); h.lamp = -1; return; }
-          const p = lvl.layout.lights[li];
-          if (p) h.voice.setPosition(p.x, lvl.layout.height - 0.05, p.z);
-          h.lamp = li;
-        });
-      }
-      const quiet = 1 - this.psyche.silence;
-      for (const h of this.humVoices) h.voice.gain.gain.value = h.lamp >= 0 ? 0.45 * lvl.lamps.levelOf(h.lamp) * quiet : 0;
+      this.snd.updateHum(dt, lvl, c.position.x, c.position.z, 1 - this.psyche.silence);
     }
     const c = this.camera, f = new THREE.Vector3(0, 0, -1).applyQuaternion(c.quaternion);
     if (this.mode === 'play' && this.interact) {
