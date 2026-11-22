@@ -9,6 +9,7 @@ import { MapMemory } from './mapmem';
 import { buildUnseen } from '../world/unseen';
 import { makeBody } from '../world/bodies';
 import { furnishNii } from '../world/nii-furniture';
+import { rng } from '../core/rng';
 import { dressLevel } from '../world/dressing';
 import { Psyche } from './psyche';
 import { Soundscape } from './soundscape';
@@ -162,6 +163,8 @@ export class Game {
   /** Експозиція з налаштувань (яскравість) і адаптація ока: у темряві зір поволі звикає, під лампою — швидко звужується. */
   private baseExposure = BASE_EXPOSURE;
   private adapt = 1;
+  /** Плавний «розгін» поля зору під час бігу (0..1). */
+  private runK = 0;
   readonly soundscape = new Soundscape(this.audio, (t, sec) => this.hud.subtitle(t, sec));
   /** Обстановка рівня (для контрольних кадрів). */
   dressed: { x: number; z: number; yaw: number; kind: string }[] = [];
@@ -328,6 +331,7 @@ export class Game {
   }
 
   private prepareAudio(): void {
+    this.hud.typeSound = () => this.snd.typeClick();
     this.snd.prepare(() => this.levelAudio());
     this.ambience.prepare();
     this.levelAudio();
@@ -377,6 +381,52 @@ export class Game {
     bar.remove();
   }
 
+  /** Кадр під меню: найдовша освітлена перспектива рівня й повільний наїзд уздовж неї. */
+  private menuClock = 0;
+  private menuShot: { lvl: Level; x: number; z: number; dx: number; dz: number; len: number; t: number } | null = null;
+
+  private pickMenuShot(lvl: Level): void {
+    const L = lvl.layout, r = rng(L.seed ^ 0x3e7);
+    let best = { score: -1, x: L.spawn.x, z: L.spawn.z, dx: 0, dz: -1, len: 4 };
+    for (let k = 0; k < 260; k++) {
+      const cx = Math.floor(r() * L.cols), cz = Math.floor(r() * L.rows);
+      if ((L.dist[cz * L.cols + cx] ?? -1) < 0) continue;
+      const x = (cx + 0.5) * L.cell, z = (cz + 0.5) * L.cell;
+      if (lvl.lamps.lightAt(x, z) < 0.45) continue;
+      for (let a = 0; a < 4; a++) {
+        const dx = [1, 0, -1, 0][a] as number, dz = [0, 1, 0, -1][a] as number;
+        const len = this.physics.raycast(x, 1.55, z, dx, 0, dz, 40) ?? 40;
+        // довга перспектива з лампами вздовж; трохи збоку від осі — цікавіше, ніж рівно посередині
+        let lit = 0;
+        for (let d = 2; d < len; d += 2.4) lit += Math.min(1, lvl.lamps.lightAt(x + dx * d, z + dz * d));
+        const score = Math.min(len, 30) + lit * 0.8;
+        if (score > best.score) best = { score, x, z, dx, dz, len };
+      }
+    }
+    this.menuShot = { lvl, x: best.x, z: best.z, dx: best.dx, dz: best.dz, len: best.len, t: 0 };
+  }
+
+  /** Меню: камера повільно рухається коридором (≈ 9 м за 70 с), ледь погойдуючись; наприкінці — затемнення й знову. */
+  private menuCamera(dt: number): void {
+    const lvl = this.level;
+    if (!lvl) return;
+    if (this.menuShot?.lvl !== lvl) { this.pickMenuShot(lvl); this.menuClock = performance.now(); }
+    const m = this.menuShot;
+    if (!m) return;
+    const T = 70, run = Math.max(0, Math.min(9, m.len - 5));
+    // справжній час, а не dt кадру: поки шейдери ще компілюються, кадри рідкі, а меню має проявитися вчасно
+    m.t += Math.max(dt, (performance.now() - this.menuClock) / 1000);
+    this.menuClock = performance.now();
+    if (m.t > T) m.t -= T;
+    const k = m.t / T, d = run * (k * k * (3 - 2 * k)) * 0.5 + run * k * 0.5;
+    const yaw = Math.atan2(-m.dx, -m.dz) + Math.sin(this.time * 0.05) * 0.06 + 0.1;
+    this.camera.position.set(m.x + m.dx * d, 1.58 + Math.sin(this.time * 0.6) * 0.006, m.z + m.dz * d);
+    this.camera.rotation.set(-0.02 + Math.sin(this.time * 0.09) * 0.012, yaw, Math.sin(this.time * 0.13) * 0.006, 'YXZ');
+    this.camera.updateMatrixWorld();
+    // мʼякий перехід на початок (лише в самому меню, не під час прологу)
+    look.fade.value = Math.max(0, 1 - m.t / 2.5, (m.t - (T - 2.5)) / 2.5);
+  }
+
   private showMenu(): void {
     this.mode = 'menu';
     this.hud.show(false);
@@ -423,6 +473,7 @@ export class Game {
       this.enterLevelStart(false);
       this.setObjective(this.tasks.objective() ?? levelObjective(cp.level));
     }
+    look.fade.value = 0; // меню могло бути посеред затемнення свого кадру
     this.play();
   }
 
@@ -894,7 +945,8 @@ export class Game {
   watchLies(): boolean { return this.psyche.lies(); }
 
   private applyFov(): void {
-    const t = Math.tan((this.baseFov * Math.PI) / 360) / (1 + this.cam.zoomK);
+    // біг трохи розширює поле зору (відчуття швидкості), зум камери — звужує
+    const t = Math.tan(((this.baseFov + this.runK * 5) * Math.PI) / 360) / (1 + this.cam.zoomK);
     this.camera.fov = (2 * Math.atan(t) * 180) / Math.PI;
     this.camera.updateProjectionMatrix();
   }
@@ -980,10 +1032,6 @@ export class Game {
       this.acc += dt;
       const m = this.hide ? { x: 0, y: 0, run: false, crouch: false } : { x: this.input.move.x, y: this.input.move.y, run: this.input.run, crouch: this.input.crouch };
       while (this.acc >= STEP) { this.player.update(STEP, m); this.physics.step(); this.acc -= STEP; }
-    } else if (this.mode === 'menu') {
-      // у меню камера повільно «дихає» й оглядає кімнату
-      this.player.yaw = Math.sin(this.time * 0.07) * 0.5;
-      this.player.pitch = -0.04 + Math.sin(this.time * 0.11) * 0.03;
     }
     if (this.input.consume('flashlight') && this.mode === 'play') {
       this.flashlightOn = !this.flashlightOn;
@@ -995,6 +1043,8 @@ export class Game {
     if (this.hud.readerOpen && (this.input.consume('interact') || this.input.consume('pause'))) this.hud.closeDoc();
     const lvl = this.level;
     this.rig.update(this.player, this.acc / STEP, dt);
+    const runWant = this.mode === 'play' && this.player.running && this.player.bobAmp > 0.9 ? 1 : 0;
+    if (Math.abs(runWant - this.runK) > 0.001) { this.runK += (runWant - this.runK) * Math.min(1, dt * (runWant ? 2.5 : 4)); this.applyFov(); }
     if (this.hide) {
       // камера всередині шафки, за жалюзі, дивиться в кімнату
       const h = this.hide;
@@ -1003,6 +1053,7 @@ export class Game {
       this.camera.updateMatrixWorld();
     }
     this.cameraOverride?.(this.camera, dt);
+    if (this.mode === 'menu') this.menuCamera(dt);
     if (lvl) {
       lvl.update(this.time, dt, this.camera);
       this.figure?.update(dt, this.camera, this.mode === 'play');

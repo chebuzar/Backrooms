@@ -186,9 +186,16 @@ input[type='range'].pencil-range:focus-visible { outline: 2px dashed var(--penci
 .prologue .pl-text { width: min(36em, 86vw); font: 400 calc(var(--u) * 1.15)/1.7 var(--type); color: #d8d1bf; }
 .prologue .pl-text p { margin-bottom: .8em; transition: opacity 1.2s, max-height 1.2s; max-height: 6em; }
 .prologue .pl-text p.gone { opacity: 0; max-height: 0; margin: 0; overflow: hidden; }
-.title-card .tc { text-align: center; font-family: var(--type); color: #d8d1bf; }
-.title-card .tc-t { font-size: calc(var(--u) * .85); letter-spacing: .35em; text-transform: uppercase; color: #8c8574; margin-bottom: 1em; }
-.title-card .tc-s { font-size: calc(var(--u) * 1.6); letter-spacing: .08em; }
+.title-card .tc { text-align: center; font-family: var(--type); color: #d8d1bf; width: min(34em, 86vw); }
+.title-card .tc-h { font-size: calc(var(--u) * .72); letter-spacing: .3em; text-transform: uppercase; color: #5f594c; margin-bottom: 2.4em; opacity: 0; transition: opacity 1.4s .2s; }
+.title-card .tc-t { font-size: calc(var(--u) * .9); letter-spacing: .42em; text-transform: uppercase; color: #8c8574; margin-bottom: .9em; opacity: 0; transition: opacity 1.2s .45s; }
+.title-card.shown .tc-h, .title-card.shown .tc-t { opacity: 1; }
+.title-card .tc-s { font-size: calc(var(--u) * 1.7); letter-spacing: .08em; min-height: 1.4em; }
+.title-card .tc-caret { display: inline-block; width: .55em; height: .1em; margin-left: .08em; background: #d8d1bf; vertical-align: -.05em; animation: tc-blink 1s steps(1) infinite; }
+.title-card.typed .tc-caret { animation-duration: .7s; }
+@keyframes tc-blink { 50% { opacity: 0; } }
+.title-card .tc-rule { height: 1px; margin: 1.6em auto 0; width: 0; background: linear-gradient(90deg, transparent, #6b6455, transparent); transition: width 1.6s cubic-bezier(.3,.7,.2,1); }
+.title-card.typed .tc-rule { width: 60%; }
 .prologue .pl-skip { position: absolute; bottom: calc(5dvh + env(safe-area-inset-bottom)); right: 6vw; font: 400 calc(var(--u) * .8)/1 var(--type); color: #5c574b; }
 .loadline.below { top: auto; bottom: calc(6dvh + env(safe-area-inset-bottom)); }
 .loadline { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); font: 400 var(--u)/1 var(--type); color: #a8a08c; letter-spacing: .04em; }

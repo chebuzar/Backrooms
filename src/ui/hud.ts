@@ -232,14 +232,30 @@ export class HUD {
   }
 
   /** Заставка переходу: чорний екран, назва рівня друкується; work() виконується під нею (завантаження). */
+  /** Звук друкарської машинки для заставок (гра ставить сама, коли звук готовий). */
+  typeSound: (() => void) | null = null;
+
+  /** Заставка між рівнями / після смерті: картка журналу експедиції — шапка, назва, підзаголовок друкується машинкою. */
   async titleCard(title: string, sub: string, work: () => Promise<void>): Promise<void> {
     const el = document.createElement('div');
     el.className = 'prologue title-card';
-    el.innerHTML = `<div class="tc"><p class="tc-t">${esc(title)}</p><p class="tc-s">${esc(sub)}</p></div>`;
+    el.innerHTML = `<div class="tc"><p class="tc-h">Объект 4-Б · экспедиция № 7</p><p class="tc-t">${esc(title)}</p>`
+      + `<p class="tc-s"><span class="tc-typed"></span><span class="tc-caret"></span></p><div class="tc-rule"></div></div>`;
     this.el.parentElement?.appendChild(el);
     requestAnimationFrame(() => el.classList.add('shown'));
     const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
-    await Promise.all([work(), wait(3200)]);
+    const typed = el.querySelector('.tc-typed') as HTMLElement;
+    const type = async () => {
+      await wait(700);
+      for (const ch of sub) {
+        typed.textContent += ch;
+        if (ch !== ' ') this.typeSound?.();
+        await wait(ch === ' ' ? 70 : 38 + Math.random() * 40);
+      }
+      el.classList.add('typed');
+    };
+    await Promise.all([work(), wait(3400), type()]);
+    await wait(500);
     el.classList.remove('shown');
     await wait(900);
     el.remove();
