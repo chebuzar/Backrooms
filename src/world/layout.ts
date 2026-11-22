@@ -499,9 +499,15 @@ export function generateLayout(o: LayoutOptions): Layout {
     const dark = zones[zi] === 'dark';
     const roll = r();
     const state: LightPanel['state'] = dark ? (roll < 0.18 ? 'on' : roll < 0.26 ? 'flicker' : 'off') : roll < L.offP ? 'off' : roll < L.offP + L.flickerP ? 'flicker' : 'on';
-    const lx = (x + sp / 2) * cell, lz = (y + sp / 2) * cell;
+    let lx = (x + sp / 2) * cell, lz = (y + sp / 2) * cell;
     // не вмуровувати світильник у стіну чи колону (для нових рівнів; жовті кімнати лишаються як запечені)
-    if (preset !== 'yellow' && walls.some((w) => Math.abs(w.x - lx) < w.w / 2 + L.w / 2 + 0.1 && Math.abs(w.z - lz) < w.d / 2 + L.d / 2 + 0.1)) continue;
+    const inWall = (px: number, pz: number) => walls.some((w) => Math.abs(w.x - px) < w.w / 2 + L.w / 2 + 0.1 && Math.abs(w.z - pz) < w.d / 2 + L.d / 2 + 0.1);
+    if (preset !== 'yellow' && inWall(lx, lz)) {
+      // басейн: рідка сітка (4.8 м) — світильник, що влучив у стіну, зсунути на сусідню клітинку (у коридор), а не прибрати
+      const alt = preset === 'pool' ? ([[0, -1], [0, 1], [-1, 0], [1, 0], [-1, -1], [1, 1]] as const).map(([dx, dy]) => [lx + dx * cell * 1.5, lz + dy * cell * 1.5] as const).find(([ax, az]) => !inWall(ax, az)) : undefined;
+      if (!alt) continue;
+      [lx, lz] = alt;
+    }
     const room = plan.rooms?.find((q) => lx >= q.x0 * cell && lx < q.x1 * cell && lz >= q.y0 * cell && lz < q.y1 * cell);
     // дитсадок: у спальнях світло майже ніде не горить; басейн: у залах з чашами більшість плафонів світить (видно воду)
     // дитсадок: коридори здебільшого світлі (острівці безпеки від «Улыбаки»), кімнати — як зона, спальні — темні

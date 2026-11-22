@@ -88,7 +88,7 @@ export class Stalker {
         const n = src.name.toLowerCase(), c = (r: number, g: number, b: number) => new THREE.Color().setRGB(r, g, b, THREE.SRGBColorSpace);
         // мертва шкіра: знекровлена, сірувато-воскова, волога; очі «Наблюдателя» — суцільно чорні; роба — брудна, темна
         if (n.includes('body')) {
-          mat.color = kind === 'blind' ? c(0.62, 0.6, 0.56) : kind === 'smiler' ? c(0.78, 0.74, 0.7) : kind === 'drowned' ? c(0.5, 0.58, 0.6) : c(0.4, 0.38, 0.36);
+          mat.color = kind === 'blind' ? c(0.62, 0.6, 0.56) : kind === 'smiler' ? c(0.78, 0.74, 0.7) : kind === 'drowned' ? c(0.36, 0.46, 0.47) : c(0.4, 0.38, 0.36);
           mat.roughness = kind === 'drowned' ? 0.25 : 0.48; // утоплений — мокрий, блищить
         }
         else if (n.includes('worksuit')) { mat.map = null; mat.color = c(0.09, 0.095, 0.085); mat.roughness = 0.9; } // роба, чорна від бруду й часу
