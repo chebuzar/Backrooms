@@ -23,12 +23,14 @@ import { Input } from '../input/input';
 import { AudioEngine, type SpatialVoice } from '../audio/audio';
 import { humLoop, footstepCarpet, typeClick, paperRustle, seamDrone, geigerClick, phoneRing } from '../audio/synth';
 import { SoundBank } from '../audio/bank';
+import { musicBox, splashStep, pumpLoop, kinderAmbience, poolAmbience } from '../audio/synth2';
 import { Figure } from '../world/monsters/figure';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { HUD } from '../ui/hud';
 import { Ambience } from './ambience';
 import { Interactions } from './interact';
-import { DOCS, NOTES, PSY_DOCS, TAPES, FINDINGS, SPECIAL, PROLOGUE, OBJECTIVES, HINTS, LEVEL_END, LEVEL_TITLES, type Doc } from '../story/ru';
+import { DOCS, NOTES, PSY_DOCS, TAPES, FINDINGS, SPECIAL, PROLOGUE, OBJECTIVES, HINTS, LEVEL_TITLES, levelObjective, type Doc } from '../story/ru';
+import { runFinale } from './ending';
 import { placeFindings, type Finding } from '../world/findings';
 import { placeLockers, type Locker } from '../world/lockers';
 import { placeSpecialRooms, type Special } from '../world/special-rooms';
@@ -38,7 +40,7 @@ import { UI } from '../ui/screens';
 import { T } from '../i18n/ru';
 import { Assets } from '../assets/loader';
 import { buildLevel0, type Level } from '../world/level0';
-import { buildThemedLevel } from '../world/level-themed';
+import { buildThemedLevel, type ThemedId } from '../world/level-themed';
 import { disposeScene } from '../world/chunks';
 import { DOOR_H } from '../world/decor';
 import type { Seam } from '../world/seam';
@@ -261,7 +263,7 @@ export class Game {
       this.level = null;
       this.figure = null;
     }
-    const lvl = id === 0 ? await buildLevel0(this.assets, this.physics, onProgress) : await buildThemedLevel(id as 1 | 2, this.assets, this.physics, onProgress);
+    const lvl = id === 0 ? await buildLevel0(this.assets, this.physics, onProgress) : await buildThemedLevel(id as ThemedId, this.assets, this.physics, onProgress, this.profile.name === 'high' || this.profile.name === 'ultra');
     if (id === 0) {
       try {
         const gl = await this.assets.model('assets/models/figure.glb');
@@ -321,7 +323,9 @@ export class Game {
     const lvl = this.level;
     if (!lvl || !this.sfx.ready) return;
     this.ambSrc?.stop();
-    const amb = this.sfx.get(`amb_l${lvl.id}`), bus = this.audio.music;
+    const ctx0 = this.audio.ctx;
+    // рівні 3–4 — синтезований фон (дитсадок: тиша й далека скринька; басейн: краплі й вода)
+    const amb = this.sfx.get(`amb_l${lvl.id}`) ?? (ctx0 && lvl.id === 3 ? kinderAmbience(ctx0) : ctx0 && lvl.id === 4 ? poolAmbience(ctx0) : null), bus = this.audio.music;
     if (!this.ambGain && this.audio.ctx && bus) { this.ambGain = this.audio.ctx.createGain(); this.ambGain.connect(bus); }
     this.ambSrc = amb && this.ambGain ? this.audio.play2D(amb, 0.32, 1, this.ambGain) : null;
     if (this.ambSrc) this.ambSrc.loop = true;
@@ -377,9 +381,16 @@ export class Game {
   private footstep(x: number, y: number, z: number, loud: number): void {
     // кроки за поверхнею: паркет — дзвінкий дерев'яний стук, лінолеум — глухіший, бетон — нижчий і з луною
     const surf = this.level ? surfaceAt(this.level, x, z) : 'linoleum';
+    // по воді — хлюпіт; він гучніший за звичайний крок (його чує «Утопленник»)
+    if (this.level?.water?.wetAt(x, z)) {
+      const sp = this.hunt.splash();
+      if (sp) this.audio.play3D(sp, x, y + 0.02, z, { gain: 0.55 + loud * 0.6, rate: 0.92 + Math.random() * 0.16, ref: 2, wet: 0.5 });
+      this.hunt.noise(x, y, z, Math.min(1.4, loud * 2.2 + 0.25));
+      return;
+    }
     const rec = this.sfx.ready ? this.sfx.pick(surf === 'linoleum' ? 'carpet_' : 'step_') : null;
     const b = rec ?? this.steps[this.stepIdx++ % Math.max(1, this.steps.length)];
-    const k = surf === 'parquet' ? { g: 0.75, r: 1.04, w: 0.22 } : surf === 'concrete' ? { g: 0.85, r: 0.9, w: 0.4 } : { g: 1, r: 1, w: 0.2 };
+    const k = surf === 'parquet' ? { g: 0.75, r: 1.04, w: 0.22 } : surf === 'concrete' ? { g: 0.85, r: 0.9, w: 0.4 } : surf === 'tile' ? { g: 0.9, r: 1.12, w: 0.55 } : { g: 1, r: 1, w: 0.2 };
     if (b) this.audio.play3D(b, x, y + 0.05, z, { gain: (0.35 + loud * 0.65) * k.g, rate: k.r * (0.94 + Math.random() * 0.12), ref: 2, wet: k.w });
     this.hunt.noise(x, y, z, loud);
   }
@@ -463,7 +474,7 @@ export class Game {
       this.audio.unlock(); this.prepareAudio();
       await this.hud.titleCard(card.title, card.sub, async () => { await this.loadLevel(cp.level); });
       this.enterLevelStart(false);
-      this.setObjective(this.tasks.objective() ?? OBJECTIVES.level1Start);
+      this.setObjective(this.tasks.objective() ?? levelObjective(cp.level));
     }
     this.play();
   }
@@ -573,11 +584,32 @@ export class Game {
   }
 
   /** Звуки задач: печатка (глухий стук), запобіжник (клацання), генератор (гуркіт, що не стихає). */
-  private taskSound(n: 'take' | 'stamp' | 'fuse' | 'gen' | 'radio', x: number, y: number, z: number): void {
+  private taskSound(n: 'take' | 'stamp' | 'fuse' | 'gen' | 'radio' | 'valve' | 'pin' | 'pump' | 'canister', x: number, y: number, z: number): void {
     const ctx = this.audio.ctx;
-    if (n === 'gen') {
+    if (n === 'valve') {
+      const c = this.sfx.pick('creak'), m = this.sfx.get('metalclick');
+      if (c) this.audio.play3D(c, x, y, z, { gain: 1, rate: 0.55, ref: 2.5, wet: 0.5 });
+      if (m) this.audio.play3D(m, x, y, z, { gain: 0.8, rate: 0.5, ref: 2, wet: 0.4 });
+      return;
+    }
+    if (n === 'canister') {
+      const c = this.sfx.pick('cloth') ?? this.sfx.get('metalclick');
+      if (c) this.audio.play3D(c, x, y, z, { gain: 0.8, rate: 0.7, ref: 2, wet: 0.3 });
+      if (ctx) this.audio.play3D(splashStep(ctx, 3), x, y + 0.3, z, { gain: 0.5, rate: 1.4, ref: 1.5, wet: 0.3 });
+      return;
+    }
+    if (n === 'pin') {
+      const m = this.sfx.get('metalclick');
+      if (m) this.audio.play3D(m, x, y, z, { gain: 0.5, rate: 2.2, ref: 1.5, wet: 0.2 });
+      // десь у групі заводиться музична скринька
+      if (ctx) setTimeout(() => this.audio.play3D(musicBox(ctx), x + 6, 1.0, z - 4, { gain: 1.1, ref: 3, wet: 0.7 }), 1400);
+      return;
+    }
+    if (n === 'gen' || n === 'pump') {
       if (!ctx || this.genVoice) return;
-      this.genVoice = this.audio.play3D(humLoop(ctx, 4, 9), x, y, z, { loop: true, gain: 2.2, rate: 0.42, ref: 5, wet: 0.6 });
+      this.genVoice = n === 'pump'
+        ? this.audio.play3D(pumpLoop(ctx), x, y, z, { loop: true, gain: 2.4, ref: 5, wet: 0.7 })
+        : this.audio.play3D(humLoop(ctx, 4, 9), x, y, z, { loop: true, gain: 2.2, rate: 0.42, ref: 5, wet: 0.6 });
       const hit = this.sfx.pick('hit_');
       if (hit) this.audio.play3D(hit, x, y, z, { gain: 0.8, rate: 0.6, ref: 4, wet: 0.5 });
       return;
@@ -755,10 +787,12 @@ export class Game {
       this.store.progress.checkpoint = null;
       this.store.save();
       this.stage = 'done';
-      this.hud.levelEnd(LEVEL_END.title, LEVEL_END.body, LEVEL_END.soon, () => {
-        look.fade.value = 0; look.fear.value = 0; seam.open.value = 0; this.ending = false;
-        this.showMenu();
-      });
+      // за останнім Швом — фінал: вибір, кінцівка, ім'я, титри; потім меню (проходження завершене)
+      const k = { n: 0 };
+      await runFinale(this.hud, this.hud.root, this.store.progress, () => { const b = this.clicks[k.n++ % Math.max(1, this.clicks.length)]; if (b) this.audio.play2D(b, 0.5, 0.95 + Math.random() * 0.1); });
+      this.store.save();
+      look.fade.value = 0; look.fear.value = 0; seam.open.value = 0; this.ending = false;
+      this.showMenu();
       return;
     }
     await this.hud.titleCard(card.title, card.sub, async () => { await this.loadLevel(target); });
@@ -770,7 +804,7 @@ export class Game {
     this.ending = false;
     await this.arrive();
     this.play();
-    this.setObjective(this.tasks.objective() ?? (target === 1 ? OBJECTIVES.level1Start : OBJECTIVES.level2Start));
+    this.setObjective(this.tasks.objective() ?? levelObjective(target));
   }
 
   /** Мисливець схопив: різкий поворот до нього, удар, темрява → запис відновлюється з початку рівня. */
@@ -1139,6 +1173,10 @@ export class Game {
       this.store.progress.playSeconds += dt;
       this.tapes.update(dt);
       this.tasks.update(dt);
+      if (this.level?.water) {
+        this.level.water.update(this.tasks.drain);
+        this.player.slow = this.level.water.wetAt(this.player.pos.x, this.player.pos.z) ? 0.8 : 1;
+      }
       if ((this.persistT -= dt) <= 0) { this.persistT = 10; this.persist(); }
       if (this.psyche.silence < 0.3) this.ambience.update(dt, this.player);
       if (this.mapmem && (this.mapT -= dt) <= 0) { this.mapT = 0.25; this.mapmem.mark(this.player.pos.x, this.player.pos.z); }

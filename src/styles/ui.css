@@ -263,3 +263,17 @@ input[type='range'].pencil-range:focus-visible { outline: 2px dashed var(--penci
 .nb-cap { text-align: right; font-size: calc(var(--u) * .9); opacity: .7; }
 .nb-close { position: absolute; left: 1.8em; bottom: .9em; color: var(--ink); font-size: calc(var(--u) * .95); }
 @media (max-height: 460px) { .nb-page { padding: 1em 1.2em 2.8em; } .nb-task { font-size: calc(var(--u) * 1.2); } }
+
+/* ---------- фінал: вибір і титри ---------- */
+.finale-choice .fc { text-align: center; font-family: var(--type); color: #d8d1bf; }
+.finale-choice .fc-t { font-size: calc(var(--u) * 1.5); letter-spacing: .06em; margin-bottom: 2.2em; }
+.finale-choice .menu { display: grid; gap: 1.1em; justify-items: start; width: max-content; margin: 0 auto; }
+.finale-choice .line-btn { font-size: calc(var(--u) * 1.15); color: #d8d1bf; }
+.finale-choice .fc-k { color: #6b6455; margin-right: .9em; }
+.finale-credits .cr { width: min(34em, 86vw); text-align: center; font: 400 calc(var(--u) * 1.05)/1.7 var(--type); color: #a8a08c; }
+.finale-credits .cr > * { opacity: 0; transform: translateY(.4em); transition: opacity 1.6s, transform 1.6s; }
+.finale-credits .cr > .in { opacity: 1; transform: none; }
+.finale-credits .cr-name { color: #d8d1bf; font-size: calc(var(--u) * 1.15); margin-bottom: 1.6em; }
+.finale-credits .cr-stats { color: #6b6455; font-size: calc(var(--u) * .85); margin-bottom: 3em; }
+.finale-credits .cr-head { color: #d8d1bf; font-size: calc(var(--u) * 1.6); letter-spacing: .4em; margin-bottom: 1.2em; }
+.finale-credits .cr-close { margin-top: 2.6em; color: #d8d1bf; }

@@ -5,10 +5,12 @@ import type { Doc } from '../story/ru';
 import { prologueTimeline } from './prologue-time';
 import { T } from '../i18n/ru';
 
-const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] as string);
+import { esc } from './esc';
 
 export class HUD {
   private readonly el: HTMLElement;
+  /** Шар поверх гри для повноекранних сцен (пролог, фінал). */
+  get root(): HTMLElement { return this.el.parentElement ?? document.body; }
   private readonly rec: HTMLElement;
   private readonly tc: HTMLElement;
   private readonly prompt: HTMLElement;
@@ -243,16 +245,4 @@ export class HUD {
     el.remove();
   }
 
-  /** Кінець рівня: картка поверх затемнення. */
-  levelEnd(title: string, body: string, note: string, onDone: () => void): void {
-    const el = document.createElement('div');
-    el.className = 'reader doc end';
-    el.innerHTML = `<article class="sheet"><header><h2>${esc(title)}</h2></header>
-      <div class="body">${body.split('\n').map((l) => `<p>${esc(l)}</p>`).join('')}</div>
-      <p class="sign">${esc(note)}</p><button class="line-btn close">В меню</button></article>`;
-    this.el.parentElement?.appendChild(el);
-    requestAnimationFrame(() => el.classList.add('shown'));
-    el.querySelector('.close')?.addEventListener('click', () => { el.remove(); onDone(); });
-    (el.querySelector('.close') as HTMLElement).focus({ preventScroll: true });
-  }
 }

@@ -1,4 +1,5 @@
 // Сюжетні тексти (російською). Основа — docs/STORY.md. Розкриваються поступово.
+import { DOCS_LATE, NOTES_LATE, TAPES_LATE, FINDINGS_LATE, LEVEL_TITLES_LATE, OBJECTIVES_LATE } from './ru-late';
 
 export interface Doc {
   id: string;
@@ -77,7 +78,8 @@ export const DOCS: Record<string, Doc> = {
       'Рядовой Фомин отказался возвращаться к Шву. Последняя передача: «Тут колесо видно. Я сестре обещал».'
     ].join('\n'),
     sign: 'Зам. начальника по науке (подпись неразборчива)'
-  }
+  },
+  ...DOCS_LATE
 };
 
 /** Психологічний шар: «Инструкция оператору», що бреше (рівень 0 — на столі; рівень 1 — та сама, з поправками олівцем),
@@ -154,6 +156,7 @@ export const NOTES: Record<string, Doc> = {
     ].join('\n'),
     sign: '— ст. лейтенант Мельник'
   },
+  ...NOTES_LATE,
   note1b: {
     id: 'note1b', kind: 'note',
     title: 'Обрывок',
@@ -222,14 +225,16 @@ export const TAPES: Record<string, Tape> = {
       [28, 'Он стоял за пультом в ту ночь. Двадцать пятое апреля. Ночная смена.'],
       [35, 'Если ты это слушаешь… ты был здесь раньше. Конец записи.']
     ]
-  }
+  },
+  ...TAPES_LATE
 };
 
 /** Що лежить на рівні: записки, плівка — і на якій частці шляху від старту до Шва. */
 export const FINDINGS: Record<number, { id: string; kind: 'note' | 'tape'; at: number }[]> = {
   0: [{ id: 'tape1', kind: 'tape', at: 0.27 }, { id: 'delo7', kind: 'note', at: 0.52 }, { id: 'note0b', kind: 'note', at: 0.75 }],
   1: [{ id: 'note1a', kind: 'note', at: 0.22 }, { id: 'instr2', kind: 'note', at: 0.4 }, { id: 'tape2', kind: 'tape', at: 0.58 }, { id: 'note1b', kind: 'note', at: 0.8 }],
-  2: [{ id: 'note2a', kind: 'note', at: 0.25 }, { id: 'note2b', kind: 'note', at: 0.66 }, { id: 'tape3', kind: 'tape', at: 0.85 }]
+  2: [{ id: 'note2a', kind: 'note', at: 0.25 }, { id: 'note2b', kind: 'note', at: 0.66 }, { id: 'tape3', kind: 'tape', at: 0.85 }],
+  ...FINDINGS_LATE
 };
 
 /** Особливі кімнати рівня 0: що чути в трубці й що думає оператор, коли бачить свій почерк. */
@@ -248,14 +253,22 @@ export const OBJECTIVES = {
   level0Find: 'Найти «Шов» — место, где стена тоньше',
   level0Seam: 'Пройти сквозь Шов',
   level1Start: 'Осмотреть базу «Глубина-1». Найти следующий Шов',
-  level2Start: 'Найти выход с парковки'
+  level2Start: 'Найти выход с парковки',
+  ...OBJECTIVES_LATE
 };
+
+/** Завдання на початку рівня (поки рівень не дав власного — з ланцюжка задач). */
+export const levelObjective = (id: number): string =>
+  [OBJECTIVES.level0Start, OBJECTIVES.level1Start, OBJECTIVES.level2Start, OBJECTIVES.level3Start, OBJECTIVES.level4Start][id] ?? OBJECTIVES.level1Start;
+
+export { FINALE } from './ru-late';
 
 /** Заставки при переході між рівнями. */
 export const LEVEL_TITLES: Record<number, { title: string; sub: string }> = {
   0: { title: 'Уровень 0', sub: 'Бесконечный НИИ' },
   1: { title: 'Уровень 1', sub: 'База «Глубина-1»' },
-  2: { title: 'Уровень 2', sub: 'Парковка' }
+  2: { title: 'Уровень 2', sub: 'Парковка' },
+  ...LEVEL_TITLES_LATE
 };
 
 export const HINTS = {
@@ -274,8 +287,3 @@ export const HINTS = {
   unhide: 'Выйти'
 };
 
-export const LEVEL_END = {
-  title: 'Парковка пройдена',
-  body: 'Шов раскрывается, и из темноты тянет хлоркой и детским мылом. Где-то капает вода.\nДальше — то, что Закулисье помнит о Припяти.',
-  soon: 'Следующие уровни появятся в ближайших обновлениях.'
-};

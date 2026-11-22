@@ -10,94 +10,23 @@ import { G } from '../physics/physics';
 import type { Level } from '../world/level0';
 import { freeNear, lightProp, seamPlacement } from '../world/level0';
 import { spotOnPath } from '../world/findings';
-import { probeAt, probeLit } from '../world/materials';
+import { probeAt } from '../world/materials';
 import type { Interactions } from './interact';
 import { TASKS, type TaskDef } from '../story/tasks';
+import { mat, stampMesh, fuseMesh, keyMesh, shieldMesh, generatorMesh, drawingMesh, valveMesh, boardMesh, pumpPanelMesh } from '../world/task-props';
 
 export interface TaskDeps {
   have: (key: string) => boolean;
   give: (key: string) => void;
   say: (text: string, sec: number) => void;
   objective: (text: string) => void;
-  sound: (name: 'take' | 'stamp' | 'fuse' | 'gen' | 'radio', x: number, y: number, z: number) => void;
+  sound: (name: 'take' | 'stamp' | 'fuse' | 'gen' | 'radio' | 'valve' | 'pin' | 'pump' | 'canister', x: number, y: number, z: number) => void;
   /** Генератор працює: гучний шум для мисливця. */
   noise: (x: number, z: number, loud: number) => void;
   radio: (x: number, z: number) => void;
 }
 
-interface Placed { def: TaskDef['items'][number]; obj: THREE.Object3D; x: number; y: number; z: number; yaw: number }
-
-const mat = (color: number, E: number, o: Partial<THREE.MeshStandardMaterialParameters> = {}) => probeLit(new THREE.MeshStandardMaterial({ color, roughness: 0.7, ...o }), E);
-
-/** Печатка на штемпельній подушці: дерев'яна ручка, гумова основа, синя подушка. */
-function stampMesh(E: number): THREE.Group {
-  const g = new THREE.Group();
-  const pad = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.018, 0.08), mat(0x1d2c5e, E, { roughness: 0.9 }));
-  pad.position.y = 0.009;
-  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.014, 20), mat(0x24221f, E));
-  base.position.set(0.1, 0.007, 0);
-  const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.016, 0.07, 14), mat(0x6b4426, E, { roughness: 0.45 }));
-  handle.position.set(0.1, 0.05, 0);
-  const knob = new THREE.Mesh(new THREE.SphereGeometry(0.018, 14, 10), mat(0x6b4426, E, { roughness: 0.45 }));
-  knob.position.set(0.1, 0.09, 0);
-  g.add(pad, base, handle, knob);
-  return g;
-}
-
-/** Плавкий запобіжник ПК-45: порцеляновий циліндр з латунними ковпачками. */
-function fuseMesh(E: number): THREE.Group {
-  const g = new THREE.Group();
-  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.07, 16), mat(0xe8e3d6, E, { roughness: 0.3 }));
-  const capM = mat(0xb08d4a, E, { roughness: 0.3, metalness: 0.9 });
-  for (const s of [-1, 1]) { const c = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.014, 16), capM); c.position.y = s * 0.04; g.add(c); }
-  g.add(body);
-  g.rotation.z = Math.PI / 2;
-  return g;
-}
-
-/** Ключ на кільці з картонною біркою. */
-function keyMesh(E: number): THREE.Group {
-  const g = new THREE.Group();
-  const metal = mat(0x8e877a, E, { roughness: 0.35, metalness: 0.9 });
-  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.018, 0.0025, 8, 20), metal);
-  ring.rotation.x = Math.PI / 2;
-  const blade = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.003, 0.012), metal);
-  blade.position.x = 0.045;
-  const tag = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.002, 0.028), mat(0xc9b98f, E, { roughness: 0.95 }));
-  tag.position.set(-0.04, 0, 0.01); tag.rotation.y = 0.4;
-  g.add(ring, blade, tag);
-  g.position.y = 0.003;
-  return g;
-}
-
-/** Щит живлення: сіро-зелена шафа на стіні з трьома гніздами й сигнальною лампою. */
-function shieldMesh(E: number, lamp: THREE.MeshStandardMaterial): THREE.Group {
-  const g = new THREE.Group();
-  const box = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.7, 0.18), mat(0x56604f, E, { roughness: 0.55, metalness: 0.3 }));
-  box.position.z = 0.09;
-  const l = new THREE.Mesh(new THREE.SphereGeometry(0.025, 14, 10), lamp);
-  l.position.set(0.17, 0.27, 0.185);
-  g.add(box, l);
-  for (let i = 0; i < 3; i++) {
-    const sock = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.03, 14), mat(0x1c1c1a, E));
-    sock.rotation.x = Math.PI / 2; sock.position.set(-0.12 + i * 0.12, -0.05, 0.19);
-    g.add(sock);
-  }
-  return g;
-}
-
-/** Дизель-генератор: оливкова рама, бак, глушник. */
-function generatorMesh(E: number): THREE.Group {
-  const g = new THREE.Group();
-  const olive = mat(0x4b5235, E, { roughness: 0.6, metalness: 0.35 });
-  const dark = mat(0x222320, E, { roughness: 0.5, metalness: 0.5 });
-  const body = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.75, 0.7), olive); body.position.y = 0.48;
-  const tank = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 1.1, 18), olive); tank.rotation.z = Math.PI / 2; tank.position.set(0, 1.0, 0);
-  const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.6, 12), dark); pipe.position.set(0.5, 1.1, -0.2);
-  const skid = new THREE.Mesh(new THREE.BoxGeometry(1.45, 0.1, 0.8), dark); skid.position.y = 0.05;
-  g.add(body, tank, pipe, skid);
-  return g;
-}
+interface Placed { def: TaskDef['items'][number]; obj: THREE.Object3D; x: number; y: number; z: number; yaw: number; wheel?: THREE.Object3D; spin?: number }
 
 export class Tasks {
   private lvl: Level | null = null;
@@ -108,6 +37,11 @@ export class Tasks {
   private lamp = new THREE.MeshStandardMaterial({ color: 0x220000, emissive: 0xff2a10, emissiveIntensity: 0.6 });
   private genT = 0;
   private genVoice = false;
+  /** Стенд (рівень 3): місця для малюнків у світових координатах. */
+  private boardSlots: { pos: THREE.Vector3; yaw: number }[] = [];
+  private lever: THREE.Object3D | null = null;
+  /** Насос працює: вода йде (0 — повно, 1 — сухо). */
+  drain = 0;
 
   constructor(private readonly d: TaskDeps) {}
 
@@ -116,12 +50,13 @@ export class Tasks {
 
   /** Задача рівня виконана — Шов пропускає. */
   get gateOpen(): boolean { return !this.def || this.has(this.def.gate.id); }
-  get running(): boolean { return this.def?.gate.kind === 'generator' && this.has(this.def.gate.id); }
+  get running(): boolean { const k = this.def?.gate.kind; return (k === 'generator' || k === 'pump') && !!this.def && this.has(this.def.gate.id); }
 
   async build(assets: Assets, physics: Physics, lvl: Level, taken: { x: number; z: number }[]): Promise<void> {
     this.lvl = lvl;
     this.def = TASKS[lvl.id] ?? null;
-    this.placed = []; this.gate = null; this.radioAt = null; this.genVoice = false;
+    this.placed = []; this.gate = null; this.radioAt = null; this.genVoice = false; this.boardSlots = []; this.lever = null;
+    this.drain = 0;
     const def = this.def;
     if (!def) return;
     const L = lvl.layout, busy = [...taken];
@@ -137,10 +72,46 @@ export class Tasks {
       busy.push({ x: s.x, z: s.z });
       return { x: s.x + nx * depth, z: s.z + nz * depth, yaw: s.yaw };
     };
+    let drawIdx = 0;
     for (const it of def.items) {
       const onDesk = it.kind === 'stamp';
-      const at = atWall(it.at, onDesk ? 0.45 : 0.3);
+      // на стіні (малюнок, задвижка) чи на підлозі (каністра) — без підставки
+      const onWall = it.kind === 'drawing' || it.kind === 'valve';
+      const at = atWall(it.at, onDesk ? 0.45 : onWall ? 0.0 : 0.3);
       const E = probeAt(L.lights, at.x, at.z);
+      if (it.kind === 'canister') {
+        if (this.has(it.id)) continue;
+        try {
+          const can = (await assets.model('assets/models/jerrycan.glb')).scene.clone(true);
+          can.position.set(at.x, 0, at.z); can.rotation.y = at.yaw + 0.5;
+          lightProp(can, E); lvl.scene.add(can);
+          can.updateMatrixWorld(true);
+          const top = new THREE.Box3().setFromObject(can).max.y;
+          this.placed.push({ def: it, obj: can, x: at.x, y: Math.max(0.2, top * 0.7), z: at.z, yaw: at.yaw });
+        } catch { /* без моделі — пропуск */ }
+        continue;
+      }
+      if (onWall) {
+        const wallX = at.x, wallZ = at.z;
+        if (it.kind === 'drawing') {
+          const i = drawIdx++;
+          if (this.has(it.id)) continue;
+          const obj = drawingMesh(E, i);
+          obj.position.set(wallX + Math.sin(at.yaw) * 0.01, 1.15, wallZ + Math.cos(at.yaw) * 0.01);
+          obj.rotation.y = at.yaw;
+          lvl.scene.add(obj);
+          this.placed.push({ def: it, obj, x: obj.position.x, y: 1.15, z: obj.position.z, yaw: at.yaw });
+        } else {
+          const v = valveMesh(E);
+          v.obj.position.set(wallX, 1.0, wallZ); v.obj.rotation.y = at.yaw;
+          lvl.scene.add(v.obj);
+          if (this.has(it.id)) v.wheel.rotation.z = Math.PI * 3;
+          const fx = wallX + Math.sin(at.yaw) * 0.37, fz = wallZ + Math.cos(at.yaw) * 0.37;
+          physics.addBox(fx, 1.0, fz, 0.15, 0.15, 0.15, at.yaw, G.PROP);
+          this.placed.push({ def: it, obj: v.obj, x: fx, y: 1.0, z: fz, yaw: at.yaw, wheel: v.wheel });
+        }
+        continue;
+      }
       const stand = (onDesk ? desk : box)?.scene.clone(true);
       let top = 0.45;
       if (stand) {
@@ -186,6 +157,24 @@ export class Tasks {
       lvl.scene.add(book);
       gy = 0.8;
       physics.addBox(gw.x + nx * 0.5, 0.4, gw.z + nz * 0.5, 0.7, 0.4, 0.4, gw.yaw, G.PROP);
+    } else if (g.kind === 'board') {
+      const b = boardMesh(E);
+      obj = b.obj;
+      obj.position.set(gw.x, 1.35, gw.z);
+      obj.rotation.y = gw.yaw;
+      obj.updateMatrixWorld(true);
+      this.boardSlots = b.slots.map((v) => ({ pos: obj.localToWorld(v.clone()), yaw: gw.yaw }));
+      gy = 1.3;
+      if (this.has(g.id)) for (let i = 0; i < 3; i++) this.pinDrawing(i, E);
+    } else if (g.kind === 'pump') {
+      const pnl = pumpPanelMesh(E, this.lamp);
+      obj = pnl.obj;
+      this.lever = pnl.lever;
+      obj.position.set(gw.x, 1.1, gw.z);
+      obj.rotation.y = gw.yaw;
+      gy = 1.1;
+      physics.addBox(gw.x + nx * 0.15, 1.1, gw.z + nz * 0.15, 0.35, 0.5, 0.15, gw.yaw, G.PROP);
+      if (this.has(g.id)) { this.lamp.emissive.setHex(0x30ff60); pnl.lever.rotation.x = -0.7; this.drain = 1; }
     } else if (g.kind === 'shield') {
       obj = shieldMesh(E, this.lamp);
       obj.position.set(gw.x, 1.35, gw.z);
@@ -205,6 +194,7 @@ export class Tasks {
     }
     lvl.scene.add(obj);
     this.gate = { x: gw.x + nx * 0.45, y: gy, z: gw.z + nz * 0.45, yaw: gw.yaw, obj };
+    this.lamp.emissive.setHex(this.has(g.id) ? 0x30ff60 : 0xff2a10);
     // рація пораненого (рівень 1)
     if (def.radio !== undefined) {
       const at = atWall(def.radio, 0.3);
@@ -249,10 +239,14 @@ export class Tasks {
   register(ia: Interactions): void {
     for (const p of this.placed) {
       const it = p.def;
+      if (this.has(it.id)) continue;
       ia.add({ id: `task-${it.id}`, x: p.x, y: p.y, z: p.z, reach: 1.7, prompt: it.prompt, enabled: true, use: () => {
         this.d.give(this.key(it.id));
-        this.d.sound(it.kind === 'stamp' ? 'stamp' : 'take', p.x, p.y, p.z);
-        if (it.kind !== 'stamp') p.obj.removeFromParent();
+        this.d.sound(it.kind === 'stamp' ? 'stamp' : it.kind === 'valve' ? 'valve' : it.kind === 'canister' ? 'canister' : 'take', p.x, p.y, p.z);
+        if (it.kind === 'valve') p.spin = Math.PI * 3;
+        else if (it.kind !== 'stamp') p.obj.removeFromParent();
+        // задвижка скрегоче, каністра плюскоче — це чути
+        if (it.kind === 'valve') this.d.noise(p.x, p.z, 0.7);
         ia.remove(`task-${it.id}`);
         this.d.say(it.got, 3.5);
         const o = this.objective();
@@ -268,8 +262,11 @@ export class Tasks {
           if (!ready) { this.d.say(def.gate.notReady, 3.5); return; }
           this.d.give(this.key(def.gate.id));
           ia.remove('task-gate');
-          if (def.gate.kind !== 'generator') this.d.sound(def.gate.kind === 'shield' ? 'fuse' : 'stamp', g.x, g.y, g.z);
-          if (def.gate.kind === 'shield') this.lamp.emissive.setHex(0x30ff60);
+          const k = def.gate.kind;
+          if (k === 'board') { this.d.sound('pin', g.x, g.y, g.z); for (let i = 0; i < 3; i++) this.pinDrawing(i, probeAt(this.lvl?.layout.lights ?? [], g.x, g.z)); }
+          else if (k === 'pump') { if (this.lever) this.lever.rotation.x = -0.7; }
+          else if (k !== 'generator') this.d.sound(k === 'shield' ? 'fuse' : 'stamp', g.x, g.y, g.z);
+          if (k === 'shield' || k === 'pump') this.lamp.emissive.setHex(0x30ff60);
           this.d.say(def.gate.got, 6);
           const o = this.objective();
           if (o) this.d.objective(o);
@@ -279,12 +276,23 @@ export class Tasks {
     if (r) ia.add({ id: 'task-radio', x: r.x, y: r.y, z: r.z, reach: 1.7, prompt: 'Слушать рацию', enabled: true, use: () => { ia.remove('task-radio'); this.d.radio(r.x, r.z); } });
   }
 
-  /** Генератор працює: гуде й гримить — Сліпий іде на звук. */
+  /** Повісити малюнок i на стенд (після виконання задачі). */
+  private pinDrawing(i: number, E: number): void {
+    const s = this.boardSlots[i];
+    if (!s || !this.lvl) return;
+    const d = drawingMesh(E, i);
+    d.position.copy(s.pos); d.rotation.y = s.yaw;
+    this.lvl.scene.add(d);
+  }
+
+  /** Генератор / насос працюють: гудуть і гримлять — мисливець іде на звук; задвижки докручуються. */
   update(dt: number): void {
+    for (const p of this.placed) if (p.wheel && p.spin && p.spin > 0) { const k = Math.min(p.spin, dt * 4); p.wheel.rotation.z += k; p.spin -= k; }
     const g = this.gate;
     if (!g || !this.running) return;
-    if (!this.genVoice) { this.genVoice = true; this.d.sound('gen', g.x, 0.6, g.z); }
-    g.obj.position.y = Math.sin(performance.now() * 0.09) * 0.004;
+    if (!this.genVoice) { this.genVoice = true; this.d.sound(this.def?.gate.kind === 'pump' ? 'pump' : 'gen', g.x, 0.6, g.z); }
+    if (this.def?.gate.kind === 'pump') this.drain = Math.min(1, this.drain + dt / 45);
+    else g.obj.position.y = Math.sin(performance.now() * 0.09) * 0.004;
     this.genT -= dt;
     if (this.genT <= 0) { this.genT = 1.5; this.d.noise(g.x, g.z, 1); }
   }
