@@ -45,6 +45,9 @@ export class Seam {
 
   update(t: number): void {
     this.light.intensity = (1.5 + Math.sin(t * 0.9) * 0.25 + (Math.sin(t * 13.7) > 0.97 ? 1.2 : 0)) * (1 + this.open.value * 3) * this.life.value;
-    this.group.visible = this.life.value > 0.001;
+    // ховаємо лише видиму частину: світло лишається в сцені з нульовою яскравістю. Якщо прибрати джерело світла,
+    // three.js перебудовує шейдери ВСІХ освітлених матеріалів — це ривок саме тоді, коли Шов прибуття затягується.
+    const on = this.life.value > 0.001;
+    for (const c of this.group.children) if (c !== this.light) c.visible = on;
   }
 }

@@ -77,6 +77,7 @@ export class PostPipeline {
   /** Вузли з власними буферами (render targets): звільняються при перебудові. */
   private owned: { dispose(): void }[] = [];
   private scenePass: ReturnType<typeof pass> | null = null;
+  private sceneMRT: ReturnType<typeof mrt> | null = null;
 
   constructor(private readonly renderer: THREE.WebGPURenderer, public scene: THREE.Scene, private readonly camera: THREE.PerspectiveCamera) {
     this.pipeline = new THREE.RenderPipeline(renderer);
@@ -98,7 +99,10 @@ export class PostPipeline {
     const scenePass = pass(scene, camera);
     this.scenePass = scenePass;
     this.owned.push(scenePass);
-    scenePass.setMRT(mrt({ output, normal: packNormalToRGB(normalView), velocity }));
+    // той самий MRT-вузол на всі перебудови: three.js ключує ним кеш шейдерів сцени. Новий вузол при зміні пресета
+    // означав, що КОЖЕН матеріал рівня збирався заново при першому погляді на нього — ривки після автозниження якості.
+    this.sceneMRT ??= mrt({ output, normal: packNormalToRGB(normalView), velocity });
+    scenePass.setMRT(this.sceneMRT);
     const normalTex = scenePass.getTexture('normal');
     normalTex.type = THREE.UnsignedByteType; // нормалям вистачає 8 біт — удвічі менше пам'яті й трафіку
     const colorNode = scenePass.getTextureNode('output');

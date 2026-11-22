@@ -47,6 +47,8 @@ async function boot(): Promise<void> {
           cache[key] ??= await (await import('./ai/nav')).Nav.fromLayout(l.layout, radius);
           return cache[key];
         },
+        /** Плавність з останнього скидання: перцентилі часу кадру й ривки з причинами; perf(true) — скинути. */
+        perf: (reset = false) => { const s = game.perf.stats(); if (reset) game.perf.reset(); return s; },
         info: () => ({ backend: gfx.backend, gpu: device.gpu, quality: game.profile.name, mode: game.mode, draw: gfx.renderer.info.render.drawCalls,
           pos: game.player ? [game.player.pos.x, game.player.pos.y, game.player.pos.z].map((v) => +v.toFixed(2)) : null })
       }

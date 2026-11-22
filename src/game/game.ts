@@ -17,6 +17,8 @@ import { Tasks } from './tasks';
 import { RADIO } from '../story/tasks';
 import { lampDeficits } from '../world/materials';
 import { PROFILES, QualityGovernor, autoQuality, type QualityProfile } from '../render/quality';
+import { FrameProbe } from '../render/perf';
+import { warmup } from '../render/warmup';
 import type { DeviceInfo } from '../core/device';
 import { Physics, G } from '../physics/physics';
 import { Player } from './player';
@@ -81,7 +83,12 @@ export class Game {
   profile: QualityProfile;
   private acc = 0;
   private last = performance.now();
-  private lastDraw = 0;
+  /** Коли малювати наступний кадр при обмеженні FPS (час rAF). */
+  private nextDraw = 0;
+  /** Лічильник плавності: час кадрів і ривки з причинами (`__zk.perf()`, відгуки гравців). */
+  readonly perf: FrameProbe;
+  /** Скільки тривав останній прогрів рівня, мс (для заміру). */
+  warmMs = 0;
   /** Обмеження FPS (0 — без обмеження). */
   fpsCap = 60;
   /** Автопідлаштування роздільності (вимикає тест швидкодії й debug-панель). */
@@ -187,6 +194,7 @@ export class Game {
   };
 
   constructor(readonly gfx: RendererHandle, readonly device: DeviceInfo, private readonly forced: QualityProfile | null) {
+    this.perf = new FrameProbe(gfx.renderer);
     const canvas = gfx.renderer.domElement;
     this.profile = forced ?? this.qualityFromSettings();
     this.post = new PostPipeline(gfx.renderer, this.scene, this.camera);
@@ -245,9 +253,21 @@ export class Game {
     this.applySettings(this.store.settings);
     this.input.enabled = false;
     this.resize();
-    // заздалегідь скомпілювати шейдери, щоб не було ривків при першому погляді на щось нове
+    // заздалегідь зібрати шейдери й завантажити все на GPU, щоб не було ривків при першому погляді на щось нове
     await this.assets.gate();
-    try { this.gfx.renderer.setRenderTarget(null); await this.gfx.renderer.compileAsync(lvl.scene, this.camera); } catch { /* не критично */ }
+    this.warm();
+  }
+
+  /** Прогріти поточний рівень (render/warmup.ts) під чорним кадром: його не видно, бо зверху заставка чи «18+». */
+  private warm(): void {
+    if (!this.level) return;
+    const fade = look.fade.value;
+    look.fade.value = 1;
+    try {
+      const ms = warmup(this.level.scene, this.camera, () => this.post.render());
+      this.warmMs = Math.round(ms);
+    } catch (e) { console.warn('[warmup]', e); } finally { look.fade.value = fade; }
+    this.perf.reset();
   }
 
   /** Побудувати рівень id (старий звільняється: GPU-пам'ять, колізії); гравця не чіпає. */
@@ -318,6 +338,8 @@ export class Game {
     this.levelAudio();
     await this.hunt.setup(lvl, this.assets, this.physics);
     this.setupHideChecks();
+    // перехід між рівнями (гравець уже є): прогрів під заставкою рівня; перший рівень гріє init() після resize()
+    if (this.player) { await this.assets.gate(); this.warm(); }
     return lvl;
   }
 
@@ -996,12 +1018,27 @@ export class Game {
     look.aspect.value = w / h;
   }
 
-  frame(): void {
-    const now = performance.now();
-    // обмеження частоти: пропускаємо виклики rAF, що прийшли зарано (120 Гц екран → 60, 60 Гц → 30)
-    if (this.fpsCap > 0 && now - this.lastDraw < (1000 / this.fpsCap) * 0.92) return;
-    this.lastDraw = now;
-    const dtMs = Math.min(100, now - this.last);
+  /** Тривалість одного оновлення екрана (60 Гц → 16.7 мс, 120 Гц → 8.3 мс), середнє за викликами rAF. */
+  private refreshMs = 1000 / 60;
+  private lastTick = 0;
+
+  /** @param ts час оновлення екрана від rAF — рівний крок без «тремтіння» моменту виклику (performance.now() усередині кадру гуляє) */
+  frame(ts = performance.now()): void {
+    const cpu0 = performance.now();
+    const tick = ts - this.lastTick;
+    this.lastTick = ts;
+    if (tick > 3 && tick < 50) this.refreshMs += (tick - this.refreshMs) * 0.05;
+    // обмеження частоти за розкладом: малюємо в оновлення, найближче до наступного «слота» (120 Гц → кожне друге,
+    // 60 Гц і ліміт 30 → кожне друге). Раніше порівнювали з часом минулого кадру з допуском, і будь-яке тремтіння
+    // таймера пропускало потрібне оновлення: кадр 25 мс замість 16.7 — саме це око бачить як «смикається».
+    if (this.fpsCap > 0) {
+      const iv = 1000 / this.fpsCap;
+      if (ts < this.nextDraw - this.refreshMs * 0.5) return;
+      this.nextDraw = Math.max(this.nextDraw + iv, ts + iv - this.refreshMs * 0.5);
+    }
+    const now = ts;
+    const rawMs = now - this.last;
+    const dtMs = Math.min(100, rawMs);
     this.last = now;
     const dt = dtMs / 1000;
     if (this.mode === 'play' && this.autoScale) {
@@ -1171,11 +1208,12 @@ export class Game {
     this.hud.update(dt);
     this.audio.updateListener({ x: c.position.x, y: c.position.y, z: c.position.z, fx: f.x, fy: f.y, fz: f.z });
     this.post.render();
+    if (this.mode === 'play') this.perf.record(rawMs, this.refreshMs, performance.now() - cpu0);
     frameRendered(this.gfx.renderer.domElement); // знімок для відгуку гравця — саме цей кадр
     this.onFrame?.(dtMs);
   }
 
   start(): void {
-    void this.gfx.renderer.setAnimationLoop(() => this.frame()); // рендерер уже ініціалізовано: проміс лише чекає init()
+    void this.gfx.renderer.setAnimationLoop((t) => this.frame(t)); // рендерер уже ініціалізовано: проміс лише чекає init()
   }
 }
