@@ -14,7 +14,7 @@ await page.goto('http://localhost:5191/?debug&nodbg');
 await page.waitForFunction(() => window.__zk?.ready, null, { timeout: 180000 });
 await page.evaluate(() => window.__zk.play());
 await page.waitForFunction(() => window.__zk.game.mode === 'play' && window.__zk.game.player && !window.__zk.game.cameraOverride, null, { timeout: 60000 });
-const kinds = ['desk', 'drawer-cabinet', 'bookshelf', 'vintage-cabinet', 'shelves', 'waiting', 'lecture'];
+const kinds = (process.argv[2] ?? 'desk,drawer-cabinet,bookshelf,vintage-cabinet,shelves,waiting,lecture').split(',');
 const files = [];
 for (const k of kinds) {
   await page.evaluate((k) => {
@@ -24,7 +24,7 @@ for (const k of kinds) {
     window.__zk.tp(d.x + Math.sin(d.yaw) * dist, d.z + Math.cos(d.yaw) * dist, d.yaw, -0.25);
     g.flashlightOn = true;
   }, k);
-  await page.waitForTimeout(k === 'desk' ? 5000 : 2200);
+  await page.waitForTimeout(k === kinds[0] ? 6000 : 2200);
   const f = `.shots/kind-${k}.png`; await page.screenshot({ path: f }); files.push(f);
 }
 console.log('console:', JSON.stringify(logs.slice(0, 10)));

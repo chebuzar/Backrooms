@@ -47,6 +47,7 @@
 - `models/drawer-cabinet.glb` — «Drawer Cabinet» — Ulan Cabanilla, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/drawer_cabinet
 - `models/bookshelf.glb` — «Wooden Bookshelf Worn» — Ulan Cabanilla, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/wooden_bookshelf_worn
 - `models/school-desk.glb` — «School Desk 01» — Ethan Place, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/SchoolDesk_01
+- `models/books.glb` — «Book Encyclopedia Set 01» — John Malcolm, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/book_encyclopedia_set_01
 
 ## Текстури Poly Haven
 

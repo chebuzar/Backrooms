@@ -86,7 +86,7 @@ class Batch {
   }
 }
 
-const SMALL = new Set(['notepads', 'desk-lamp']);
+const SMALL = new Set(['notepads', 'desk-lamp', 'books']);
 
 /**
  * Частини моделі, зведені за матеріалом: у Poly Haven стіл — 9 окремих сіток з одним матеріалом, а кожна сітка
@@ -131,6 +131,24 @@ function partsByMaterial(root: THREE.Object3D): { geometry: THREE.BufferGeometry
 /** Точка в системі речі (вперед — від стіни) → світові координати. */
 const at = (s: Spot, side: number, fwd: number) => ({ x: s.x + Math.cos(s.yaw) * side + Math.sin(s.yaw) * fwd, z: s.z - Math.sin(s.yaw) * side + Math.cos(s.yaw) * fwd });
 
+/** Верх полиць книжкової шафи (виміряно з моделі wooden_bookshelf_worn), м. */
+const SHELVES = [0.11, 0.38, 0.66, 0.95, 1.26, 1.65];
+/**
+ * Книжкова шафа: на полицях томи енциклопедії (набір 0.55 м, лівий край у x = -0.02) — де два, де один,
+ * де порожньо; ряд трохи зсунутий і не завжди рівний.
+ */
+function fillShelf(b: Batch, r: () => number, s: Spot): void {
+  for (const y of SHELVES) {
+    const k = r();
+    if (k < 0.35) continue;
+    const sets = k < 0.7 ? [(r() - 0.5) * 0.6] : [-0.33 + (r() - 0.5) * 0.06, 0.31 + (r() - 0.5) * 0.06];
+    for (const c of sets) {
+      const p = at(s, c - 0.257, 0.02 + (r() - 0.5) * 0.04);
+      b.add('books', p.x, p.z, s.yaw + (r() - 0.5) * 0.05, { y: y + 0.004, collide: false });
+    }
+  }
+}
+
 export async function furnishNii(assets: Assets, physics: Physics, lvl: Level, taken: { x: number; z: number }[]): Promise<(Spot & { kind: string })[]> {
   const L = lvl.layout, r = rng(L.seed ^ 0x0ff1ce);
   const shown: (Spot & { kind: string })[] = [];
@@ -159,7 +177,10 @@ export async function furnishNii(assets: Assets, physics: Physics, lvl: Level, t
     const [file, w, d] = cabs[k] as [string, number, number];
     for (const row of wallRows(lvl, r, k === 2 ? 3 : 7, k === 2 ? 1 : 1 + Math.floor(r() * 3), w, d, 0.04, avoid, { where: (x, z) => zoneOf(L, x, z) !== 'hall' })) {
       shown.push({ ...(row[0] as Spot), kind: file });
-      for (const s of row) b.add(file, s.x, s.z, s.yaw);
+      for (const s of row) {
+        b.add(file, s.x, s.z, s.yaw);
+        if (file === 'bookshelf') fillShelf(b, r, s);
+      }
     }
   }
   // архів у коридорах: металеві стелажі (модель у сантиметрах)
