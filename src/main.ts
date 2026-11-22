@@ -1,3 +1,5 @@
+// першим: журнал помилок для відгуків гравців ловить усе від самого запуску
+import './core/errlog';
 import './styles/main.css';
 import './styles/ui.css';
 import '@fontsource/anonymous-pro/cyrillic-400.css';

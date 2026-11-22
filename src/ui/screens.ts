@@ -29,7 +29,8 @@ export class UI {
   get top(): string | null { return this.stack[this.stack.length - 1] ?? null; }
   get open(): boolean { return this.stack.length > 0; }
 
-  private make(name: string, cls: string, html: string): HTMLElement {
+  /** Новий екран поверх інших (також для окремих модулів екранів, напр. ui/feedback.ts). */
+  make(name: string, cls: string, html: string): HTMLElement {
     this.screens.get(name)?.remove();
     const el = document.createElement('section');
     el.className = `screen ${cls}`;
@@ -55,7 +56,7 @@ export class UI {
 
   closeAll(): void { for (const n of [...this.stack]) this.close(n); }
 
-  private focusFirst(): void {
+  focusFirst(): void {
     const top = this.top ? this.screens.get(this.top) : null;
     const f = top?.querySelector<HTMLElement>('[autofocus], button:not([disabled]), input');
     f?.focus({ preventScroll: true });
@@ -83,7 +84,7 @@ export class UI {
     });
   }
 
-  menu(o: { canContinue: boolean; onContinue: Handler; onStart: Handler; onSettings: Handler; onAbout: Handler }): void {
+  menu(o: { canContinue: boolean; onContinue: Handler; onStart: Handler; onSettings: Handler; onAbout: Handler; onFeedback?: Handler }): void {
     const m = T.menu;
     const el = this.make('menu', 'dossier-wrap', `<div class="dossier" aria-label="${m.title}">
       <div class="head"><div>${m.object}<br>${m.caseNo}</div><div class="stamp">${m.secret}</div></div>
@@ -94,10 +95,11 @@ export class UI {
         <button class="line-btn" data-s ${o.canContinue ? '' : 'autofocus'}>${o.canContinue ? m.restart : m.start}</button>
         <button class="line-btn minor" data-o>${m.settings}</button>
         <button class="line-btn minor" data-a>${m.about}</button>
+        ${o.onFeedback ? `<button class="line-btn minor" data-fb>${T.feedback.open}</button>` : ''}
       </nav>
       <div class="foot"><span>Арх. № 4-Б/87-07</span><span class="pencil">${m.note}</span></div>
     </div>`);
-    this.bind(el, { '[data-c]': o.onContinue, '[data-s]': o.onStart, '[data-o]': o.onSettings, '[data-a]': o.onAbout });
+    this.bind(el, { '[data-c]': o.onContinue, '[data-s]': o.onStart, '[data-o]': o.onSettings, '[data-a]': o.onAbout, '[data-fb]': () => o.onFeedback?.() });
     setTimeout(() => this.focusFirst(), 60);
   }
 
@@ -171,7 +173,7 @@ export class UI {
     setTimeout(() => this.focusFirst(), 60);
   }
 
-  pause(o: { onResume: Handler; onSettings: Handler; onControls?: Handler; onMenu: Handler; docs?: { id: string; title: string }[]; onDoc?: (id: string) => void }): void {
+  pause(o: { onResume: Handler; onSettings: Handler; onControls?: Handler; onMenu: Handler; onFeedback?: Handler; docs?: { id: string; title: string }[]; onDoc?: (id: string) => void }): void {
     const p = T.pause;
     const esc = (t: string) => t.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c] as string);
     // журнал: знайдені документи й записки — можна перечитати
@@ -183,9 +185,10 @@ export class UI {
         <button class="line-btn" data-r autofocus>${p.resume}</button>
         <button class="line-btn minor" data-s>${p.settings}</button>
         <button class="line-btn minor" data-ctl>${p.controls}</button>
+        ${o.onFeedback ? `<button class="line-btn minor" data-fb>${T.feedback.open}</button>` : ''}
         <button class="line-btn minor" data-m>${p.toMenu}</button>
       </nav>${docs}</div>`);
-    this.bind(el, { '[data-r]': o.onResume, '[data-s]': o.onSettings, '[data-m]': o.onMenu, '[data-ctl]': () => o.onControls?.() });
+    this.bind(el, { '[data-r]': o.onResume, '[data-s]': o.onSettings, '[data-m]': o.onMenu, '[data-ctl]': () => o.onControls?.(), '[data-fb]': () => o.onFeedback?.() });
     el.querySelectorAll<HTMLButtonElement>('[data-doc]').forEach((b) => b.addEventListener('click', () => o.onDoc?.(b.dataset.doc as string)));
     setTimeout(() => this.focusFirst(), 60);
   }
@@ -224,7 +227,10 @@ export class UI {
     if (!this.top) return;
     const el = this.screens.get(this.top);
     if (!el) return;
-    const items = Array.from(el.querySelectorAll<HTMLElement>('button:not([disabled]), input, a.line-btn'));
+    // у полі для тексту стрілки рухають курсор, а не фокус між кнопками
+    const typing = (document.activeElement as HTMLElement | null)?.matches?.('textarea, input[type=text]') ?? false;
+    if (typing && e.key !== 'Escape') return;
+    const items = Array.from(el.querySelectorAll<HTMLElement>('button:not([disabled]), input, textarea, a.line-btn'));
     const i = items.indexOf(document.activeElement as HTMLElement);
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();

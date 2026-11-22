@@ -50,6 +50,8 @@ import { TensionDirector } from './tension';
 import { Omens } from './omens';
 import { ICONS, svg } from '../input/touch';
 import { placeBatteries, type Pickup } from '../world/pickups';
+import { flushOutbox, setFeedbackContext } from '../net/feedback';
+import { frameRendered, openFeedback } from '../ui/feedback';
 
 const STEP = 1 / 60;
 /** Базова експозиція «камери»; налаштування «Яркость» множить її. */
@@ -196,6 +198,7 @@ export class Game {
     this.hud = new HUD(uiRoot);
     this.notebook = new Notebook(uiRoot);
     this.rig = new CameraRig(this.camera);
+    setFeedbackContext(() => this.feedbackContext());
     this.psyche.events = {
       // кінець тиші: десь зовсім поруч за спиною грюкають двері — і гул повертається
       silenceEnd: (x, z) => {
@@ -410,6 +413,7 @@ export class Game {
     setTimeout(() => this.prepareAudio(), 600);
     // меню — одразу: рівень довантажується позаду (пролог чи заставка «Продолжить» його дочекаються)
     this.showMenu();
+    void flushOutbox(); // відгуки, що не пішли без зв'язку минулого разу
     if (pct < 1) {
       bar.classList.add('below');
       bar.textContent = `Подготовка экспедиции… ${Math.round(pct * 100)} %`;
@@ -436,7 +440,8 @@ export class Game {
         this.ui.confirm({ title: m.confirmTitle, body: m.confirmBody, yes: m.confirmYes, no: m.confirmNo, onYes: start, onNo: () => this.showMenu() });
       },
       onSettings: () => this.openSettings(() => this.showMenu()),
-      onAbout: () => { this.ui.close('menu'); this.ui.about(() => this.showMenu()); }
+      onAbout: () => { this.ui.close('menu'); this.ui.about(() => this.showMenu()); },
+      onFeedback: () => { this.ui.close('menu'); openFeedback(this.ui, { canvas: this.gfx.renderer.domElement, shotByDefault: false, onClose: () => this.showMenu() }); }
     });
   }
 
@@ -880,6 +885,7 @@ export class Game {
       onSettings: () => this.openSettings(() => this.pauseMenuAgain()),
       onControls: () => { this.ui.close('pause'); this.ui.onBack = () => { this.ui.close('controls'); this.pauseMenuAgain(); }; this.ui.controls(this.device.touch, () => { this.ui.close('controls'); this.pauseMenuAgain(); }); },
       onMenu: () => { this.ui.closeAll(); this.showMenu(); },
+      onFeedback: () => { this.ui.close('pause'); openFeedback(this.ui, { canvas: this.gfx.renderer.domElement, shotByDefault: true, onClose: () => this.pauseMenuAgain() }); },
       docs: [...this.store.progress.docs, ...this.store.progress.notes, ...this.store.progress.tapes].map((id) => ({ id, title: this.docOf(id)?.title ?? id })),
       onDoc: (id) => {
         const d = this.docOf(id);
@@ -891,6 +897,22 @@ export class Game {
   }
 
   private pauseMenuAgain(): void { this.mode = 'play'; this.pause(); }
+
+  /** Що знати розробнику про гру в момент відгуку гравця (src/net/feedback.ts). */
+  private feedbackContext(): Record<string, unknown> {
+    const p = this.player?.pos, l = this.level;
+    return {
+      mode: this.mode,
+      level: l ? { id: l.id, seed: l.layout.seed } : null,
+      pos: p ? [p.x, p.y, p.z].map((v) => +v.toFixed(2)) : null,
+      yaw: this.player ? +this.player.yaw.toFixed(2) : null,
+      checkpoint: this.store.progress.checkpoint,
+      quality: { profile: this.profile.name, setting: this.store.settings.quality, scale: +this.governor.scale.toFixed(2) },
+      render: { backend: this.gfx.backend, gpu: this.gfx.gpuName, draw: this.gfx.renderer.info.render.drawCalls },
+      nerves: +this.psyche.nerves.toFixed(2), battery: +this.bat.level.toFixed(2), camera: this.cam.up,
+      input: this.input.lastDevice, touch: this.device.touch
+    };
+  }
 
   /** Блокнот (Tab / J): завдання, карта олівцем, знайдені папери; Esc, Tab чи J — назад у гру. */
   private openJournal(): void {
@@ -1150,6 +1172,7 @@ export class Game {
     this.hud.update(dt);
     this.audio.updateListener({ x: c.position.x, y: c.position.y, z: c.position.z, fx: f.x, fy: f.y, fz: f.z });
     this.post.render();
+    frameRendered(this.gfx.renderer.domElement); // знімок для відгуку гравця — саме цей кадр
     this.onFrame?.(dtMs);
   }
 
