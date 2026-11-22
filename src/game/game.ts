@@ -288,6 +288,7 @@ export class Game {
     } catch { /* без моделі гра йде далі без прихованого й тіл */ }
     this.psyche.attach(lvl, this.figureModel, unseen);
     this.soundscape.attach(lvl);
+    this.ambience.level = lvl.id;
     // НИИ, ще без печаток: за пів хвилини рупор кличе Оператора № 7 на вахту — так гравець дізнається, куди йти й що його чекають
     if (lvl.id === 0 && !this.store.progress.items.some((i) => i.startsWith('0:stamp_'))) this.soundscape.schedule(0, 30);
     this.level = lvl;
