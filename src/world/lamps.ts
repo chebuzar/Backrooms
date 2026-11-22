@@ -1,11 +1,12 @@
-// Стельові світильники ЛПО 1.2×0.6 м (радянські люмінесцентні): дві трубки ЛБ за решіткою-«жалюзі», емальована рамка.
+// Стельові світильники (ЛПО з решіткою, ЛСП, кулі, квадратні розсіювачі — fixtures.ts): корпус + те, що світиться.
 // Усі лампи рівня — один InstancedMesh (один виклик малювання). Яскравість кожної — атрибут інстанса:
 // мерехтливі оновлюються щокадру, вимкнені темні.
 import * as THREE from 'three/webgpu';
-import { instancedBufferAttribute, uv, vec3, float, smoothstep, abs, max, uniform, mix } from 'three/tsl';
+import { instancedBufferAttribute, attribute, vec3, uniform, mix } from 'three/tsl';
 import type { LightPanel } from './layout';
 import { rng } from '../core/rng';
 import { probeLit } from './materials';
+import { buildFixture, styleFor, type FixtureStyle } from './fixtures';
 
 export class Lamps {
   readonly mesh: THREE.InstancedMesh;
@@ -20,40 +21,29 @@ export class Lamps {
   /** Загальна яскравість ламп (сюжетні затемнення). */
   readonly master = uniform(1.0);
 
-  constructor(readonly panels: LightPanel[], ceilingY: number, look: { color?: [number, number, number] } = {}) {
+  constructor(readonly panels: LightPanel[], ceilingY: number, look: { color?: [number, number, number]; style?: FixtureStyle } = {}) {
     const n = panels.length;
     this.level = new Float32Array(n);
     this.base = new Float32Array(n);
     this.attr = new THREE.InstancedBufferAttribute(this.level, 1);
     const pw = panels[0]?.w ?? 1.2, pd = panels[0]?.d ?? 0.6;
-    const geo = new THREE.BoxGeometry(pw - 0.04, 0.02, pd - 0.04);
-    geo.translate(0, -0.01, 0);
+    // справжній об'єм світильника (корпус, трубки, решітка / куля / розсіювач) — див. fixtures.ts
+    const fx = buildFixture(look.style ?? styleFor(pw, pd), pw, pd);
     const mat = new THREE.MeshBasicNodeMaterial();
     const lv = instancedBufferAttribute(this.attr) as unknown as THREE.Node<'float'>;
-    // розсіювач: рівне світіння + дві яскравіші смуги трубок уздовж довгої сторони, темніший край
-    const u = uv();
-    const tubes = max(smoothstep(0.14, 0.0, abs(u.y.sub(0.33))), smoothstep(0.14, 0.0, abs(u.y.sub(0.67))));
-    const edge = smoothstep(0.0, 0.06, u.x).mul(smoothstep(1.0, 0.94, u.x)).mul(smoothstep(0.0, 0.1, u.y)).mul(smoothstep(1.0, 0.9, u.y));
-    // решітка-«жалюзі» ЛПО: поперечні пластини через 12 см і поздовжня планка посередині (затінюють трубки)
-    const cell = u.x.mul(10).fract();
-    const louver = smoothstep(0.0, 0.1, cell).mul(smoothstep(1.0, 0.9, cell)).mul(smoothstep(0.02, 0.06, abs(u.y.sub(0.5))));
-    const glow = float(0.35).add(tubes.mul(0.95)).mul(edge.mul(0.7).add(0.3)).mul(mix(float(0.22), float(1), louver));
+    const lk = attribute('lk', 'vec2') as unknown as THREE.Node<'vec2'>;
     const lc = look.color ?? [0.95, 0.97, 0.86];
     const warm = vec3(lc[0], lc[1], lc[2]);
-    // вимкнена лампа — сірий пластик із жовтим нальотом
-    mat.colorNode = mix(vec3(0.16, 0.15, 0.12), warm.mul(glow).mul(7.0), lv.mul(this.master));
-    this.mesh = new THREE.InstancedMesh(geo, mat, n);
-    // рамка тонша й вища за розсіювач: знизу видно світну панель в алюмінієвому обідку
-    const frameGeo = new THREE.BoxGeometry(pw + 0.04, 0.012, pd + 0.04);
-    frameGeo.translate(0, -0.006, 0);
+    // вимкнена лампа — сірий пластик і скло з жовтим нальотом; увімкнена — колір лампи з яскравістю частини світильника
+    mat.colorNode = mix(vec3(0.3, 0.285, 0.25).mul(lk.y), warm.mul(lk.x), lv.mul(this.master));
+    this.mesh = new THREE.InstancedMesh(fx.glow, mat, n);
     const frameMat = probeLit(new THREE.MeshStandardMaterial({ color: 0xd4d2c6, roughness: 0.4, metalness: 0.1 }), 1.6); // біла емаль
-    this.frame = new THREE.InstancedMesh(frameGeo, frameMat, n);
+    this.frame = new THREE.InstancedMesh(fx.body, frameMat, n);
     const m = new THREE.Matrix4();
     const r = rng(0x1a3e);
     panels.forEach((p, i) => {
-      m.makeTranslation(p.x, ceilingY - 0.002, p.z);
-      this.mesh.setMatrixAt(i, m);
       m.makeTranslation(p.x, ceilingY, p.z);
+      this.mesh.setMatrixAt(i, m);
       this.frame.setMatrixAt(i, m);
       this.level[i] = this.base[i] = p.state === 'off' ? 0 : 1;
       if (p.state === 'flicker') this.flicker.push({ i, phase: r() * 100, rate: 0.6 + r() * 2.2, base: 0.85 + r() * 0.15 });
