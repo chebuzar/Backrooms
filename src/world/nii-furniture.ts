@@ -138,10 +138,11 @@ const SHELVES = [0.11, 0.38, 0.66, 0.95, 1.26, 1.65];
  * де порожньо; ряд трохи зсунутий і не завжди рівний.
  */
 function fillShelf(b: Batch, r: () => number, s: Spot): void {
-  for (const y of SHELVES) {
+  // нижня й верхня полиці порожні: їх майже не видно, а кожен набір — 4.5 тис. трикутників
+  for (const y of SHELVES.slice(1, 5)) {
     const k = r();
-    if (k < 0.35) continue;
-    const sets = k < 0.7 ? [(r() - 0.5) * 0.6] : [-0.33 + (r() - 0.5) * 0.06, 0.31 + (r() - 0.5) * 0.06];
+    if (k < 0.45) continue;
+    const sets = k < 0.88 ? [(r() - 0.5) * 0.6] : [-0.33 + (r() - 0.5) * 0.06, 0.31 + (r() - 0.5) * 0.06];
     for (const c of sets) {
       const p = at(s, c - 0.257, 0.02 + (r() - 0.5) * 0.04);
       b.add('books', p.x, p.z, s.yaw + (r() - 0.5) * 0.05, { y: y + 0.004, collide: false });
