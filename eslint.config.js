@@ -1,11 +1,12 @@
+import { defineConfig, globalIgnores } from 'eslint/config';
 import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import globals from 'globals';
 
-export default tseslint.config(
-  { ignores: ['dist/**', '.vite/**', 'public/libs/**', 'node_modules/**', 'server/node_modules/**', '.shots/**', 'scripts/libs-check/**', 'scripts/asset-view/**'] },
+export default defineConfig(
+  globalIgnores(['dist/**', '.vite/**', 'public/libs/**', 'node_modules/**', 'server/node_modules/**', '.shots/**', 'scripts/libs-check/**', 'scripts/asset-view/**']),
   js.configs.recommended,
-  ...tseslint.configs.recommended,
+  tseslint.configs.recommended,
   {
     files: ['**/*.ts'],
     languageOptions: { globals: { ...globals.browser } },
