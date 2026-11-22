@@ -4,7 +4,7 @@
 import { rng, irange, pick, type Rng } from '../core/rng';
 
 export type ZoneStyle = 'rooms' | 'hall' | 'corridors' | 'dark';
-export type Preset = 'yellow' | 'base' | 'parking';
+export type Preset = 'yellow' | 'base' | 'parking' | 'kinder' | 'pool';
 type RGB = [number, number, number];
 
 /** Вигляд рівня: висота, фарба на стінах, лампи, альбедо для запікання (Blender) — спільне для гри й Blender. */
@@ -38,8 +38,29 @@ export const THEMES: Record<Preset, Theme> = {
     id: 'parking', height: 3.2, paintH: 1.1, plinth: false, pillar: 0.7,
     lamp: { w: 1.25, d: 0.16, spacing: 4, color: [1.0, 0.62, 0.3], power: 48, offP: 0.42, flickerP: 0.16 },
     albedo: { wall: [0.4, 0.39, 0.36], wallLow: [0.32, 0.36, 0.4], base: [0.2, 0.2, 0.2], floor: [0.22, 0.21, 0.2], ceil: [0.36, 0.35, 0.33] }
+  },
+  // дитсадок: низька стеля, панель до 1.5 м (блідо-бірюзова олійна фарба), побілка, «паркетний» лінолеум; плафони-кулі
+  // з жовтим світлом розжарювання, третина не світить; у спальнях — темно
+  kinder: {
+    id: 'kinder', height: 2.85, paintH: 1.5, plinth: false, pillar: 0.5,
+    lamp: { w: 0.42, d: 0.42, spacing: 3, color: [1.0, 0.78, 0.55], power: 38, offP: 0.3, flickerP: 0.12 },
+    albedo: { wall: [0.7, 0.64, 0.5], wallLow: [0.24, 0.4, 0.38], base: [0.1, 0.1, 0.1], floor: [0.45, 0.28, 0.12], ceil: [0.68, 0.68, 0.64] }
+  },
+  // басейн: висока стеля, кахель (бірюзова мозаїка, синя смуга знизу), чаші з водою, холодні квадратні плафони, половина мертва
+  pool: {
+    id: 'pool', height: 4.2, paintH: 1.2, plinth: false, pillar: 0.7,
+    lamp: { w: 0.7, d: 0.7, spacing: 4, color: [0.82, 0.95, 1.0], power: 70, offP: 0.45, flickerP: 0.15 },
+    albedo: { wall: [0.42, 0.55, 0.55], wallLow: [0.16, 0.3, 0.38], base: [0.5, 0.52, 0.5], floor: [0.4, 0.38, 0.34], ceil: [0.58, 0.58, 0.56] }
   }
 };
+
+/** Кімната з відомим призначенням (для обстановки): клітинки [x0, x1) × [y0, y1). */
+export type RoomKind = 'cloak' | 'play' | 'sleep' | 'hall' | 'kitchen' | 'medic' | 'pool';
+export interface Room { x0: number; y0: number; x1: number; y1: number; kind: RoomKind }
+/** Чаша басейну (центр і розміри в метрах; глибина — від підлоги до дна). */
+export interface Pool { x: number; z: number; w: number; d: number; depth: number }
+/** Мілка вода на підлозі (м): кроки хлюпають, гучні. */
+export interface Puddle { x: number; z: number; w: number; d: number }
 
 export interface WallBox {
   /** Центр і розміри в метрах (w — уздовж X, d — уздовж Z). */
@@ -71,6 +92,12 @@ export interface Layout {
   points: Record<string, Spot>;
   /** Відстань (у клітинках) від старту до кожної клітинки; −1 — недосяжна. */
   dist: Int32Array;
+  /** Кімнати з призначенням (лише для тем, що їх знають: дитсадок, басейн). */
+  rooms: Room[];
+  /** Чаші басейну: по них не ходять (низька перешкода), над ними — вода. */
+  pools: Pool[];
+  /** Мілка вода на підлозі. */
+  puddles: Puddle[];
 }
 
 export interface LayoutOptions {
@@ -106,7 +133,7 @@ class EdgeGrid {
   }
 }
 
-function bfs(g: EdgeGrid, sx: number, sy: number): Int32Array {
+function bfs(g: EdgeGrid, sx: number, sy: number, blocked?: Uint8Array): Int32Array {
   const d = new Int32Array(g.cols * g.rows).fill(-1);
   const q: number[] = [sy * g.cols + sx];
   d[q[0] as number] = 0;
@@ -114,7 +141,7 @@ function bfs(g: EdgeGrid, sx: number, sy: number): Int32Array {
     const c = q[i] as number, x = c % g.cols, y = (c / g.cols) | 0;
     for (const [nx, ny] of g.open(x, y)) {
       const n = ny * g.cols + nx;
-      if (d[n] === -1) { d[n] = (d[c] as number) + 1; q.push(n); }
+      if (d[n] === -1 && !blocked?.[n]) { d[n] = (d[c] as number) + 1; q.push(n); }
     }
   }
   return d;
@@ -172,7 +199,7 @@ function carveCorridors(g: EdgeGrid, r: Rng, x0: number, y0: number, x1: number,
   }
 }
 
-interface Plan { g: EdgeGrid; pillars: [number, number][]; zones: ZoneStyle[]; start: [number, number] }
+interface Plan { g: EdgeGrid; pillars: [number, number][]; zones: ZoneStyle[]; start: [number, number]; rooms?: Room[]; pools?: [number, number, number, number][]; puddles?: [number, number, number, number][] }
 
 /** Жовті кімнати: зони 3×3 різних стилів (кімнати, зал із колонами, коридори, темрява). */
 function planYellow(r: Rng, cols: number, rows: number, zonesOpt?: ZoneStyle[]): Plan {
@@ -270,22 +297,162 @@ function planParking(r: Rng, cols: number, rows: number): Plan {
   return { g, pillars, zones, start: [2, 2] };
 }
 
+
+/**
+ * Дитсадок: «групові осередки» (роздягальня → ігрова → спальня, двері анфіладою) уздовж довгих коридорів,
+ * осередки по обидва боки коридору; між смугами — стіни з кількома проходами; музичний зал з колонами, кухня, медпункт.
+ */
+function planKinder(r: Rng, cols: number, rows: number): Plan {
+  const g = new EdgeGrid(cols, rows);
+  const rooms: Room[] = [];
+  const pillars: [number, number][] = [];
+  let hallDone = false;
+  /** Смуга осередків між y0 і y1; коридор — зверху (above) чи знизу. */
+  const band = (y0: number, y1: number, corr: 'above' | 'below' | 'none') => {
+    const edgeY = corr === 'above' ? y0 - 1 : y1 - 1; // ребро між смугою й коридором
+    if (corr !== 'none') for (let x = 0; x < cols; x++) g.setH(x, edgeY, true);
+    const door = (x0: number, x1: number) => { if (corr !== 'none') g.setH(irange(r, x0, x1 - 1), edgeY, false); };
+    let x = 0;
+    while (x < cols) {
+      const left = cols - x;
+      // музичний зал — один на рівень, у середній смузі
+      if (!hallDone && left >= 14 && x > 6 && y0 > 8 && r() < 0.35) {
+        const w = Math.min(left, irange(r, 10, 12));
+        rooms.push({ x0: x, y0, x1: x + w, y1, kind: 'hall' });
+        for (let px = x + 3; px < x + w - 2; px += 3) { pillars.push([px, y0 + 2]); if (y1 - y0 > 5) pillars.push([px, y1 - 2]); }
+        door(x, x + w); door(x, x + w);
+        if (x + w < cols) for (let y = y0; y < y1; y++) g.setV(x + w - 1, y, true);
+        g.setV(x + w - 1, irange(r, y0, y1 - 1), false);
+        x += w; hallDone = true; continue;
+      }
+      if (left < 6) {
+        // хвіст смуги: комірка (кухня чи медпункт)
+        rooms.push({ x0: x, y0, x1: cols, y1, kind: r() < 0.5 ? 'kitchen' : 'medic' });
+        door(x, cols);
+        break;
+      }
+      // осередок: роздягальня 3, ігрова 5–7, спальня 4–6 (порядок дзеркалиться)
+      const ws = [3, irange(r, 5, 7), irange(r, 4, 6)];
+      const kinds: RoomKind[] = ['cloak', 'play', 'sleep'];
+      if (r() < 0.5) { ws.reverse(); kinds.reverse(); }
+      let sum = ws.reduce((a, b) => a + b, 0);
+      if (sum > left) { ws[ws.length - 1] = Math.max(3, (ws[ws.length - 1] as number) - (sum - left)); sum = ws.reduce((a, b) => a + b, 0); }
+      if (sum > left) { rooms.push({ x0: x, y0, x1: cols, y1, kind: 'kitchen' }); door(x, cols); break; }
+      ws.forEach((w, i) => {
+        const kind = kinds[i] as RoomKind;
+        rooms.push({ x0: x, y0, x1: x + w, y1, kind });
+        // роздягальня завжди виходить у коридор, ігрова — часто
+        if (kind === 'cloak' || (kind === 'play' && r() < 0.6)) door(x, x + w);
+        if (x + w < cols) {
+          for (let y = y0; y < y1; y++) g.setV(x + w - 1, y, true);
+          // анфілада всередині осередку; між осередками — рідко
+          const inner = i < ws.length - 1;
+          if (inner || r() < 0.3) g.setV(x + w - 1, irange(r, y0 + 1, y1 - 2), false);
+        }
+        x += w;
+      });
+    }
+  };
+  let y = 0;
+  const corridors: number[] = [];
+  while (y < rows) {
+    const dA = irange(r, 6, 7);
+    if (y + dA + 2 + 5 > rows) { band(y, rows, 'none'); break; }
+    band(y, y + dA, 'below');
+    corridors.push(y + dA);
+    const dB = Math.min(irange(r, 6, 7), rows - (y + dA + 2));
+    band(y + dA + 2, y + dA + 2 + dB, 'above');
+    y += dA + 2 + dB;
+    // між групами смуг — суцільна стіна з 2–3 проходами (кільця для втечі)
+    if (y < rows) {
+      for (let x = 0; x < cols; x++) g.setH(x, y - 1, true);
+      for (let k = 0; k < irange(r, 2, 3); k++) g.setH(irange(r, 1, cols - 2), y - 1, false);
+    }
+  }
+  // темні зони; спальні гасимо окремо (generateLayout)
+  const zones: ZoneStyle[] = Array.from({ length: 9 }, () => (r() < 0.22 ? 'dark' : 'rooms'));
+  zones[0] = 'rooms';
+  const c0 = corridors[0] ?? 7;
+  return { g, pillars, zones, start: [2, c0], rooms };
+}
+
+/**
+ * Басейн «Лазурный»: 2–3 зали з чашами (кахель, вода), між ними — роздягальні, душові, підсобки й коридори;
+ * подекуди підлога залита мілкою водою.
+ */
+function planPool(r: Rng, cols: number, rows: number): Plan {
+  const g = new EdgeGrid(cols, rows);
+  carveRooms(g, r, 0, 0, cols, rows);
+  const rooms: Room[] = [];
+  const pools: [number, number, number, number][] = [];
+  const pillars: [number, number][] = [];
+  const sizes: [number, number][] = [[22, 16], [16, 12], [12, 10]];
+  for (const [w0, h0] of sizes) {
+    for (let tries = 0; tries < 300; tries++) {
+      const vert = r() < 0.5, w = vert ? h0 : w0, h = vert ? w0 : h0;
+      const x0 = irange(r, 1, cols - w - 1) & ~1, y0 = irange(r, 1, rows - h - 1) & ~1;
+      if (x0 < 9 && y0 < 9) continue; // старт — у кутку з роздягальнями
+      if (rooms.some((o) => x0 < o.x1 + 3 && o.x0 < x0 + w + 3 && y0 < o.y1 + 3 && o.y0 < y0 + h + 3)) continue;
+      rooms.push({ x0, y0, x1: x0 + w, y1: y0 + h, kind: 'pool' });
+      // зал: порожній усередині, стіни по периметру з 3–4 дверима
+      for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) { if (x < x0 + w - 1) g.setV(x, y, false); if (y < y0 + h - 1) g.setH(x, y, false); }
+      for (let x = x0; x < x0 + w; x++) { g.setH(x, y0 - 1, true); g.setH(x, y0 + h - 1, true); }
+      for (let y = y0; y < y0 + h; y++) { g.setV(x0 - 1, y, true); g.setV(x0 + w - 1, y, true); }
+      const doors = irange(r, 3, 4);
+      for (let k = 0; k < doors; k++) {
+        const side = k % 4;
+        if (side === 0) g.setH(irange(r, x0 + 1, x0 + w - 2), y0 - 1, false);
+        else if (side === 1) g.setH(irange(r, x0 + 1, x0 + w - 2), y0 + h - 1, false);
+        else if (side === 2) g.setV(x0 - 1, irange(r, y0 + 1, y0 + h - 2), false);
+        else g.setV(x0 + w - 1, irange(r, y0 + 1, y0 + h - 2), false);
+      }
+      // чаша: відступ 3 клітинки (у великому залі — 4), парні межі (під сітку підлоги Blender, 2.4 м)
+      const m = w * h > 300 ? 4 : 3;
+      const px0 = (x0 + m + 1) & ~1, py0 = (y0 + m + 1) & ~1, px1 = (x0 + w - m) & ~1, py1 = (y0 + h - m) & ~1;
+      if (px1 - px0 >= 4 && py1 - py0 >= 4) pools.push([px0, py0, px1, py1]);
+      // колони вздовж довгих стін великого залу
+      if (w * h > 300) {
+        if (w >= h) for (let x = x0 + 3; x < x0 + w - 2; x += 4) { pillars.push([x, y0 + 2]); pillars.push([x, y0 + h - 2]); }
+        else for (let y = y0 + 3; y < y0 + h - 2; y += 4) { pillars.push([x0 + 2, y]); pillars.push([x0 + w - 2, y]); }
+      }
+      break;
+    }
+  }
+  // кільця: кілька зайвих проходів між кімнатами
+  for (let i = 0; i < cols * rows * 0.025; i++) { const x = irange(r, 0, cols - 2), y = irange(r, 0, rows - 2); if (r() < 0.5) g.setV(x, y, false); else g.setH(x, y, false); }
+  // залита підлога: 4–6 плям поза чашами
+  const puddles: [number, number, number, number][] = [];
+  for (let k = 0, tries = 0; k < 6 && tries < 200; tries++) {
+    const w = irange(r, 3, 7), h = irange(r, 3, 7), x = irange(r, 0, cols - w), y = irange(r, 0, rows - h);
+    if (x < 6 && y < 6) continue;
+    if (pools.some(([a, b, c, d]) => x < c + 1 && a - 1 < x + w && y < d + 1 && b - 1 < y + h)) continue;
+    puddles.push([x, y, x + w, y + h]); k++;
+  }
+  const zones: ZoneStyle[] = Array.from({ length: 9 }, () => (r() < 0.45 ? 'dark' : 'hall'));
+  zones[0] = 'rooms';
+  return { g, pillars, zones, start: [3, 3], rooms, pools, puddles };
+}
+
 export function generateLayout(o: LayoutOptions): Layout {
   const preset = o.preset ?? 'yellow', theme = THEMES[preset];
-  const dflt = preset === 'yellow' ? 60 : 40;
+  const dflt = preset === 'yellow' ? 60 : preset === 'kinder' || preset === 'pool' ? 48 : 40;
   const cols = o.cols ?? dflt, rows = o.rows ?? dflt, cell = o.cell ?? 1.2, height = o.height ?? theme.height;
   const r = rng(o.seed);
-  const plan = preset === 'yellow' ? planYellow(r, cols, rows, o.zones) : preset === 'base' ? planBase(r, cols, rows) : planParking(r, cols, rows);
+  const plan = preset === 'yellow' ? planYellow(r, cols, rows, o.zones) : preset === 'base' ? planBase(r, cols, rows)
+    : preset === 'kinder' ? planKinder(r, cols, rows) : preset === 'pool' ? planPool(r, cols, rows) : planParking(r, cols, rows);
   const { g, pillars, zones } = plan;
+  // клітинки чаш — непрохідні (по них не ходять ні гравець, ні мисливець)
+  const blocked = new Uint8Array(cols * rows);
+  for (const [a, b, c, d] of plan.pools ?? []) for (let y = b; y < d; y++) for (let x = a; x < c; x++) blocked[y * cols + x] = 1;
   const zw = Math.floor(cols / 3), zh = Math.floor(rows / 3);
 
   // старт — центр першої «кімнатної» зони; зв'язність: усе, що недосяжне, приєднуємо, прорізаючи стіну
   const [sx, sy] = plan.start;
-  let dist = bfs(g, sx, sy);
+  let dist = bfs(g, sx, sy, blocked);
   for (let guard = 0; guard < cols * rows; guard++) {
     let fixed = false;
     for (let c = 0; c < dist.length && !fixed; c++) {
-      if (dist[c] !== -1) continue;
+      if (dist[c] !== -1 || blocked[c]) continue;
       const x = c % cols, y = (c / cols) | 0;
       // знайти досяжного сусіда за стіною
       const cand: (() => void)[] = [];
@@ -296,7 +463,7 @@ export function generateLayout(o: LayoutOptions): Layout {
       if (cand.length) { pick(r, cand)(); fixed = true; }
     }
     if (!fixed) break;
-    dist = bfs(g, sx, sy);
+    dist = bfs(g, sx, sy, blocked);
   }
 
   // стіни: зливаємо сусідні ребра в довгі блоки (менше колізій і вершин)
@@ -332,10 +499,24 @@ export function generateLayout(o: LayoutOptions): Layout {
     const dark = zones[zi] === 'dark';
     const roll = r();
     const state: LightPanel['state'] = dark ? (roll < 0.18 ? 'on' : roll < 0.26 ? 'flicker' : 'off') : roll < L.offP ? 'off' : roll < L.offP + L.flickerP ? 'flicker' : 'on';
-    const lx = (x + sp / 2) * cell, lz = (y + sp / 2) * cell;
+    let lx = (x + sp / 2) * cell, lz = (y + sp / 2) * cell;
     // не вмуровувати світильник у стіну чи колону (для нових рівнів; жовті кімнати лишаються як запечені)
-    if (preset !== 'yellow' && walls.some((w) => Math.abs(w.x - lx) < w.w / 2 + L.w / 2 + 0.1 && Math.abs(w.z - lz) < w.d / 2 + L.d / 2 + 0.1)) continue;
-    lights.push({ x: lx, z: lz, w: L.w, d: L.d, state });
+    const inWall = (px: number, pz: number) => walls.some((w) => Math.abs(w.x - px) < w.w / 2 + L.w / 2 + 0.1 && Math.abs(w.z - pz) < w.d / 2 + L.d / 2 + 0.1);
+    if (preset !== 'yellow' && inWall(lx, lz)) {
+      // басейн: рідка сітка (4.8 м) — світильник, що влучив у стіну, зсунути на сусідню клітинку (у коридор), а не прибрати
+      const alt = preset === 'pool' ? ([[0, -1], [0, 1], [-1, 0], [1, 0], [-1, -1], [1, 1]] as const).map(([dx, dy]) => [lx + dx * cell * 1.5, lz + dy * cell * 1.5] as const).find(([ax, az]) => !inWall(ax, az)) : undefined;
+      if (!alt) continue;
+      [lx, lz] = alt;
+    }
+    const room = plan.rooms?.find((q) => lx >= q.x0 * cell && lx < q.x1 * cell && lz >= q.y0 * cell && lz < q.y1 * cell);
+    // дитсадок: у спальнях світло майже ніде не горить; басейн: у залах з чашами більшість плафонів світить (видно воду)
+    // дитсадок: коридори здебільшого світлі (острівці безпеки від «Улыбаки»), кімнати — як зона, спальні — темні
+    const corridor = preset === 'kinder' && !room;
+    // басейн: біля старту (роздягальні) світло горить — гравець має роздивитися, де він, перш ніж піти в темряву
+    const nearStart = preset === 'pool' && Math.hypot(lx - (plan.start[0] + 0.5) * cell, lz - (plan.start[1] + 0.5) * cell) < 9;
+    const st: LightPanel['state'] = room?.kind === 'sleep' && roll < 0.85 ? 'off' : room?.kind === 'pool' ? (roll < 0.62 ? 'on' : roll < 0.75 ? 'flicker' : 'off')
+      : corridor ? (roll < 0.78 ? 'on' : roll < 0.88 ? 'flicker' : 'off') : nearStart ? (roll < 0.85 ? 'on' : 'flicker') : state;
+    lights.push({ x: lx, z: lz, w: L.w, d: L.d, state: st });
   }
 
   // вихід («Шов») — найдальша досяжна клітинка
@@ -354,7 +535,7 @@ export function generateLayout(o: LayoutOptions): Layout {
   for (let c = 0; c < dist.length; c++) {
     const x = c % cols, y = (c / cols) | 0;
     const zi = Math.min(2, Math.floor(x / zw)) + 3 * Math.min(2, Math.floor(y / zh));
-    if (zones[zi] !== 'dark' || Math.hypot(x - ex, y - ey) < 12) continue;
+    if (zones[zi] !== 'dark' || Math.hypot(x - ex, y - ey) < 12 || dist[c] === -1) continue;
     if (rift < 0 || (dist[c] as number) > (dist[rift] as number)) rift = c;
   }
   if (rift < 0) { const t7 = Math.floor((dist[far] as number) * 0.7); for (let c = 0; c < dist.length; c++) if (dist[c] === t7) { rift = c; break; } }
@@ -364,7 +545,10 @@ export function generateLayout(o: LayoutOptions): Layout {
     spawn: at(sx, sy, 0),
     exit: { ...at(ex, ey), cx: ex, cz: ey },
     points: { order7: at(sx + 1, sy), note1: at(mid % cols, (mid / cols) | 0), rift: at(rift % cols, (rift / cols) | 0) },
-    dist
+    dist,
+    rooms: plan.rooms ?? [],
+    pools: (plan.pools ?? []).map(([a, b, c, d]) => ({ x: ((a + c) / 2) * cell, z: ((b + d) / 2) * cell, w: (c - a) * cell, d: (d - b) * cell, depth: 1.9 })),
+    puddles: (plan.puddles ?? []).map(([a, b, c, d]) => ({ x: ((a + c) / 2) * cell, z: ((b + d) / 2) * cell, w: (c - a) * cell, d: (d - b) * cell }))
   };
 }
 

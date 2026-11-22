@@ -1,9 +1,10 @@
-// Огляд рівнів 1 і 2: кілька кадрів у різних зонах (ліхтарик увімкнено) — для оцінки вигляду бази й парковки.
+// Огляд рівнів (за замовчуванням 1 і 2; --ids 3,4): кілька кадрів у різних зонах (ліхтарик увімкнено) — для оцінки вигляду бази й парковки.
 // node tests/e2e/levels.mjs [webkit|chromium] [назва]  →  .shots/levels-<назва>-<браузер>.png
 import { startServer, openPage, gotoGame, wait } from './lib.mjs';
 import { execFileSync } from 'node:child_process';
 
 const which = process.argv[2] ?? 'webkit', name = process.argv[3] ?? 'cur';
+const ii = process.argv.indexOf('--ids'), IDS = ii > 0 ? process.argv[ii + 1].split(',').map(Number) : [1, 2];
 const srv = await startServer();
 const { page, logs, close } = await openPage(which, {});
 const files = [];
@@ -14,7 +15,7 @@ try {
     await wait(1500);
     if (await page.evaluate(() => window.__zk.game.mode === 'play')) break;
   }
-  for (const id of [1, 2]) {
+  for (const id of IDS) {
     await page.evaluate(async (id) => { const g = window.__zk.game; await g.loadLevel(id); g.enterLevelStart(false); g.play(); }, id);
     await page.evaluate(() => { document.querySelector('.touch')?.classList.remove('shown'); });
     await wait(3000);
@@ -44,7 +45,7 @@ try {
 execFileSync('python3', ['-c', `
 import sys
 from PIL import Image
-fs=sys.argv[2:]; W=Image.new('RGB',(7*512,2*288))
+fs=sys.argv[2:]; W=Image.new('RGB',(7*512,((len(fs)+6)//7)*288))
 for i,f in enumerate(fs): W.paste(Image.open(f).resize((512,288)),((i%7)*512,(i//7)*288))
 W.save(sys.argv[1])`, `.shots/levels-${name}-${which}.png`, ...files]);
 console.log('console:', JSON.stringify(logs));

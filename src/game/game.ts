@@ -8,9 +8,11 @@ import { Notebook } from '../ui/notebook';
 import { MapMemory } from './mapmem';
 import { buildUnseen } from '../world/unseen';
 import { makeBody } from '../world/bodies';
+import { furnishNii } from '../world/nii-furniture';
+import { rng } from '../core/rng';
 import { dressLevel } from '../world/dressing';
 import { Psyche } from './psyche';
-import { Soundscape, surfaceAt } from './soundscape';
+import { Soundscape } from './soundscape';
 import { Tasks } from './tasks';
 import { RADIO } from '../story/tasks';
 import { lampDeficits } from '../world/materials';
@@ -20,15 +22,16 @@ import { Physics, G } from '../physics/physics';
 import { Player } from './player';
 import { CameraRig } from './camera-rig';
 import { Input } from '../input/input';
-import { AudioEngine, type SpatialVoice } from '../audio/audio';
-import { humLoop, footstepCarpet, typeClick, paperRustle, seamDrone, geigerClick, phoneRing } from '../audio/synth';
+import { AudioEngine } from '../audio/audio';
 import { SoundBank } from '../audio/bank';
+import { GameSound } from './game-sound';
 import { Figure } from '../world/monsters/figure';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { HUD } from '../ui/hud';
 import { Ambience } from './ambience';
 import { Interactions } from './interact';
-import { DOCS, NOTES, PSY_DOCS, TAPES, FINDINGS, SPECIAL, PROLOGUE, OBJECTIVES, HINTS, LEVEL_END, LEVEL_TITLES, type Doc } from '../story/ru';
+import { DOCS, NOTES, PSY_DOCS, TAPES, FINDINGS, SPECIAL, PROLOGUE, OBJECTIVES, HINTS, LEVEL_TITLES, levelObjective, type Doc } from '../story/ru';
+import { runFinale } from './ending';
 import { placeFindings, type Finding } from '../world/findings';
 import { placeLockers, type Locker } from '../world/lockers';
 import { placeSpecialRooms, type Special } from '../world/special-rooms';
@@ -38,7 +41,7 @@ import { UI } from '../ui/screens';
 import { T } from '../i18n/ru';
 import { Assets } from '../assets/loader';
 import { buildLevel0, type Level } from '../world/level0';
-import { buildThemedLevel } from '../world/level-themed';
+import { buildThemedLevel, type ThemedId } from '../world/level-themed';
 import { disposeScene } from '../world/chunks';
 import { DOOR_H } from '../world/decor';
 import type { Seam } from '../world/seam';
@@ -88,8 +91,6 @@ export class Game {
   level: Level | null = null;
   assets!: Assets;
   private loading: Promise<void> | null = null;
-  private humVoices: { voice: SpatialVoice; lamp: number }[] = [];
-  private humT = 0;
   private dimT = 0;
   /** Записані звуки (CC0): кроки, двері, папір, ліхтарик, тканина, удари, фон. */
   readonly sfx = new SoundBank();
@@ -113,6 +114,8 @@ export class Game {
   private persistT = 0;
   /** Ліхтарик упритул до стіни: відстань до поверхні перед ним і плавний множник яскравості. */
   private flashNear = 10;
+  /** Відстань до того, куди влучає промінь ліхтарика (до 12 м). */
+  private flashHit = 12;
   private flashK = 1;
   private flashT = 0;
   private readonly fwd = new THREE.Vector3();
@@ -142,29 +145,27 @@ export class Game {
   private lockers: Locker[] = [];
   /** Особливі кімнати рівня 0 і дзвінок телефона (доки не знімеш трубку). */
   private specials: Special[] = [];
-  private phoneVoice: SpatialVoice | null = null;
   private phoneAnswered = false;
   private writingSeen = false;
   hide: { l: Locker; dyaw: number; dpitch: number; seen: boolean } | null = null;
+  /** Звук поза мисливцями: кроки, фон, гул ламп і Швів, завдання, машинка, дозиметр. */
+  readonly snd = new GameSound(this.audio, this.sfx, this.hunt);
   readonly tapes = new TapePlayer(this.audio, this.sfx, (t, sec) => this.hud.subtitle(t, sec));
-  private geiger: AudioBuffer[] = [];
   private dosiNoiseT = 0;
   /** Батарейки, що лежать на поточному рівні. */
   private pickups: Pickup[] = [];
   hud!: HUD;
   readonly ambience = new Ambience(this.audio);
   interact!: Interactions;
-  private clicks: AudioBuffer[] = [];
-  private rustle: AudioBuffer | null = null;
   private stage: 'desk' | 'seam' | 'done' = 'desk';
   private ending = false;
-  private steps: AudioBuffer[] = [];
-  private ambSrc: AudioBufferSourceNode | null = null;
-  /** Гучність фону рівня (стихає в «тишу»). */
-  private ambGain: GainNode | null = null;
   readonly psyche = new Psyche();
+  /** Експозиція з налаштувань (яскравість) і адаптація ока: у темряві зір поволі звикає, під лампою — швидко звужується. */
+  private baseExposure = BASE_EXPOSURE;
+  private adapt = 1;
+  /** Плавний «розгін» поля зору під час бігу (0..1). */
+  private runK = 0;
   readonly soundscape = new Soundscape(this.audio, (t, sec) => this.hud.subtitle(t, sec));
-  private genVoice: SpatialVoice | null = null;
   /** Обстановка рівня (для контрольних кадрів). */
   dressed: { x: number; z: number; yaw: number; kind: string }[] = [];
   readonly tasks = new Tasks({
@@ -172,7 +173,7 @@ export class Game {
     give: (k) => { if (!this.store.progress.items.includes(k)) { this.store.progress.items.push(k); this.persist(); this.firstMinutes(k); } },
     say: (t, sec) => this.hud.subtitle(t, sec),
     objective: (t) => this.setObjective(t),
-    sound: (n, x, y, z) => this.taskSound(n, x, y, z),
+    sound: (n, x, y, z) => this.snd.task(n, x, y, z),
     noise: (x, z, loud) => this.hunt.noise(x, 1, z, loud),
     radio: (x, z) => this.tapes.play(RADIO, x, z)
   });
@@ -182,10 +183,8 @@ export class Game {
     const l = Math.hypot(dx, dz) || 1;
     return this.physics.raycast(x, 1.3, z, dx / l, 0, dz / l, max) ?? max;
   };
-  private seamVoices: SpatialVoice[] = [];
-  private stepIdx = 0;
 
-  constructor(readonly gfx: RendererHandle, readonly device: DeviceInfo, forced: QualityProfile | null) {
+  constructor(readonly gfx: RendererHandle, readonly device: DeviceInfo, private readonly forced: QualityProfile | null) {
     const canvas = gfx.renderer.domElement;
     this.profile = forced ?? this.qualityFromSettings();
     this.post = new PostPipeline(gfx.renderer, this.scene, this.camera);
@@ -237,7 +236,7 @@ export class Game {
     this.bat.level = this.store.progress.battery;
     this.cam.charge = this.store.progress.camCharge;
     this.psyche.nerves = this.store.progress.nerves;
-    this.player.onFootstep = (e) => this.footstep(e.x, e.y, e.z, e.loudness);
+    this.player.onFootstep = (e) => this.snd.footstep(this.level, e.x, e.y, e.z, e.loudness);
     // взаємодії потребують гравця: при першому завантаженні рівня його ще не було (loadLevel їх пропустив)
     this.setupInteractions(lvl);
     this.applySettings(this.store.settings);
@@ -261,7 +260,7 @@ export class Game {
       this.level = null;
       this.figure = null;
     }
-    const lvl = id === 0 ? await buildLevel0(this.assets, this.physics, onProgress) : await buildThemedLevel(id as 1 | 2, this.assets, this.physics, onProgress);
+    const lvl = id === 0 ? await buildLevel0(this.assets, this.physics, onProgress) : await buildThemedLevel(id as ThemedId, this.assets, this.physics, onProgress, this.profile.name === 'high' || this.profile.name === 'ultra');
     if (id === 0) {
       try {
         const gl = await this.assets.model('assets/models/figure.glb');
@@ -289,9 +288,11 @@ export class Game {
     } catch { /* без моделі гра йде далі без прихованого й тіл */ }
     this.psyche.attach(lvl, this.figureModel, unseen);
     this.soundscape.attach(lvl);
+    this.ambience.level = lvl.id;
     // НИИ, ще без печаток: за пів хвилини рупор кличе Оператора № 7 на вахту — так гравець дізнається, куди йти й що його чекають
     if (lvl.id === 0 && !this.store.progress.items.some((i) => i.startsWith('0:stamp_'))) this.soundscape.schedule(0, 30);
     this.level = lvl;
+    this.bat.forLevel(lvl.id);
     setFilm(lvl.id);
     this.saveMap();
     this.mapmem = new MapMemory(lvl.layout);
@@ -303,10 +304,11 @@ export class Game {
     this.hide = null;
     this.lockers = lvl.id === 1 ? await placeLockers(this.assets, this.physics, lvl, [0.33, 0.5, 0.7]) : [];
     this.specials = lvl.id === 0 ? await placeSpecialRooms(this.assets, this.physics, lvl, [...this.findings, ...this.pickups].map((f) => ({ x: f.x, z: f.z }))) : [];
-    this.genVoice?.stop(0.2); this.genVoice = null;
+    this.snd.stopGen();
     const busy = [...this.findings, ...this.pickups, ...this.specials, ...this.lockers].map((f) => ({ x: f.x, z: f.z }));
     await this.tasks.build(this.assets, this.physics, lvl, busy);
-    this.dressed = lvl.id > 0 ? await dressLevel(this.assets, this.physics, lvl, [...busy, ...this.tasks.spots(), ...Object.values(lvl.spots)]) : [];
+    const taken = [...busy, ...this.tasks.spots(), ...Object.values(lvl.spots)];
+    this.dressed = lvl.id > 0 ? await dressLevel(this.assets, this.physics, lvl, taken) : await furnishNii(this.assets, this.physics, lvl, taken);
     this.phoneAnswered = false; this.writingSeen = false;
     this.setScene(lvl.scene);
     if (this.player) this.setupInteractions(lvl);
@@ -319,21 +321,9 @@ export class Game {
   /** Фон рівня й гул Швів — до нового рівня. */
   private levelAudio(): void {
     const lvl = this.level;
-    if (!lvl || !this.sfx.ready) return;
-    this.ambSrc?.stop();
-    const amb = this.sfx.get(`amb_l${lvl.id}`), bus = this.audio.music;
-    if (!this.ambGain && this.audio.ctx && bus) { this.ambGain = this.audio.ctx.createGain(); this.ambGain.connect(bus); }
-    this.ambSrc = amb && this.ambGain ? this.audio.play2D(amb, 0.32, 1, this.ambGain) : null;
-    if (this.ambSrc) this.ambSrc.loop = true;
-    // телефон у порожній кімнаті дзвонить (рівень 0), доки не знімеш трубку
-    this.phoneVoice?.stop(0.05); this.phoneVoice = null;
-    const ph = this.specials.find((s) => s.id === 'phone'), ctx = this.audio.ctx;
-    if (ph && ctx && !this.phoneAnswered) this.phoneVoice = this.audio.play3D(phoneRing(ctx), ph.x, ph.y, ph.z, { loop: true, gain: 0.9, ref: 2.2, wet: 0.45 });
-    const seams: (Seam | undefined)[] = [lvl.seam, lvl.rift];
-    this.seamVoices.forEach((v, i) => {
-      const p = seams[i]?.group.position;
-      v.setPosition(p ? p.x : 0, p ? 1.3 : -100, p ? p.z : 0);
-    });
+    if (!lvl) return;
+    const ph = this.specials.find((s) => s.id === 'phone');
+    this.snd.levelAudio(lvl, ph && !this.phoneAnswered ? ph : null);
   }
 
   private setScene(s: THREE.Scene): void {
@@ -342,28 +332,10 @@ export class Game {
   }
 
   private prepareAudio(): void {
-    const ctx = this.audio.ctx;
-    if (!ctx || this.steps.length) return;
-    for (let i = 0; i < 8; i++) this.steps.push(footstepCarpet(ctx, i + 1));
-    for (let i = 0; i < 6; i++) this.clicks.push(typeClick(ctx, i + 1));
-    this.rustle = paperRustle(ctx, 1);
-    for (let i = 0; i < 4; i++) this.geiger.push(geigerClick(ctx, i + 1));
-    // тихий фоновий трек рівня (наш, ACE-Step): шар під гулом ламп
-    void this.sfx.load(ctx, `${import.meta.env.BASE_URL}assets/sfx/`).then(() => this.levelAudio());
+    this.hud.typeSound = () => this.snd.typeClick();
+    this.snd.prepare(() => this.levelAudio());
     this.ambience.prepare();
-    // гул Шва і (тихіше, глухіше) прихованого розлому
-    const drone = seamDrone(ctx);
-    for (const [gain, ref] of [[0.9, 1.5], [0.5, 0.9]] as const) {
-      const v = this.audio.play3D(drone, 0, -100, 0, { loop: true, gain, ref, wet: 0.4, rate: ref < 1 ? 0.8 : 1 });
-      if (v) this.seamVoices.push(v);
-    }
     this.levelAudio();
-    const hum = humLoop(ctx, 4, 3);
-    // гул: 6 голосів «переїжджають» до найближчих ламп, що світять
-    for (let i = 0; i < 6; i++) {
-      const v = this.audio.play3D(hum, 0, -100, 0, { loop: true, gain: 0.45, ref: 1.1, wet: 0.12, rate: 0.985 + i * 0.006 });
-      if (v) this.humVoices.push({ voice: v, lamp: -1 });
-    }
   }
 
   /** Перші хвилини на рівні 0: печатки ведуть не лише до вахти. Перша — рупор кличе на ім'я, друга — хтось стоїть у кінці коридору. */
@@ -374,23 +346,15 @@ export class Game {
     if (stamps === 2) this.psyche.scriptGhost(9);
   }
 
-  private footstep(x: number, y: number, z: number, loud: number): void {
-    // кроки за поверхнею: паркет — дзвінкий дерев'яний стук, лінолеум — глухіший, бетон — нижчий і з луною
-    const surf = this.level ? surfaceAt(this.level, x, z) : 'linoleum';
-    const rec = this.sfx.ready ? this.sfx.pick(surf === 'linoleum' ? 'carpet_' : 'step_') : null;
-    const b = rec ?? this.steps[this.stepIdx++ % Math.max(1, this.steps.length)];
-    const k = surf === 'parquet' ? { g: 0.75, r: 1.04, w: 0.22 } : surf === 'concrete' ? { g: 0.85, r: 0.9, w: 0.4 } : { g: 1, r: 1, w: 0.2 };
-    if (b) this.audio.play3D(b, x, y + 0.05, z, { gain: (0.35 + loud * 0.65) * k.g, rate: k.r * (0.94 + Math.random() * 0.12), ref: 2, wet: k.w });
-    this.hunt.noise(x, y, z, loud);
-  }
-
   applySettings(s: Settings): void {
-    look.exposure.value = BASE_EXPOSURE * s.brightness;
+    this.baseExposure = BASE_EXPOSURE * s.brightness;
+    look.exposure.value = this.baseExposure * this.adapt;
     this.baseFov = s.fov; this.applyFov();
     this.fpsCap = s.fpsLimit === 'off' ? 0 : Number(s.fpsLimit);
     this.audio.setVolumes(s.masterVolume, s.musicVolume, s.sfxVolume);
     Object.assign(this.input.settings, { sensitivity: s.sensitivity, invertY: s.invertY, crouchToggle: s.crouchToggle });
-    const p = this.qualityFromSettings();
+    // ?q=… в адресі (тести, порівняння) має перевагу над збереженими налаштуваннями
+    const p = this.forced ?? this.qualityFromSettings();
     if (p !== this.profile && this.mode !== 'boot') { this.profile = p; this.post.apply(p); this.resize(); }
     this.store.save();
   }
@@ -417,6 +381,52 @@ export class Game {
     }
     await this.loading;
     bar.remove();
+  }
+
+  /** Кадр під меню: найдовша освітлена перспектива рівня й повільний наїзд уздовж неї. */
+  private menuClock = 0;
+  private menuShot: { lvl: Level; x: number; z: number; dx: number; dz: number; len: number; t: number } | null = null;
+
+  private pickMenuShot(lvl: Level): void {
+    const L = lvl.layout, r = rng(L.seed ^ 0x3e7);
+    let best = { score: -1, x: L.spawn.x, z: L.spawn.z, dx: 0, dz: -1, len: 4 };
+    for (let k = 0; k < 260; k++) {
+      const cx = Math.floor(r() * L.cols), cz = Math.floor(r() * L.rows);
+      if ((L.dist[cz * L.cols + cx] ?? -1) < 0) continue;
+      const x = (cx + 0.5) * L.cell, z = (cz + 0.5) * L.cell;
+      if (lvl.lamps.lightAt(x, z) < 0.45) continue;
+      for (let a = 0; a < 4; a++) {
+        const dx = [1, 0, -1, 0][a] as number, dz = [0, 1, 0, -1][a] as number;
+        const len = this.physics.raycast(x, 1.55, z, dx, 0, dz, 40) ?? 40;
+        // довга перспектива з лампами вздовж; трохи збоку від осі — цікавіше, ніж рівно посередині
+        let lit = 0;
+        for (let d = 2; d < len; d += 2.4) lit += Math.min(1, lvl.lamps.lightAt(x + dx * d, z + dz * d));
+        const score = Math.min(len, 30) + lit * 0.8;
+        if (score > best.score) best = { score, x, z, dx, dz, len };
+      }
+    }
+    this.menuShot = { lvl, x: best.x, z: best.z, dx: best.dx, dz: best.dz, len: best.len, t: 0 };
+  }
+
+  /** Меню: камера повільно рухається коридором (≈ 9 м за 70 с), ледь погойдуючись; наприкінці — затемнення й знову. */
+  private menuCamera(dt: number): void {
+    const lvl = this.level;
+    if (!lvl) return;
+    if (this.menuShot?.lvl !== lvl) { this.pickMenuShot(lvl); this.menuClock = performance.now(); }
+    const m = this.menuShot;
+    if (!m) return;
+    const T = 70, run = Math.max(0, Math.min(9, m.len - 5));
+    // справжній час, а не dt кадру: поки шейдери ще компілюються, кадри рідкі, а меню має проявитися вчасно
+    m.t += Math.max(dt, (performance.now() - this.menuClock) / 1000);
+    this.menuClock = performance.now();
+    if (m.t > T) m.t -= T;
+    const k = m.t / T, d = run * (k * k * (3 - 2 * k)) * 0.5 + run * k * 0.5;
+    const yaw = Math.atan2(-m.dx, -m.dz) + Math.sin(this.time * 0.05) * 0.06 + 0.1;
+    this.camera.position.set(m.x + m.dx * d, 1.58 + Math.sin(this.time * 0.6) * 0.006, m.z + m.dz * d);
+    this.camera.rotation.set(-0.02 + Math.sin(this.time * 0.09) * 0.012, yaw, Math.sin(this.time * 0.13) * 0.006, 'YXZ');
+    this.camera.updateMatrixWorld();
+    // мʼякий перехід на початок (лише в самому меню, не під час прологу)
+    look.fade.value = Math.max(0, 1 - m.t / 2.5, (m.t - (T - 2.5)) / 2.5);
   }
 
   private showMenu(): void {
@@ -463,8 +473,9 @@ export class Game {
       this.audio.unlock(); this.prepareAudio();
       await this.hud.titleCard(card.title, card.sub, async () => { await this.loadLevel(cp.level); });
       this.enterLevelStart(false);
-      this.setObjective(this.tasks.objective() ?? OBJECTIVES.level1Start);
+      this.setObjective(this.tasks.objective() ?? levelObjective(cp.level));
     }
+    look.fade.value = 0; // меню могло бути посеред затемнення свого кадру
     this.play();
   }
 
@@ -472,11 +483,10 @@ export class Game {
     this.ui.closeAll();
     this.input.enabled = false;
     this.audio.unlock(); this.prepareAudio();
-    let k = 0;
     // якщо гравець був на іншому рівні — рівень 0 вантажиться під час прологу
     // рівень 0 ще міг не довантажитися після «18+» — пролог іде поверх завантаження
     const reload = (this.loading ?? Promise.resolve()).then(() => (this.level?.id !== 0 ? this.loadLevel(0).then(() => {}) : this.resetPickups()));
-    await this.hud.prologue(PROLOGUE, () => { const b = this.clicks[k++ % Math.max(1, this.clicks.length)]; if (b) this.audio.play2D(b, 0.5, 0.95 + Math.random() * 0.1); });
+    await this.hud.prologue(PROLOGUE, () => this.snd.typeClick());
     await reload;
     // отямлюється на підлозі обличчям до стіни, крізь яку випав (стіл експедиції — за спиною)
     this.enterLevelStart();
@@ -555,7 +565,7 @@ export class Game {
   private answerPhone(): void {
     if (this.phoneAnswered) return;
     this.phoneAnswered = true;
-    this.phoneVoice?.stop(0.05); this.phoneVoice = null;
+    this.snd.phoneVoice?.stop(0.05); this.snd.phoneVoice = null;
     this.interact.remove('phone');
     const sp = this.specials.find((s) => s.id === 'phone');
     if (sp) this.tapes.play({ id: 'phone', title: '', meta: '', speaker: '', lines: SPECIAL.phone }, sp.x, sp.z);
@@ -573,19 +583,6 @@ export class Game {
   }
 
   /** Звуки задач: печатка (глухий стук), запобіжник (клацання), генератор (гуркіт, що не стихає). */
-  private taskSound(n: 'take' | 'stamp' | 'fuse' | 'gen' | 'radio', x: number, y: number, z: number): void {
-    const ctx = this.audio.ctx;
-    if (n === 'gen') {
-      if (!ctx || this.genVoice) return;
-      this.genVoice = this.audio.play3D(humLoop(ctx, 4, 9), x, y, z, { loop: true, gain: 2.2, rate: 0.42, ref: 5, wet: 0.6 });
-      const hit = this.sfx.pick('hit_');
-      if (hit) this.audio.play3D(hit, x, y, z, { gain: 0.8, rate: 0.6, ref: 4, wet: 0.5 });
-      return;
-    }
-    const b = n === 'stamp' ? this.sfx.pick('doorclose') : this.sfx.get('metalclick');
-    if (b) this.audio.play3D(b, x, y, z, { gain: n === 'stamp' ? 0.5 : 0.7, rate: n === 'stamp' ? 2.1 : n === 'fuse' ? 0.75 : 1.2, ref: 1.6, wet: 0.3 });
-  }
-
   /** Мисливець під час обшуку перевіряє шафки: стає перед дверцятами, смикає їх. Якщо гравець усередині —
    *  знаходить не завжди: що гірше нерви (важке дихання), то вірогідніше. */
   private setupHideChecks(): void {
@@ -716,7 +713,7 @@ export class Game {
   private readDoc(id: string, after?: () => void): void {
     const d = this.docOf(id);
     if (!d) return;
-    const flip = this.sfx.pick('bookflip') ?? this.rustle;
+    const flip = this.sfx.pick('bookflip') ?? this.snd.rustle;
     if (flip) this.audio.play2D(flip, 0.8);
     const list = d.kind === 'note' ? this.store.progress.notes : this.store.progress.docs;
     if (!list.includes(id)) { list.push(id); this.store.save(); }
@@ -755,10 +752,11 @@ export class Game {
       this.store.progress.checkpoint = null;
       this.store.save();
       this.stage = 'done';
-      this.hud.levelEnd(LEVEL_END.title, LEVEL_END.body, LEVEL_END.soon, () => {
-        look.fade.value = 0; look.fear.value = 0; seam.open.value = 0; this.ending = false;
-        this.showMenu();
-      });
+      // за останнім Швом — фінал: вибір, кінцівка, ім'я, титри; потім меню (проходження завершене)
+      await runFinale(this.hud, this.hud.root, this.store.progress, () => this.snd.typeClick());
+      this.store.save();
+      look.fade.value = 0; look.fear.value = 0; seam.open.value = 0; this.ending = false;
+      this.showMenu();
       return;
     }
     await this.hud.titleCard(card.title, card.sub, async () => { await this.loadLevel(target); });
@@ -770,7 +768,7 @@ export class Game {
     this.ending = false;
     await this.arrive();
     this.play();
-    this.setObjective(this.tasks.objective() ?? (target === 1 ? OBJECTIVES.level1Start : OBJECTIVES.level2Start));
+    this.setObjective(this.tasks.objective() ?? levelObjective(target));
   }
 
   /** Мисливець схопив: різкий поворот до нього, удар, темрява → запис відновлюється з початку рівня. */
@@ -900,7 +898,7 @@ export class Game {
     this.hud.show(false);
     this.input.enabled = false; this.input.touch?.show(false);
     if (document.pointerLockElement) document.exitPointerLock();
-    const flip = this.sfx.pick('bookflip') ?? this.rustle;
+    const flip = this.sfx.pick('bookflip') ?? this.snd.rustle;
     if (flip) this.audio.play2D(flip, 0.55, 1.1);
     this.tried.add('book');
     const docs = [...this.store.progress.docs, ...this.store.progress.notes, ...this.store.progress.tapes].map((id) => ({ id, title: this.docOf(id)?.title ?? id }));
@@ -929,10 +927,7 @@ export class Game {
     let d = Infinity;
     for (const s of [lvl.seam, lvl.rift]) if (s) d = Math.min(d, Math.hypot(s.group.position.x - p.x, s.group.position.z - p.z));
     const clicks = this.dosi.update(dt, d, this.mode !== 'play');
-    for (let i = 0; i < clicks; i++) {
-      const b = this.geiger[(Math.random() * this.geiger.length) | 0];
-      if (b) this.audio.play2D(b, 0.32 + Math.random() * 0.1, 0.92 + Math.random() * 0.16);
-    }
+    this.snd.geigerClicks(clicks);
     // тріск приладу — теж звук: «Слепой» його чує (тихо, але постійно)
     if (this.dosi.rate > 0 && (this.dosiNoiseT -= dt) <= 0) { this.dosiNoiseT = 1; this.hunt.noise(p.x, p.y + 1, p.z, 0.12 + 0.1 * (this.dosi.rate / 9)); }
     this.hud.setDosimeter(this.dosi.on && this.mode === 'play' ? this.dosi.needle * 0.7 : null); // повний фон ≈ 3.5 мР/ч, не в червоній зоні
@@ -952,7 +947,8 @@ export class Game {
   watchLies(): boolean { return this.psyche.lies(); }
 
   private applyFov(): void {
-    const t = Math.tan((this.baseFov * Math.PI) / 360) / (1 + this.cam.zoomK);
+    // біг трохи розширює поле зору (відчуття швидкості), зум камери — звужує
+    const t = Math.tan(((this.baseFov + this.runK * 5) * Math.PI) / 360) / (1 + this.cam.zoomK);
     this.camera.fov = (2 * Math.atan(t) * 180) / Math.PI;
     this.camera.updateProjectionMatrix();
   }
@@ -1038,10 +1034,6 @@ export class Game {
       this.acc += dt;
       const m = this.hide ? { x: 0, y: 0, run: false, crouch: false } : { x: this.input.move.x, y: this.input.move.y, run: this.input.run, crouch: this.input.crouch };
       while (this.acc >= STEP) { this.player.update(STEP, m); this.physics.step(); this.acc -= STEP; }
-    } else if (this.mode === 'menu') {
-      // у меню камера повільно «дихає» й оглядає кімнату
-      this.player.yaw = Math.sin(this.time * 0.07) * 0.5;
-      this.player.pitch = -0.04 + Math.sin(this.time * 0.11) * 0.03;
     }
     if (this.input.consume('flashlight') && this.mode === 'play') {
       this.flashlightOn = !this.flashlightOn;
@@ -1053,6 +1045,8 @@ export class Game {
     if (this.hud.readerOpen && (this.input.consume('interact') || this.input.consume('pause'))) this.hud.closeDoc();
     const lvl = this.level;
     this.rig.update(this.player, this.acc / STEP, dt);
+    const runWant = this.mode === 'play' && this.player.running && this.player.bobAmp > 0.9 ? 1 : 0;
+    if (Math.abs(runWant - this.runK) > 0.001) { this.runK += (runWant - this.runK) * Math.min(1, dt * (runWant ? 2.5 : 4)); this.applyFov(); }
     if (this.hide) {
       // камера всередині шафки, за жалюзі, дивиться в кімнату
       const h = this.hide;
@@ -1061,6 +1055,7 @@ export class Game {
       this.camera.updateMatrixWorld();
     }
     this.cameraOverride?.(this.camera, dt);
+    if (this.mode === 'menu') this.menuCamera(dt);
     if (lvl) {
       lvl.update(this.time, dt, this.camera);
       this.figure?.update(dt, this.camera, this.mode === 'play');
@@ -1077,7 +1072,6 @@ export class Game {
       this.omens.update(dt);
       look.fear.value = Math.max(0, look.fear.value - dt * 0.12);
       look.dread.value += (this.psyche.dread - look.dread.value) * Math.min(1, dt * 0.8);
-      if (this.ambGain) this.ambGain.gain.value = 1 - this.psyche.silence;
       if (this.mode === 'play' && !this.ending) this.soundscape.update(dt, { x: this.player.pos.x, z: this.player.pos.z, dread: this.psyche.dread, silence: this.psyche.silence, danger: this.hunt.danger });
       // живе згасання запеченого світла біля ламп, що мерехтять/згасли (оновлюємо кілька разів на секунду — дешево)
       this.dimT -= dt;
@@ -1094,31 +1088,32 @@ export class Game {
       if ((this.flashT -= dt) <= 0) {
         this.flashT = 0.05;
         const d = this.fwd.set(0, 0, -1).applyQuaternion(c.quaternion);
-        this.flashNear = this.physics.raycast(c.position.x, c.position.y, c.position.z, d.x, d.y, d.z, 3, G.STATIC | G.DOOR | G.PROP) ?? 10;
+        this.flashHit = this.physics.raycast(c.position.x, c.position.y, c.position.z, d.x, d.y, d.z, 12, G.STATIC | G.DOOR | G.PROP) ?? 12;
+        this.flashNear = Math.min(10, this.flashHit);
       }
       const nearK = Math.min(1, Math.max(0.1, (this.flashNear / 1.4) ** 2));
       this.flashK += (nearK - this.flashK) * Math.min(1, dt * 8);
       fl.intensity += ((this.flashlightOn ? 26 * (0.35 + 0.65 * low) * dip * this.flashK : 0) - fl.intensity) * Math.min(1, dt * 18);
       const spill = fl.children[0] as THREE.SpotLight | undefined;
       if (spill) spill.intensity = fl.intensity * 0.12;
+      // відбите від плями світло: трохи перед точкою влучання, слабшає з відстанню (пляма більша, але тьмяніша)
+      const bounce = fl.userData.bounce as THREE.PointLight | undefined;
+      if (bounce) {
+        const d = this.fwd.set(0, 0, -1).applyQuaternion(c.quaternion), h = Math.max(0.3, this.flashHit - 0.45);
+        bounce.position.copy(c.position).addScaledVector(d, h);
+        bounce.intensity = this.flashHit >= 12 ? 0 : fl.intensity * 0.075 / (1 + this.flashHit * 0.12);
+      }
       fl.position.set(0.18, -0.16, 0.05).applyQuaternion(c.quaternion).add(c.position);
       fl.target.position.set(0, -0.08, -6).applyQuaternion(c.quaternion).add(c.position);
       const fo = this.flashOverride;
       if (fo) { fl.position.copy(fo.from); fl.target.position.copy(fo.at); fl.intensity = fo.intensity; }
-      this.humT -= dt;
-      if (this.humT <= 0 && this.humVoices.length) {
-        this.humT = 0.4;
-        const near = lvl.lamps.nearest(c.position.x, c.position.z, this.humVoices.length);
-        this.humVoices.forEach((h, i) => {
-          const li = near[i];
-          if (li === undefined) { h.voice.setPosition(0, -100, 0); h.lamp = -1; return; }
-          const p = lvl.layout.lights[li];
-          if (p) h.voice.setPosition(p.x, lvl.layout.height - 0.05, p.z);
-          h.lamp = li;
-        });
-      }
-      const quiet = 1 - this.psyche.silence;
-      for (const h of this.humVoices) h.voice.gain.gain.value = h.lamp >= 0 ? 0.45 * lvl.lamps.levelOf(h.lamp) * quiet : 0;
+      this.snd.updateHum(dt, lvl, c.position.x, c.position.z, 1 - this.psyche.silence);
+      // адаптація ока: скільки світла довкола (живі лампи + власний ліхтарик) → бажана «діафрагма»;
+      // у темряві очі звикають за ~6 с (тіні проступають, але чорне лишається чорним), на світлі — за ~0.7 с
+      const E = lvl.lamps.lightAt(c.position.x, c.position.z) + (this.flashlightOn ? 0.3 * this.flashK : 0);
+      const want = Math.min(1.75, Math.max(0.85, Math.sqrt(0.75 / (E + 0.26))));
+      this.adapt += (want - this.adapt) * Math.min(1, dt * (want > this.adapt ? 0.4 : 2.2));
+      look.exposure.value = this.baseExposure * this.adapt;
     }
     const c = this.camera, f = new THREE.Vector3(0, 0, -1).applyQuaternion(c.quaternion);
     if (this.mode === 'play' && this.interact) {
@@ -1139,6 +1134,10 @@ export class Game {
       this.store.progress.playSeconds += dt;
       this.tapes.update(dt);
       this.tasks.update(dt);
+      if (this.level?.water) {
+        this.level.water.update(this.tasks.drain);
+        this.player.slow = this.level.water.wetAt(this.player.pos.x, this.player.pos.z) ? 0.8 : 1;
+      }
       if ((this.persistT -= dt) <= 0) { this.persistT = 10; this.persist(); }
       if (this.psyche.silence < 0.3) this.ambience.update(dt, this.player);
       if (this.mapmem && (this.mapT -= dt) <= 0) { this.mapT = 0.25; this.mapmem.mark(this.player.pos.x, this.player.pos.z); }

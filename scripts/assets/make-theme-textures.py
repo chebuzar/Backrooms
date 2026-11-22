@@ -12,13 +12,20 @@ PH = '.assets-src/polyhaven/tex'
 SETS = {
     'level1': {'wall': 'painted_plaster_wall', 'low': 'painted_concrete', 'floor': 'linoleum_brown', 'ceil': 'concrete_wall_008'},  # 17.11: підлога — потертий коричневий лінолеум (було old_linoleum_flooring_01, оранжева клітинка)
     'level2': {'wall': 'concrete_wall_008', 'low': 'blue_plaster_weathered', 'floor': 'garage_floor', 'ceil': 'rough_concrete'},
+    # дитсадок: побілка, панель олійною фарбою, «паркетний» лінолеум 70-х, побілена стеля
+    'level3': {'wall': 'plastered_wall_04', 'low': 'painted_concrete_02', 'floor': 'old_linoleum_flooring_01', 'ceil': 'white_plaster_02'},
+    # басейн: дрібна мозаїка (перефарбовується в бірюзу), кахель знизу й у чашах, протиковзка плитка на підлозі, облуплена стеля
+    'level4': {'wall': 'rounded_square_tiled_wall', 'low': 'anti_skid_tiles', 'floor': 'worn_tile_floor', 'ceil': 'white_rough_plaster'},
 }
 MAPS = {'c': ('diff', True, 1024, 'etc1s'), 'n': ('nor_gl', False, 1024, 'uastc'), 'r': ('rough', False, 512, 'etc1s')}
 
 import sys
 # --only level1:floor — перегенерувати лише одну поверхню (решта файлів лишається байт-у-байт)
 ONLY = sys.argv[sys.argv.index('--only') + 1] if '--only' in sys.argv else None
+LEVELS = sys.argv[sys.argv.index('--levels') + 1].split(',') if '--levels' in sys.argv else list(SETS)
 for lv, parts in SETS.items():
+    if lv not in LEVELS:
+        continue
     out = f'public/assets/tex/{lv}'
     os.makedirs(out, exist_ok=True)
     for part, asset in parts.items():

@@ -1,27 +1,28 @@
-// Обстановка рівнів 1–2 справжніми CC0-моделями (Poly Haven):
+// Обстановка рівнів 1–4 справжніми CC0-моделями (Poly Haven):
 // • база «Глубина-1»: спальні (ряди залізних ліжок), лабораторії (металеві столи з мікроскопами, каністри),
 //   диспетчерська (столи вряд, шафа);
 // • парковка: машини під брезентом уздовж стін, розмітка місць білою фарбою, каністри.
 // Детерміновано від зерна рівня; не на шляху Швів, старту й дверей; тіла для зіткнень — коробки за габаритами.
 import * as THREE from 'three/webgpu';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { attribute } from 'three/tsl';
+import { attribute, instancedBufferAttribute } from 'three/tsl';
 import type { Assets } from '../assets/loader';
 import type { Physics } from '../physics/physics';
 import { G } from '../physics/physics';
 import { rng } from '../core/rng';
 import type { Level } from './level0';
-import { lightProp } from './level0';
 import { probeAt, probeLit } from './materials';
+import { dressLate } from './dressing-late';
 
-interface Spot { x: number; z: number; yaw: number }
+export interface Spot { x: number; z: number; yaw: number }
 
 function inWall(lvl: Level, x: number, z: number, r: number): boolean {
   return lvl.layout.walls.some((w) => Math.abs(x - w.x) < w.w / 2 + r && Math.abs(z - w.z) < w.d / 2 + r);
 }
 
 /** Місця вздовж стін: ряд із n речей шириною w (м) і глибиною d, з відступом gap; вільно перед стіною. */
-function wallRows(lvl: Level, r: () => number, rows: number, n: number, w: number, d: number, gap: number, avoid: { x: number; z: number; r: number }[]): Spot[][] {
+export function wallRows(lvl: Level, r: () => number, rows: number, n: number, w: number, d: number, gap: number, avoid: { x: number; z: number; r: number }[],
+  opt: { where?: (x: number, z: number) => boolean; dark?: boolean } = {}): Spot[][] {
   const L = lvl.layout, out: Spot[][] = [];
   const walls = L.walls.filter((wl) => wl.kind !== 'pillar' && Math.max(wl.w, wl.d) >= n * (w + gap) + 0.6);
   for (let tries = 0; tries < 300 && out.length < rows; tries++) {
@@ -42,7 +43,8 @@ function wallRows(lvl: Level, r: () => number, rows: number, n: number, w: numbe
       }
       if (avoid.some((a) => Math.hypot(a.x - x, a.z - z) < a.r)) ok = false;
       // у межах рівня (зовнішні стіни мають і «зовнішній» бік) і не в цілковитій темряві — інакше речей ніхто не побачить
-      if (x < 1 || z < 1 || x > L.cols * L.cell - 1 || z > L.rows * L.cell - 1 || probeAt(L.lights, x, z) < 0.38) ok = false;
+      if (x < 1 || z < 1 || x > L.cols * L.cell - 1 || z > L.rows * L.cell - 1 || (!opt.dark && probeAt(L.lights, x, z) < 0.38)) ok = false;
+      if (opt.where && !opt.where(x, z)) ok = false;
       row.push({ x, z, yaw: Math.atan2(nx, nz) });
     }
     if (!ok) continue;
@@ -52,19 +54,53 @@ function wallRows(lvl: Level, r: () => number, rows: number, n: number, w: numbe
   return out;
 }
 
-async function put(assets: Assets, physics: Physics, lvl: Level, file: string, s: Spot, yawOff = 0, y = 0, collide = true): Promise<THREE.Box3> {
-  const o = (await assets.model(`assets/models/${file}.glb`)).scene.clone(true);
-  o.position.set(s.x, y, s.z);
-  o.rotation.y = s.yaw + yawOff;
-  lightProp(o, probeAt(lvl.layout.lights, s.x, s.z));
-  lvl.scene.add(o);
-  o.updateMatrixWorld(true);
-  const bb = new THREE.Box3().setFromObject(o);
+/** Речі обстановки, зібрані за моделлю: наприкінці — по одному InstancedMesh на кожну сітку моделі
+ *  (десятки ліжечок, стільців і шафок — кілька викликів малювання замість сотень; освітленість — атрибут екземпляра). */
+const batch = new Map<string, { scene: THREE.Object3D; items: { m: THREE.Matrix4; E: number }[] }>();
+const localBox = new Map<string, THREE.Box3>();
+
+export async function put(assets: Assets, physics: Physics, lvl: Level, file: string, s: Spot, yawOff = 0, y = 0, collide = true, scale = 1): Promise<THREE.Box3> {
+  const scene = (await assets.model(`assets/models/${file}.glb`)).scene;
+  let lb = localBox.get(file);
+  if (!lb) { scene.updateMatrixWorld(true); lb = new THREE.Box3().setFromObject(scene); localBox.set(file, lb); }
+  const m = new THREE.Matrix4().compose(new THREE.Vector3(s.x, y, s.z), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), s.yaw + yawOff), new THREE.Vector3(scale, scale, scale));
+  const b = batch.get(file) ?? { scene, items: [] };
+  b.items.push({ m, E: probeAt(lvl.layout.lights, s.x, s.z) });
+  batch.set(file, b);
+  const bb = lb.clone().applyMatrix4(m);
   if (collide) {
     const c = bb.getCenter(new THREE.Vector3()), sz = bb.getSize(new THREE.Vector3());
     physics.addBox(c.x, c.y, c.z, Math.max(0.05, sz.x / 2 - 0.03), sz.y / 2, Math.max(0.05, sz.z / 2 - 0.03), 0, G.PROP);
   }
   return bb;
+}
+
+/** Зібрати накопичені речі в InstancedMesh-і (по одному на кожну сітку кожної моделі). */
+function flushProps(lvl: Level): void {
+  for (const { scene, items } of batch.values()) {
+    scene.updateMatrixWorld(true);
+    const inv = new THREE.Matrix4().copy(scene.matrixWorld).invert();
+    scene.traverse((o) => {
+      const src = o as THREE.Mesh;
+      if (!src.isMesh) return;
+      // спільні буфери, але своя геометрія (атрибут екземпляра не має чіплятися до кешованої моделі)
+      const g = new THREE.BufferGeometry();
+      for (const [k, a] of Object.entries(src.geometry.attributes)) g.setAttribute(k, a);
+      if (src.geometry.index) g.setIndex(src.geometry.index);
+      for (const gr of src.geometry.groups) g.addGroup(gr.start, gr.count, gr.materialIndex);
+      g.boundingSphere = null;
+      const Es = instancedBufferAttribute(new THREE.InstancedBufferAttribute(new Float32Array(items.map((i) => i.E)), 1)) as unknown as THREE.Node<'float'>;
+      const mats = (Array.isArray(src.material) ? src.material : [src.material]).map((mt) => probeLit(mt, Es));
+      const im = new THREE.InstancedMesh(g, mats.length === 1 ? mats[0] as THREE.Material : mats, items.length);
+      const local = new THREE.Matrix4().multiplyMatrices(inv, src.matrixWorld);
+      items.forEach((it, i) => im.setMatrixAt(i, new THREE.Matrix4().multiplyMatrices(it.m, local)));
+      im.instanceMatrix.needsUpdate = true;
+      im.computeBoundingSphere();
+      im.castShadow = true; im.receiveShadow = true;
+      lvl.scene.add(im);
+    });
+  }
+  batch.clear();
 }
 
 /** Повертає перші місця кожного ряду (для контрольних кадрів). */
@@ -115,7 +151,10 @@ export async function dressLevel(assets: Assets, physics: Physics, lvl: Level, t
       mesh.receiveShadow = true;
       lvl.scene.add(mesh);
     }
+  } else if (lvl.id === 3 || lvl.id === 4) {
+    await dressLate(assets, physics, lvl, r, avoid, shown);
   }
+  flushProps(lvl);
   physics.step();
   return shown;
 }
