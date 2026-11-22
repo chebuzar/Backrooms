@@ -43,7 +43,7 @@ export const THEMES: Record<Preset, Theme> = {
   // з жовтим світлом розжарювання, третина не світить; у спальнях — темно
   kinder: {
     id: 'kinder', height: 2.85, paintH: 1.5, plinth: false, pillar: 0.5,
-    lamp: { w: 0.42, d: 0.42, spacing: 3, color: [1.0, 0.78, 0.55], power: 30, offP: 0.3, flickerP: 0.12 },
+    lamp: { w: 0.42, d: 0.42, spacing: 3, color: [1.0, 0.78, 0.55], power: 38, offP: 0.3, flickerP: 0.12 },
     albedo: { wall: [0.7, 0.64, 0.5], wallLow: [0.24, 0.4, 0.38], base: [0.1, 0.1, 0.1], floor: [0.45, 0.28, 0.12], ceil: [0.68, 0.68, 0.64] }
   },
   // басейн: висока стеля, кахель (бірюзова мозаїка, синя смуга знизу), чаші з водою, холодні квадратні плафони, половина мертва
@@ -370,7 +370,7 @@ function planKinder(r: Rng, cols: number, rows: number): Plan {
     }
   }
   // темні зони; спальні гасимо окремо (generateLayout)
-  const zones: ZoneStyle[] = Array.from({ length: 9 }, () => (r() < 0.4 ? 'dark' : 'rooms'));
+  const zones: ZoneStyle[] = Array.from({ length: 9 }, () => (r() < 0.22 ? 'dark' : 'rooms'));
   zones[0] = 'rooms';
   const c0 = corridors[0] ?? 7;
   return { g, pillars, zones, start: [2, c0], rooms };
@@ -504,7 +504,10 @@ export function generateLayout(o: LayoutOptions): Layout {
     if (preset !== 'yellow' && walls.some((w) => Math.abs(w.x - lx) < w.w / 2 + L.w / 2 + 0.1 && Math.abs(w.z - lz) < w.d / 2 + L.d / 2 + 0.1)) continue;
     const room = plan.rooms?.find((q) => lx >= q.x0 * cell && lx < q.x1 * cell && lz >= q.y0 * cell && lz < q.y1 * cell);
     // дитсадок: у спальнях світло майже ніде не горить; басейн: у залах з чашами більшість плафонів світить (видно воду)
-    const st: LightPanel['state'] = room?.kind === 'sleep' && roll < 0.85 ? 'off' : room?.kind === 'pool' ? (roll < 0.62 ? 'on' : roll < 0.75 ? 'flicker' : 'off') : state;
+    // дитсадок: коридори здебільшого світлі (острівці безпеки від «Улыбаки»), кімнати — як зона, спальні — темні
+    const corridor = preset === 'kinder' && !room;
+    const st: LightPanel['state'] = room?.kind === 'sleep' && roll < 0.85 ? 'off' : room?.kind === 'pool' ? (roll < 0.62 ? 'on' : roll < 0.75 ? 'flicker' : 'off')
+      : corridor ? (roll < 0.78 ? 'on' : roll < 0.88 ? 'flicker' : 'off') : state;
     lights.push({ x: lx, z: lz, w: L.w, d: L.d, state: st });
   }
 

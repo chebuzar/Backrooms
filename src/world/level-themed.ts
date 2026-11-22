@@ -37,7 +37,7 @@ export const THEMED: Record<ThemedId, ThemedDef> = {
   // дитсадок: кремова побілка, блідо-бірюзова олійна панель, лінолеум 70-х; теплий серпанок
   3: {
     seed: 3, preset: 'kinder', dir: 'level3', next: 4, doc: 'opis', fog: [0.17, 0.14, 0.11], fogDensity: 0.045, ambient: 0x1e1a14,
-    look: { scale: { wall: 2.0, low: 2.0, floor: 1.6, ceil: 2.5 }, paint: { wall: [0.8, 0.74, 0.6], low: [0.42, 0.6, 0.58] }, paintH: 1.5 }
+    look: { scale: { wall: 2.0, low: 2.0, floor: 1.6, ceil: 2.5 }, paint: { wall: [0.8, 0.74, 0.6], low: [0.42, 0.6, 0.58] }, paintH: 1.5, gain: { low: 2.3 } }
   },
   // басейн: бірюзова мозаїка, синя кахельна смуга, сіра протиковзка плитка; холодний вологий серпанок
   4: {

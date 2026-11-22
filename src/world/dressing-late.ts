@@ -30,7 +30,7 @@ export async function dressLate(assets: Assets, physics: Physics, lvl: Level, r:
       shown.push({ ...(row[0] as Spot), kind: 'tables' });
       for (const s of row) {
         const t = out(s, 0.2);
-        await put(assets, physics, lvl, 'painted-wooden-table', t, Math.PI / 2, 0, true, 0.62);
+        await put(assets, physics, lvl, 'painted-wooden-table', t, 0, 0, true, 0.62);
         for (const side of [-1, 1]) if (r() < 0.85) await put(assets, physics, lvl, 'painted-wooden-chair-01', along(out(t, 0.05), side * 0.62), side * Math.PI / 2 + (r() - 0.5) * 0.5, 0, true, 0.62);
       }
     }
