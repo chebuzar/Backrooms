@@ -69,7 +69,7 @@ export async function dressLate(assets: Assets, physics: Physics, lvl: Level, r:
     }
     // годинник над найбільшою чашею — на стіні, високо
     for (const row of wallRows(lvl, r, 1, 1, 0.6, 0.1, 0.1, avoid, { where: hall })) await put(assets, physics, lvl, 'wall-clock', row[0] as Spot, 0, 3.1, false, 1.6);
-    for (const row of wallRows(lvl, r, 3, 1, 0.5, 0.4, 0.1, avoid, { where: hall })) await put(assets, physics, lvl, r() < 0.5 ? 'wetsign' : 'wooden-bucket-01', row[0] as Spot, r());
+    for (const row of wallRows(lvl, r, 3, 1, 0.5, 0.4, 0.1, avoid, { where: hall })) await put(assets, physics, lvl, 'wooden-bucket-01', row[0] as Spot, r());
     // кімнати поза залами (роздягальні, душові): шафки
     for (const row of wallRows(lvl, r, 5, 4, 0.5, 0.5, 0.05, avoid, { where: (x, z) => kindAt(x, z) === null })) {
       shown.push({ ...(row[0] as Spot), kind: 'lockers' });
