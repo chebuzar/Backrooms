@@ -138,16 +138,19 @@ function remember(b: Box, d: FeedbackDraft, res: { no: number; ticket: string })
   b.mine = b.mine.slice(-30);
 }
 
+function queue(d: FeedbackDraft): SendResult {
+  const b = load(); b.outbox.push({ ...d, at: Date.now() }); b.outbox = b.outbox.slice(-5); store(b);
+  return { ok: false, reason: 'queued' };
+}
+
 /** Надіслати запис. Без зв'язку — у чергу (відправиться пізніше сам). */
 export async function sendFeedback(d: FeedbackDraft, openedMs: number): Promise<SendResult> {
   const server = feedbackServer();
   if (!server) return { ok: false, reason: 'disabled' };
   let r: Response;
-  try { r = await post(server, d, openedMs); } catch {
-    const b = load(); b.outbox.push({ ...d, at: Date.now() }); b.outbox = b.outbox.slice(-5); store(b);
-    return { ok: false, reason: 'queued' };
-  }
+  try { r = await post(server, d, openedMs); } catch { return queue(d); }
   if (r.status === 429) return { ok: false, reason: 'rate' };
+  if (r.status >= 500) return queue(d); // сервер лежить (шлюз, перезапуск) — не вина гравця, дошлемо пізніше
   const res = await r.json().catch(() => ({})) as { no?: number; ticket?: string; error?: string };
   if (!r.ok || typeof res.no !== 'number' || typeof res.ticket !== 'string') return { ok: false, reason: 'rejected', message: res.error };
   const b = load(); remember(b, d, { no: res.no, ticket: res.ticket }); store(b);
@@ -163,11 +166,12 @@ export async function flushOutbox(): Promise<number> {
     const q = b.outbox[0] as Queued;
     let r: Response;
     try { r = await post(server, q, 30000); } catch { break; }
+    if (r.status >= 500 || r.status === 429) break; // сервер ще лежить або просить почекати — запис лишається в черзі
     b = load(); b.outbox.shift();
     if (r.ok) {
       const res = await r.json().catch(() => ({})) as { no?: number; ticket?: string };
       if (typeof res.no === 'number' && typeof res.ticket === 'string') { remember(b, q, { no: res.no, ticket: res.ticket }); sent++; }
-    } else if (r.status === 429) { b.outbox.unshift(q); store(b); break; }
+    }
     store(b);
   }
   return sent;
