@@ -1,18 +1,23 @@
-// Сервер игры «Закулисье»: аккаунты (имя + пароль), облачные сохранения, отчёты игроков, сообщения об ошибках,
-// уведомления о больших обновлениях. Postgres (DATABASE_URL), без фреймворков.
+// Сервер игры «Закулисье»: отзывы игроков («Книга жалоб и предложений», server/feedback.mjs), аккаунты (имя + пароль),
+// облачные сохранения, отчёты, уведомления о больших обновлениях. Postgres (DATABASE_URL), без фреймворков.
+// Без DATABASE_URL (локально, автотесты) отзывы хранятся в памяти, остальное отвечает 503.
 import http from 'node:http';
 import crypto from 'node:crypto';
 import pg from 'pg';
 import webpush from 'web-push';
+import { feedbackRoutes, memoryStore, pgStore } from './feedback.mjs';
 
 const PORT = Number(process.env.PORT || 8080);
 const ADMIN = process.env.ADMIN_KEY || '';
 const RELEASE_URL = process.env.RELEASE_URL || 'https://raw.githubusercontent.com/chebuzar/Backrooms/main/public/release.json';
-const ORIGINS = [/^https:\/\/chebuzar\.github\.io$/, /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/];
-const db = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 5, ssl: process.env.DATABASE_URL && /sslmode=require|ssl=true/.test(process.env.DATABASE_URL) ? { rejectUnauthorized: false } : undefined });
+const ORIGINS = [/^https:\/\/chebuzar\.github\.io$/, /^https:\/\/zakulisye\.ample\.run$/, /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/];
+const FEEDBACK_KEY = process.env.FEEDBACK_KEY || ''; // лише читать и разбирать отзывы (ключ для Claude), без прав ADMIN_KEY
+const db = !process.env.DATABASE_URL ? null : new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 5, ssl: process.env.DATABASE_URL && /sslmode=require|ssl=true/.test(process.env.DATABASE_URL) ? { rejectUnauthorized: false } : undefined });
 if (process.env.VAPID_PUBLIC && process.env.VAPID_PRIVATE) webpush.setVapidDetails('https://chebuzar.github.io/Backrooms/', process.env.VAPID_PUBLIC, process.env.VAPID_PRIVATE);
 
 async function migrate() {
+  if (!db) return;
+  await feedbackStore.migrate();
   await db.query(`
     create table if not exists accounts (id bigserial primary key, name text unique not null, name_lc text unique not null, pass text not null, created_at timestamptz default now());
     create table if not exists sessions (token_hash text primary key, account_id bigint references accounts(id) on delete cascade, created_at timestamptz default now());
@@ -28,13 +33,18 @@ const sha = (s) => crypto.createHash('sha256').update(s).digest('hex');
 const hashPass = (p) => new Promise((res, rej) => { const salt = crypto.randomBytes(16); crypto.scrypt(p, salt, 32, { N: 16384, r: 8, p: 1 }, (e, k) => (e ? rej(e) : res('s1$' + salt.toString('base64') + '$' + k.toString('base64')))); });
 const checkPass = (p, stored) => new Promise((res) => { const [, s, k] = String(stored).split('$'); if (!s || !k) return res(false); crypto.scrypt(p, Buffer.from(s, 'base64'), 32, { N: 16384, r: 8, p: 1 }, (e, d) => res(!e && crypto.timingSafeEqual(d, Buffer.from(k, 'base64')))); });
 const NAME = /^[\p{L}\p{N}_ .-]{3,20}$/u;
-const hits = new Map(); // простое ограничение частоты: ключ → [окно, число]
+const hits = new Map(); // простое ограничение частоты: ключ → [начало окна, число, окно]
 function limited(key, max, win = 60000) {
   const now = Date.now(), h = hits.get(key);
-  if (!h || now - h[0] > win) { hits.set(key, [now, 1]); return false; }
+  if (!h || now - h[0] > win) { hits.set(key, [now, 1, win]); return false; }
   return ++h[1] > max;
 }
-setInterval(() => { const now = Date.now(); for (const [k, h] of hits) if (now - h[0] > 120000) hits.delete(k); }, 60000).unref();
+setInterval(() => { const now = Date.now(); for (const [k, h] of hits) if (now - h[0] > h[2]) hits.delete(k); }, 60000).unref();
+const safeEq = (a, b) => { const x = Buffer.from(String(a)), y = Buffer.from(String(b)); return x.length === y.length && crypto.timingSafeEqual(x, y); };
+// ключ — в x-admin-key или «Authorization: Bearer …» (так его подставляют сетевые секреты среды Claude)
+const isAdmin = (req) => { const k = req.headers['x-admin-key'] || /^Bearer (.+)$/.exec(req.headers.authorization || '')?.[1]; return !!k && ((!!ADMIN && safeEq(k, ADMIN)) || (!!FEEDBACK_KEY && safeEq(k, FEEDBACK_KEY))); };
+const feedbackStore = db ? pgStore(db) : memoryStore();
+const feedback = feedbackRoutes(feedbackStore);
 
 function send(res, code, obj, origin) {
   const headers = { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' };
@@ -62,6 +72,13 @@ async function route(req, res, origin) {
   if (req.method === 'OPTIONS') return send(res, 204, undefined, origin);
   if (p === '/' || p === '/health') return send(res, 200, { ok: true, service: 'zakulisye' }, origin);
   if (p === '/vapid') return send(res, 200, { key: process.env.VAPID_PUBLIC || null }, origin);
+
+  // отзывы игроков: /feedback, /feedback/challenge, /feedback/status, /admin/feedback…
+  if (p.startsWith('/feedback') || p.startsWith('/admin/feedback')) {
+    const handled = await feedback(req, res, p, url, { send: (code, obj) => send(res, code, obj, origin), body, limited, ip, isAdmin });
+    if (handled !== false) return;
+  }
+  if (!db) return send(res, 503, { error: 'no database' }, origin);
 
   // отчёты игроков и сообщения об ошибках (без входа)
   if ((p === '/perf' || p === '/bugs') && req.method === 'POST') {
@@ -171,5 +188,5 @@ http.createServer(async (req, res) => {
 }).listen(PORT, async () => {
   console.log('listening', PORT);
   for (let i = 0; i < 10; i++) { try { await migrate(); break; } catch (e) { console.warn('db not ready', e.message); await new Promise((r) => setTimeout(r, 3000)); } }
-  checkRelease(); setInterval(checkRelease, 10 * 60 * 1000);
+  if (db) { checkRelease(); setInterval(checkRelease, 10 * 60 * 1000); }
 });
