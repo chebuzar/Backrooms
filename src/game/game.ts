@@ -8,6 +8,7 @@ import { Notebook } from '../ui/notebook';
 import { MapMemory } from './mapmem';
 import { buildUnseen } from '../world/unseen';
 import { makeBody } from '../world/bodies';
+import { furnishNii } from '../world/nii-furniture';
 import { dressLevel } from '../world/dressing';
 import { Psyche } from './psyche';
 import { Soundscape } from './soundscape';
@@ -112,6 +113,8 @@ export class Game {
   private persistT = 0;
   /** Ліхтарик упритул до стіни: відстань до поверхні перед ним і плавний множник яскравості. */
   private flashNear = 10;
+  /** Відстань до того, куди влучає промінь ліхтарика (до 12 м). */
+  private flashHit = 12;
   private flashK = 1;
   private flashT = 0;
   private readonly fwd = new THREE.Vector3();
@@ -156,6 +159,9 @@ export class Game {
   private stage: 'desk' | 'seam' | 'done' = 'desk';
   private ending = false;
   readonly psyche = new Psyche();
+  /** Експозиція з налаштувань (яскравість) і адаптація ока: у темряві зір поволі звикає, під лампою — швидко звужується. */
+  private baseExposure = BASE_EXPOSURE;
+  private adapt = 1;
   readonly soundscape = new Soundscape(this.audio, (t, sec) => this.hud.subtitle(t, sec));
   /** Обстановка рівня (для контрольних кадрів). */
   dressed: { x: number; z: number; yaw: number; kind: string }[] = [];
@@ -297,7 +303,8 @@ export class Game {
     this.snd.stopGen();
     const busy = [...this.findings, ...this.pickups, ...this.specials, ...this.lockers].map((f) => ({ x: f.x, z: f.z }));
     await this.tasks.build(this.assets, this.physics, lvl, busy);
-    this.dressed = lvl.id > 0 ? await dressLevel(this.assets, this.physics, lvl, [...busy, ...this.tasks.spots(), ...Object.values(lvl.spots)]) : [];
+    const taken = [...busy, ...this.tasks.spots(), ...Object.values(lvl.spots)];
+    this.dressed = lvl.id > 0 ? await dressLevel(this.assets, this.physics, lvl, taken) : await furnishNii(this.assets, this.physics, lvl, taken);
     this.phoneAnswered = false; this.writingSeen = false;
     this.setScene(lvl.scene);
     if (this.player) this.setupInteractions(lvl);
@@ -335,7 +342,8 @@ export class Game {
   }
 
   applySettings(s: Settings): void {
-    look.exposure.value = BASE_EXPOSURE * s.brightness;
+    this.baseExposure = BASE_EXPOSURE * s.brightness;
+    look.exposure.value = this.baseExposure * this.adapt;
     this.baseFov = s.fov; this.applyFov();
     this.fpsCap = s.fpsLimit === 'off' ? 0 : Number(s.fpsLimit);
     this.audio.setVolumes(s.masterVolume, s.musicVolume, s.sfxVolume);
@@ -1027,18 +1035,32 @@ export class Game {
       if ((this.flashT -= dt) <= 0) {
         this.flashT = 0.05;
         const d = this.fwd.set(0, 0, -1).applyQuaternion(c.quaternion);
-        this.flashNear = this.physics.raycast(c.position.x, c.position.y, c.position.z, d.x, d.y, d.z, 3, G.STATIC | G.DOOR | G.PROP) ?? 10;
+        this.flashHit = this.physics.raycast(c.position.x, c.position.y, c.position.z, d.x, d.y, d.z, 12, G.STATIC | G.DOOR | G.PROP) ?? 12;
+        this.flashNear = Math.min(10, this.flashHit);
       }
       const nearK = Math.min(1, Math.max(0.1, (this.flashNear / 1.4) ** 2));
       this.flashK += (nearK - this.flashK) * Math.min(1, dt * 8);
       fl.intensity += ((this.flashlightOn ? 26 * (0.35 + 0.65 * low) * dip * this.flashK : 0) - fl.intensity) * Math.min(1, dt * 18);
       const spill = fl.children[0] as THREE.SpotLight | undefined;
       if (spill) spill.intensity = fl.intensity * 0.12;
+      // відбите від плями світло: трохи перед точкою влучання, слабшає з відстанню (пляма більша, але тьмяніша)
+      const bounce = fl.userData.bounce as THREE.PointLight | undefined;
+      if (bounce) {
+        const d = this.fwd.set(0, 0, -1).applyQuaternion(c.quaternion), h = Math.max(0.3, this.flashHit - 0.45);
+        bounce.position.copy(c.position).addScaledVector(d, h);
+        bounce.intensity = this.flashHit >= 12 ? 0 : fl.intensity * 0.075 / (1 + this.flashHit * 0.12);
+      }
       fl.position.set(0.18, -0.16, 0.05).applyQuaternion(c.quaternion).add(c.position);
       fl.target.position.set(0, -0.08, -6).applyQuaternion(c.quaternion).add(c.position);
       const fo = this.flashOverride;
       if (fo) { fl.position.copy(fo.from); fl.target.position.copy(fo.at); fl.intensity = fo.intensity; }
       this.snd.updateHum(dt, lvl, c.position.x, c.position.z, 1 - this.psyche.silence);
+      // адаптація ока: скільки світла довкола (живі лампи + власний ліхтарик) → бажана «діафрагма»;
+      // у темряві очі звикають за ~6 с (тіні проступають, але чорне лишається чорним), на світлі — за ~0.7 с
+      const E = lvl.lamps.lightAt(c.position.x, c.position.z) + (this.flashlightOn ? 0.3 * this.flashK : 0);
+      const want = Math.min(1.75, Math.max(0.85, Math.sqrt(0.75 / (E + 0.26))));
+      this.adapt += (want - this.adapt) * Math.min(1, dt * (want > this.adapt ? 0.4 : 2.2));
+      look.exposure.value = this.baseExposure * this.adapt;
     }
     const c = this.camera, f = new THREE.Vector3(0, 0, -1).applyQuaternion(c.quaternion);
     if (this.mode === 'play' && this.interact) {
