@@ -69,7 +69,10 @@ export class FrameProbe {
       nodes._createNodeBuilder = (ro: RenderObjectLike, m: unknown) => {
         if (this.built.length < 64) {
           const o = ro.object, mat = ro.material;
-          this.built.push(`${o?.name || o?.parent?.name || o?.type || '?'}/${mat?.name || mat?.type || '?'}`);
+          // ім'я об'єкта або найближчого названого предка (у моделях із glTF меші часто безіменні)
+          let n: { name?: string; type?: string; parent?: unknown } | null | undefined = o, label = '';
+          for (let k = 0; k < 5 && n && !label; k++) { label = n.name ?? ''; n = n.parent as typeof n; }
+          this.built.push(`${label || o?.type || '?'}/${mat?.name || mat?.type || '?'}`);
           if (this.lightsLog) this.built.push('lights:' + (ro.lightsNode?.getLights?.() ?? []).map((l) => `${l.type}${l.id}${l.castShadow ? 's' : ''}`).join(','));
         }
         return orig.call(nodes, ro, m);
