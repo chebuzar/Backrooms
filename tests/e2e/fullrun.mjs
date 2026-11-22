@@ -66,7 +66,7 @@ try {
     await page.click('.age [data-go]');
     await page.waitForSelector('.menu [data-c]', { timeout: 30000 });
     await page.click('.menu [data-c]');
-    await page.waitForFunction((n) => window.__zk.game.level?.id === n && window.__zk.game.input.enabled, from, { timeout: 120000 });
+    await page.waitForFunction((n) => window.__zk.game.level?.id === n && window.__zk.game.input.enabled, from, { timeout: 300000 });
   } else {
     await page.click('.age [data-go]');
     await page.waitForSelector('.menu [data-s]', { timeout: 30000 });

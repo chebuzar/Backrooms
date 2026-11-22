@@ -88,7 +88,7 @@ export class Stalker {
         const n = src.name.toLowerCase(), c = (r: number, g: number, b: number) => new THREE.Color().setRGB(r, g, b, THREE.SRGBColorSpace);
         // мертва шкіра: знекровлена, сірувато-воскова, волога; очі «Наблюдателя» — суцільно чорні; роба — брудна, темна
         if (n.includes('body')) {
-          mat.color = kind === 'blind' ? c(0.62, 0.6, 0.56) : kind === 'smiler' ? c(0.78, 0.74, 0.7) : kind === 'drowned' ? c(0.5, 0.58, 0.6) : c(0.4, 0.38, 0.36);
+          mat.color = kind === 'blind' ? c(0.62, 0.6, 0.56) : kind === 'smiler' ? c(0.78, 0.74, 0.7) : kind === 'drowned' ? c(0.36, 0.46, 0.47) : c(0.4, 0.38, 0.36);
           mat.roughness = kind === 'drowned' ? 0.25 : 0.48; // утоплений — мокрий, блищить
         }
         else if (n.includes('worksuit')) { mat.map = null; mat.color = c(0.09, 0.095, 0.085); mat.roughness = 0.9; } // роба, чорна від бруду й часу
@@ -120,8 +120,8 @@ export class Stalker {
       // «Улыбака»: голова лягає на плече, руки обіймають з боків
       ? { neck_01: [0, 0, 1.1 * this.tilt], head: [-0.1, 0, 0.6 * this.tilt], upperarm_l: [-1.4, 0, -0.9], upperarm_r: [-1.4, 0, 0.9], lowerarm_l: [0, 0, -0.9], lowerarm_r: [0, 0, 0.9] }
       : this.kind === 'drowned'
-      // «Утопленник»: важко навалюється, руки на плечі, голова з відкритим ротом угору
-      ? { spine_01: [0.3, 0, 0], neck_01: [-0.5, 0, 0.2], head: [-0.3, 0, 0.2], upperarm_l: [-1.3, 0, -0.4], upperarm_r: [-1.3, 0, 0.4], lowerarm_l: [-0.6, 0, 0], lowerarm_r: [-0.6, 0, 0] }
+      // «Утопленник»: важко навалюється, руки на плечі, голова схилена — каламутні очі просто в об'єктив
+      ? { spine_01: [0.3, 0, 0], neck_01: [-0.12, 0, 0.18], head: [0.08, 0, 0.16], upperarm_l: [-1.3, 0, -0.4], upperarm_r: [-1.3, 0, 0.4], lowerarm_l: [-0.6, 0, 0], lowerarm_r: [-0.6, 0, 0] }
       : this.kind === 'watcher'
       // «Наблюдатель»: руки тягнуться до камери, голова схилена набік — дивиться впритул чорними очима
       ? { upperarm_l: [-1.2, 0, -0.5], upperarm_r: [-1.2, 0, 0.5], lowerarm_l: [-0.5, 0, 0], lowerarm_r: [-0.5, 0, 0], neck_01: [-0.15, 0, 0.3], head: [-0.2, 0, 0.35] }

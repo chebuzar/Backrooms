@@ -5,7 +5,7 @@
 import * as THREE from 'three/webgpu';
 import type { Assets } from '../assets/loader';
 import type { Physics } from '../physics/physics';
-import { generateLayout } from './layout';
+import { generateLayout, type Layout } from './layout';
 import { probeAt } from './materials';
 import { loadThemeTextures, makeThemeMaterials, type ThemeLook } from './theme-materials';
 import { Lamps } from './lamps';
@@ -74,10 +74,14 @@ export async function buildThemedLevel(id: ThemedId, assets: Assets, physics: Ph
   const seam = new Seam(seamAt.x, seamAt.z, seamAt.yaw, H);
   scene.add(seam.group);
   // Шов прибуття за спиною (затягується, як і на рівні 0)
-  const arrivalAt = seamPlacement(layout, layout.spawn.x, layout.spawn.z, decor);
+  // Шов — на стіні позаду, якщо дивитися з точки старту туди, де найдовше видно (а не на найближчій стіні,
+  // яка часто відрізає гравця в тісній роздягальні чи комірчині)
+  const a0 = openYaw(layout, layout.spawn.x, layout.spawn.z, null);
+  const back = rayLen(layout, layout.spawn.x, layout.spawn.z, a0 + Math.PI);
+  const arrivalAt = seamPlacement(layout, layout.spawn.x + Math.sin(a0) * back, layout.spawn.z + Math.cos(a0) * back, decor);
   const ny = arrivalAt.yaw;
   const [ax, az] = freeNear(layout, arrivalAt.x + Math.sin(ny) * 1.25, arrivalAt.z + Math.cos(ny) * 1.25, 0.4);
-  layout.spawn.x = ax; layout.spawn.z = az; layout.spawn.yaw = ny + Math.PI;
+  layout.spawn.x = ax; layout.spawn.z = az; layout.spawn.yaw = openYaw(layout, ax, az, ny);
   const arrival = new Seam(arrivalAt.x, arrivalAt.z, arrivalAt.yaw, H);
   arrival.life.value = 0;
   scene.add(arrival.group);
@@ -118,4 +122,30 @@ async function placeDoc(assets: Assets, physics: Physics, l: ReturnType<typeof g
   scene.add(clip);
   physics.step();
   return { [doc]: { id: doc, x, y: bb.max.y + 0.02, z } };
+}
+
+/** Скільки вільно видно з (x, z) у напрямку погляду yaw (вперед — (−sin yaw, −cos yaw)), до 18 м. */
+function rayLen(l: Layout, x: number, z: number, yaw: number): number {
+  const fx = -Math.sin(yaw), fz = -Math.cos(yaw);
+  const hit = (px: number, pz: number) => l.walls.some((w) => Math.abs(px - w.x) < w.w / 2 + 0.2 && Math.abs(pz - w.z) < w.d / 2 + 0.2)
+    || l.pools.some((q) => Math.abs(px - q.x) < q.w / 2 && Math.abs(pz - q.z) < q.d / 2);
+  let d = 0;
+  while (d < 18 && !hit(x + fx * d, z + fz * d)) d += 0.2;
+  return d;
+}
+
+/**
+ * Куди дивитися після прибуття: туди, де найдовше видно; ny — нормаль стіни зі Швом ((sin ny, cos ny) — «від Шва»),
+ * тоді лише в бік від нього. Вперед для гравця — (−sin yaw, −cos yaw).
+ */
+function openYaw(l: Layout, x: number, z: number, ny: number | null): number {
+  let best = ny === null ? 0 : ny + Math.PI, bestScore = -1;
+  for (let i = 0; i < 24; i++) {
+    const a = (i / 24) * Math.PI * 2;
+    const away = ny === null ? 1 : -Math.sin(a) * Math.sin(ny) - Math.cos(a) * Math.cos(ny); // 1 — прямо від Шва
+    if (away < 0.2) continue;
+    const score = rayLen(l, x, z, a) * (0.75 + 0.25 * away);
+    if (score > bestScore) { bestScore = score; best = a; }
+  }
+  return best;
 }

@@ -126,6 +126,7 @@ Claude — розробник і тестувальник: пише код, са
 - Перед появою — напруга (звуки, мерехтіння, тиша), а не раптовий скример.
 - ШІ — `src/ai/brain.ts` (зір зі світлом/ліхтариком/присідом, слух з приглушенням стінами, пам'ять, стани patrol → suspicious → investigate → chase → search → lost, правила `movesWhenUnseen`, `fearsLight`, `cutsOff`) + `src/ai/nav.ts` (recast navmesh з того ж планування). Тести — `tests/unit/ai.test.ts`.
 - Моделі: генератор `blender -b -P scripts/blender/make_monster.py -- --preset watcher --out .assets-src/monsters/watcher.glb`. Встановлення в новому контейнері: аддон — `blender -b --command extension install-file -r user_default -e .assets-src/makehuman/mpfb.zip` (zip із `mpfb2/src/mpfb`, репозиторій makehumancommunity/mpfb2), ассети — розпакувати `makehuman_system_assets_cc0.zip` (files2.makehumancommunity.org/asset_packs/…, 281 МБ) у `~/.config/blender/4.5/extensions/.user/user_default/mpfb/data`.
+- Пресети `watcher`, `blind`, `smiler` (жінка, костюм `elegantsuit01`, зачіска `bob01`, зуби; усмішку ліпить код, сила — `GRIN=1.0`), `drowned` (важкий, шапочка `short02`); прев'ю — `--preview .shots/mon-<x>.png`; далі `npm run optimize-asset -- <glb> --ratio 0.35 --tex 1024`. Риси мозку: `darkOnly`, `fearsLight`, `waterSpeed`, `submerges`.
 - Тіла **MakeHuman/MPFB2** (CC0; приклад — `scripts/blender/mh_test.py`, скелет `game_engine` 53 кістки) + анімації **Quaternius UAL** (CC0, `.assets-src/packs/ual`), перенесення — `src/world/monsters/retarget.ts` (`MH_TO_UAL`).
 - Джерела без ключів — таблиця в `docs/PLAN.md`.
 
@@ -155,6 +156,7 @@ Claude — розробник і тестувальник: пише код, са
 - Матеріали (`src/world/materials.ts`): `BakedMaterial` (перевизначає `setupLightMap` → `IrradianceNode`); шпалери, сітка стелі (зсув 0.3 по Z під лампи), вологі плями й облуплена фарба — змішування справжніх текстур за масками; предмети без карти світла — `probeLit` + `probeAt` (освітленість від найближчих ламп).
 - Лампи — один `InstancedMesh` (`lamps.ts`), стан і мерехтіння через instanced-атрибут. «Шов» — `seam.ts`. Предмети рівня 0 — `placeProps` у `level0.ts` (Poly Haven, CC0).
 - Текстури рівня 0: `python3 -I scripts/assets/make-level0-textures.py` (справжні CC0 ShareTextures/ambientCG → обробка → KTX2 у `public/assets/tex/level0`); джерела — `ASSETS.md`. Контрольні кадри: `node tests/e2e/views.mjs webkit <назва>` → `.shots/views-<назва>-webkit.png`.
+- Рівні 3–4 (`level-themed.ts`, пресети `kinder` / `pool` у `layout.ts`): експорт `npx tsx scripts/levels/export-layout.ts <seed> <json> <preset>` (пресет обов'язковий, інакше — жовтий рівень 0); запікання — `.assets-src/levels/bake-new.sh` (~3 хв на шматок); обстановка — `dressing-late.ts`; вода — `water.ts` (ReflectorNode лише на «Высокое/Ультра»). Кадри кімнат: `ZK_PORT=5193 node tests/e2e/rooms.mjs <id>`, огляд рівнів: `node tests/e2e/levels.mjs --ids 3,4`.
 
 ## Команди
 | Команда | Що робить |
@@ -164,6 +166,7 @@ Claude — розробник і тестувальник: пише код, са
 | `npm run shot -- [--browser chromium,webkit,firefox\|all] [--device "iPhone 15 Pro landscape"] [--query "q=high"] [--webgl] [--eval js] [--prod] [--name x]` | скріншот + стан гри (`__zk.info()`) + помилки/попередження консолі (код 1, якщо є) |
 | `npm run smoke` | зібрана гра в Chromium і WebKit без помилок |
 | `npm run e2e:play` / `e2e:bench` / `e2e:memory` | плейтест / тест швидкодії / перевірка пам'яті (WebKit) |
+| `npm run build && node tests/e2e/fullrun.mjs webkit --prod [--from 3] [--ending stay] [--no-video]` | **бот-гравець** проходить усю гру клавішами (рівні 0–4, фінал, титри) з відеозаписом → `.shots/fullrun/<браузер>/{run.webm,report.json}`; лише на зібраній грі (`--prod`): dev-сервер перезавантажує сторінку при зміні файлів |
 | `?debug` в адресі | `window.__zk` (renderer, scene, camera, info()) ; `?webgl` — примусово WebGL 2; `?q=low\|medium\|high\|ultra` |
 
 - Порт скріншотів — 5191 (**4190 WebKit блокує** як «небезпечний»).
