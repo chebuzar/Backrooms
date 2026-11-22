@@ -39,6 +39,14 @@
 - `models/lifebuoy.glb` — «Lifebuoy» — Hank Kaamura, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/lifebuoy
 - `models/wall-clock.glb` — «Wall Clock» — PierreB3D, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/wall_clock
 - `models/wooden-bucket-01.glb` — «Wooden Bucket 01» — James Ray Cock, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/wooden_bucket_01
+- `models/chalkboard.glb` — «Standing Chalkboard 01» — ParzivalCG, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/standing_chalkboard_01
+- `models/steel-shelves.glb` — «Steel Frame Shelves 01» — James Ray Cock, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/steel_frame_shelves_01
+- `models/notepads.glb` — «Office Notepads» — Ulan Cabanilla, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/office_notepads
+- `models/desk-lamp.glb` — «Desk Lamp Arm 01» — Yann Kervran, Kuutti Siitonen, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/desk_lamp_arm_01
+- `models/vintage-cabinet.glb` — «Vintage Cabinet 01» — Rico Cilliers, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/vintage_cabinet_01
+- `models/drawer-cabinet.glb` — «Drawer Cabinet» — Ulan Cabanilla, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/drawer_cabinet
+- `models/bookshelf.glb` — «Wooden Bookshelf Worn» — Ulan Cabanilla, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/wooden_bookshelf_worn
+- `models/school-desk.glb` — «School Desk 01» — Ethan Place, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/SchoolDesk_01
 
 ## Текстури Poly Haven
 
