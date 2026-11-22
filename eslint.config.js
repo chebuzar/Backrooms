@@ -9,8 +9,16 @@ export default defineConfig(
   tseslint.configs.recommended,
   {
     files: ['**/*.ts'],
-    languageOptions: { globals: { ...globals.browser } },
+    languageOptions: {
+      globals: { ...globals.browser },
+      // типи для правил нижче: тихо «загублені» проміси й застарілі (@deprecated) API ловить лінтер, а не гравець
+      parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname }
+    },
     rules: {
+      '@typescript-eslint/no-floating-promises': 'error',
+      '@typescript-eslint/no-misused-promises': 'error',
+      '@typescript-eslint/await-thenable': 'error',
+      '@typescript-eslint/no-deprecated': 'error',
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', caughtErrors: 'none' }],
       '@typescript-eslint/consistent-type-imports': 'error',
       'no-empty': ['error', { allowEmptyCatch: true }]
