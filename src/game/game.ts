@@ -349,6 +349,9 @@ export class Game {
     if (!this.level) return;
     const fade = look.fade.value;
     look.fade.value = 1;
+    // тінь ліхтарика теж гріємо, навіть якщо він зараз вимкнений (frame() не малює тінь вимкненого) — інакше перше
+    // ввімкнення збирало б шейдери тіньового проходу для всього рівня; наступний кадр сам поверне як треба
+    this.level.flashlight.shadow.autoUpdate = true;
     try {
       const ms = warmup(this.level.scene, this.camera, () => this.post.render());
       this.warmMs = Math.round(ms);
@@ -1137,7 +1140,7 @@ export class Game {
     }
     const now = ts;
     const rawMs = now - this.last;
-    const dtMs = Math.min(100, rawMs);
+    const dtMs = Math.max(0, Math.min(100, rawMs));
     this.last = now;
     const dt = dtMs / 1000;
     if (this.mode === 'play' && this.autoScale) {
