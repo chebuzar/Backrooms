@@ -50,7 +50,9 @@ export class Hunt {
     if (!kind) return;
     // модель свого монстра; якщо файл не завантажився — тіло «Наблюдателя» (з власною поведінкою й кольором шкіри)
     const model = assets.model(`assets/models/${kind}.glb`).catch(() => assets.model('assets/models/watcher.glb'));
-    const [nav, gl] = await Promise.all([Nav.fromLayout(lvl.layout), model]);
+    // бібліотека рухів (Quaternius UAL): без неї монстр рухається процедурними позами, як раніше
+    const ual = kind === 'watcher' ? Promise.resolve(null) : assets.model('assets/anim/ual.glb').catch(() => null);
+    const [nav, gl, anims] = await Promise.all([Nav.fromLayout(lvl.layout), model, ual]);
     this.nav = nav;
     const L = lvl.layout;
     // «дім» — клітинка на ~60 % найдовшого шляху від старту: далеко, але не в глухому куті
@@ -74,7 +76,7 @@ export class Hunt {
     const s = new Stalker(kind, cloneSkinned(gl.scene), nav, physics, lvl.lamps, lvl.doors, home, {
       onCatch: () => this.ev.onCatch(),
       onCloser: (_s, by) => this.ev.onCloser(by)
-    }, lvl.water ?? null);
+    }, lvl.water ?? null, anims ? { scene: anims.scene, animations: anims.animations } : null);
     if (pool) s.poolAt = { x: pool.x, z: pool.z };
     s.onStep = (x, z, loud, wet) => {
       const b = wet ? this.splash() : this.sfx.pick('step_');

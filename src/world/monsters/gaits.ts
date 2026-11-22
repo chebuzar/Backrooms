@@ -42,3 +42,64 @@ export function drownedPose(s: number, a: number, hunt: boolean, rise: number): 
     calf_l: [-0.25 - Math.max(0, cw) * 0.45 * a - slump * 1.4, 0, 0], calf_r: [-0.25 - Math.max(0, -cw) * 0.45 * a - slump * 1.4, 0, 0]
   };
 }
+
+// ── Шари поверх справжньої ходи (Locomotion): ноги, таз і вага тіла — з циклів UAL, характер — тут. ──
+// add — поворот додається до анімації; set — кістка ставиться з пози спокою (руки за спиною, затуляє обличчя).
+export interface Overlay { add: Pose; set: Pose }
+
+/** «Слепой»: ще більше згорблений, голова задерта (слухає), смикається; руки звисають нижче. */
+export function blindOverlay(t: number, listen: number, twitch: number, run = 0): Overlay {
+  // у погоні біжить, але не випрямляється: корпус низько, голова задерта
+  return {
+    add: {
+      spine_01: [0.3 * run, 0, 0], spine_02: [0.18 + 0.25 * run, 0, 0], spine_03: [0.1, 0, 0],
+      neck_01: [-0.55 - listen - 0.3 * run, twitch, 0], head: [-0.4 - listen * 0.6 - 0.2 * run, Math.sin(t * 0.37) * 0.45, 0.2 + twitch * 0.6],
+      upperarm_l: [0.15, 0, 0.25], upperarm_r: [0.15, 0, -0.25], lowerarm_l: [0.25, 0, 0], lowerarm_r: [0.25, 0, 0],
+      hand_l: [0.3, 0, 0], hand_r: [0.3, 0, 0]
+    },
+    set: {}
+  };
+}
+
+/** «Улыбака»: руки за спиною (спокійна) чи вперед (погоня), голова схилена; у промені — затуляється. */
+export function smilerOverlay(t: number, hunt: boolean, lit: boolean, tilt: number): Overlay {
+  const sw = Math.sin(t * Math.PI * 2);
+  if (lit) {
+    return {
+      add: { spine_02: [-0.15, 0, 0] },
+      set: {
+        neck_01: [0.4, 0.6, 0], head: [0.3, 0.5, 0.2],
+        upperarm_l: [-1.6, 0, -0.3], upperarm_r: [-1.6, 0, 0.3], lowerarm_l: [0, 0, -2.0], lowerarm_r: [0, 0, 2.0]
+      }
+    };
+  }
+  if (hunt) {
+    return {
+      add: { spine_02: [0.12, 0, 0], neck_01: [-0.3, 0, 1.0 * tilt], head: [-0.2, 0, 0.55 * tilt] },
+      set: {
+        upperarm_l: [-1.25 + sw * 0.08, 0, -0.35], upperarm_r: [-1.25 - sw * 0.08, 0, 0.35], lowerarm_l: [0, 0, -0.15], lowerarm_r: [0, 0, 0.15],
+        hand_l: [0, 0, -0.3], hand_r: [0, 0, 0.3]
+      }
+    };
+  }
+  // спокійна: руки за спиною, голова схилена й ледь гойдається
+  return {
+    add: { neck_01: [0.05, 0, 0.55 * tilt], head: [0, Math.sin(t * 0.21) * 0.15, 0.35 * tilt] },
+    set: { upperarm_l: [0.35, 0, -0.95], upperarm_r: [0.35, 0, 0.95], lowerarm_l: [0, -0.4, -0.9], lowerarm_r: [0, 0.4, 0.9] }
+  };
+}
+
+/** «Утопленник»: обвислий, голова вниз, руки звисають; rise 0..1 — підводиться з води (0 — лежить). */
+export function drownedOverlay(t: number, hunt: boolean, rise: number): Overlay {
+  const slump = 1 - rise;
+  return {
+    add: {
+      spine_01: [0.3 + slump * 0.6, 0, 0], spine_02: [0.2 + slump * 0.4, 0, 0], spine_03: [0.1, 0, 0],
+      neck_01: [hunt ? -0.4 : 0.35, 0, 0.25], head: [hunt ? -0.3 : 0.25, Math.sin(t * 0.33) * 0.2, 0.3],
+      thigh_l: [slump * 0.9, 0, 0], thigh_r: [slump * 0.9, 0, 0], calf_l: [-slump * 1.4, 0, 0], calf_r: [-slump * 1.4, 0, 0]
+    },
+    set: hunt
+      ? { upperarm_l: [-0.9, 0, -0.85], upperarm_r: [-0.9, 0, 0.85], lowerarm_l: [-0.2, 0, -0.25], lowerarm_r: [-0.2, 0, 0.25] }
+      : { upperarm_l: [0.15, 0, -0.85], upperarm_r: [0.15, 0, 0.85], lowerarm_l: [0, 0, -0.25], lowerarm_r: [0, 0, 0.25] }
+  };
+}

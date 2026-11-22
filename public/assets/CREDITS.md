@@ -93,3 +93,4 @@
 - `tex/floor_tiles_06` — «Floor Tiles 06» — Rob Tuytel, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/floor_tiles_06
 - `tex/worn_tile_floor` — «Worn Tile Floor» — Dimitrios Savva, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/worn_tile_floor
 - `tex/white_rough_plaster` — «White Rough Plaster» — Rob Tuytel, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/white_rough_plaster
+- `anim/ual.glb` — «Universal Animation Library» (Idle_Loop, Walk_Loop, Walk_Formal_Loop, Crouch_Fwd_Loop, Crouch_Idle_Loop, Jog_Fwd_Loop; лише скелет і кліпи) — Quaternius, **CC0 1.0**: https://quaternius.itch.io/universal-animation-library

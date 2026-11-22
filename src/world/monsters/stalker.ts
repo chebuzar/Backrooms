@@ -12,7 +12,15 @@ import type { Lamps } from '../lamps';
 import type { Doors } from '../doors';
 import { probeLit } from '../materials';
 import type { Water } from '../water';
-import { smilerPose, drownedPose } from './gaits';
+import { smilerPose, drownedPose, blindOverlay, smilerOverlay, drownedOverlay } from './gaits';
+import { Locomotion, type GaitClips } from './locomotion';
+
+/** Цикли руху кожного (Quaternius UAL): «Слепой» крадеться навпочіпки, «Улыбака» ходить підкреслено рівно. */
+const GAITS: Partial<Record<StalkerKind, GaitClips & { rate: number }>> = {
+  blind: { idle: 'Crouch_Idle_Loop', walk: 'Crouch_Fwd_Loop', run: 'Jog_Fwd_Loop', rate: 1.05 },
+  smiler: { idle: 'Idle_Loop', walk: 'Walk_Formal_Loop', run: 'Jog_Fwd_Loop', rate: 0.95 },
+  drowned: { idle: 'Idle_Loop', walk: 'Walk_Loop', rate: 0.8 }
+};
 
 import { TRAITS, type StalkerKind } from '../../ai/traits';
 export { TRAITS, type StalkerKind };
@@ -48,6 +56,9 @@ export class Stalker {
   private repath = 0;
   private readonly bones = new Map<string, { b: THREE.Bone; rest: THREE.Euler }>();
   private gait = 0;
+  /** Справжня хода (якщо бібліотека рухів завантажилась); інакше — процедурні пози. */
+  private loco: Locomotion | null = null;
+  private lastPhase = 0;
   private yaw = 0;
   private flickT = 0;
   private flickOn = false;
@@ -75,7 +86,7 @@ export class Stalker {
 
   constructor(readonly kind: StalkerKind, model: THREE.Object3D, private readonly nav: NavLike, physics: Physics,
     private readonly lamps: Lamps, private readonly doors: Doors, private readonly home: V3, private readonly ev: StalkerEvents = {},
-    private readonly water: Water | null = null) {
+    private readonly water: Water | null = null, anims: { scene: THREE.Object3D; animations: THREE.AnimationClip[] } | null = null) {
     this.pos = { ...home };
     if (TRAITS[kind].submerges) { this.sub = this.subGoal = 1; }
     this.tilt = Math.random() < 0.5 ? 1 : -1;
@@ -103,6 +114,8 @@ export class Stalker {
       const b = o as THREE.Bone;
       if (b.isBone) this.bones.set(b.name, { b, rest: b.rotation.clone() });
     });
+    const g = GAITS[kind];
+    if (anims && g) this.loco = new Locomotion(model, anims, g, kind);
     const senses = { los: (a: V3, b: V3) => physics.lineOfSight(a.x, a.y, a.z, b.x, b.y, b.z) };
     this.brain = new Brain(TRAITS[kind], nav, senses, this.pos);
     this.applyPose(kind === 'watcher' ? WATCHER_POSES[0] as Pose : {});
@@ -284,6 +297,17 @@ export class Stalker {
   /** «Слепой»: згорблений, голова задерта (слухає), смикана хода з довгими руками, що звисають. */
   private blindGait(dt: number): void {
     const v = this.speedNow;
+    if (this.loco) {
+      this.gait += dt;
+      const twitch = Math.sin(this.gait * 11.7) > 0.95 ? 0.25 : 0;
+      const listen = this.brain.state === 'suspicious' ? 0.5 : 0;
+      const run = this.brain.state === 'chase' ? THREE.MathUtils.smoothstep(v, 1.4, 2.6) : 0;
+      const o = blindOverlay(this.gait, listen, twitch, run);
+      this.loco.update(dt, v, run, { add: o.add, set: o.set }, (GAITS.blind?.rate ?? 1) * (1 + twitch));
+      this.root.position.y = 0;
+      this.locoSteps(0.3 + Math.min(1, v / 1.2) * 0.7);
+      return;
+    }
     const rate = 1.6 + v * 2.2;
     this.gait += dt * rate;
     const a = Math.min(1, v / 1.2), s = Math.sin(this.gait), c = Math.cos(this.gait);
@@ -305,6 +329,15 @@ export class Stalker {
   /** «Улыбака»: рівна, неквапна хода (майже без звуку босих ніг), у погоні — руки вперед. */
   private smilerGait(dt: number, p: PlayerView): void {
     const v = this.speedNow, a = Math.min(1, v / 1.6);
+    if (this.loco) {
+      this.gait += dt;
+      const hunt = this.brain.state === 'chase';
+      const o = smilerOverlay(this.loco.stepPhase, hunt, p.litByFlashlight, this.tilt);
+      this.loco.update(dt, v, hunt ? THREE.MathUtils.smoothstep(v, 1.5, 2.8) : 0, { add: o.add, set: o.set, w: 0.92 }, GAITS.smiler?.rate ?? 1);
+      this.root.position.y = 0;
+      this.locoSteps(0.12 + a * 0.25);
+      return;
+    }
     this.gait += dt * (1.4 + v * 2.0);
     const hunt = this.brain.state === 'chase';
     this.applyPose(smilerPose(this.gait, a, hunt, p.litByFlashlight, this.tilt));
@@ -318,7 +351,10 @@ export class Stalker {
     const v = this.speedNow, a = Math.min(1, v / 1.4);
     this.gait += dt * (1.2 + v * 1.8);
     const hunt = this.brain.state === 'chase' || this.brain.state === 'investigate';
-    this.applyPose(drownedPose(this.gait, a, hunt, 1 - this.sub));
+    if (this.loco) {
+      const o = drownedOverlay(this.gait * 0.3, hunt, 1 - this.sub);
+      this.loco.update(dt, v, 0, { add: o.add, set: o.set, w: 0.7 }, GAITS.drowned?.rate ?? 1);
+    } else this.applyPose(drownedPose(this.gait, a, hunt, 1 - this.sub));
     this.root.position.y = -this.sub * 2.3;
     this.root.visible = this.sub < 0.97;
     // на дні він у чаші, не на бортику: тіло зсунуте до води й вилазить через край
@@ -326,8 +362,19 @@ export class Stalker {
       const dx = this.poolAt.x - this.pos.x, dz = this.poolAt.z - this.pos.z, d = Math.hypot(dx, dz);
       if (d > 1e-3) { const k = Math.min(1.7, d) * Math.min(1, this.sub * 1.6) / d; this.root.position.x = this.pos.x + dx * k; this.root.position.z = this.pos.z + dz * k; }
     }
+    if (this.loco) { this.locoSteps(0.35 + a * 0.5, wet); return; }
     this.stepT += dt;
     if (a > 0.15 && this.stepT > Math.PI / (1.2 + v * 1.8)) { this.stepT = 0; this.onStep?.(this.pos.x, this.pos.z, 0.35 + a * 0.5, wet); }
+  }
+
+  /** Кроки в такт справжній ході: ступня торкається підлоги двічі за цикл. */
+  private locoSteps(loud: number, wet?: boolean): void {
+    if (!this.loco) return;
+    const ph = this.loco.stepPhase, was = this.lastPhase;
+    this.lastPhase = ph;
+    if (this.speedNow < 0.2) return;
+    const crossed = (k: number) => (was < k && ph >= k) || (was > ph && (k === 0 ? true : ph >= k));
+    if (crossed(0) || crossed(0.5)) this.onStep?.(this.pos.x, this.pos.z, loud, wet);
   }
 
   /** Двері на шляху відчиняє сам (з рипом — гравець чує, що хтось іде). */
