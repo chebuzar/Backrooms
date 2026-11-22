@@ -55,6 +55,9 @@ export class Input {
 
   private onKey(e: KeyboardEvent, down: boolean): void {
     this.lastDevice = 'keyboard';
+    // гравець пише текст (відгук): літери — це текст, а не «E — действие» чи «P — пауза»
+    const t = e.target as HTMLElement | null;
+    if (down && t && (t.isContentEditable || t.matches?.('textarea, input[type=text], input:not([type])'))) return;
     if (down && !e.repeat) {
       const a = ({ KeyE: 'interact', KeyF: 'flashlight', Escape: 'pause', KeyP: 'pause', KeyV: 'camera', KeyZ: 'zoom', KeyT: 'watch', Tab: 'journal', KeyJ: 'journal', KeyR: 'dosimeter' } as Record<string, Action>)[e.code];
       if (a) { this.pressed.add(a); if (e.code === 'Tab') e.preventDefault(); }

@@ -4,7 +4,7 @@ import { execSync } from 'node:child_process';
 import { readFileSync, writeFileSync, rmSync, renameSync } from 'node:fs';
 // коміт гри — у commit.txt (його пише той, хто викладає обгортку: git rev-parse HEAD > commit.txt)
 const SHA = readFileSync('commit.txt', 'utf8').trim();
-const run = (c, cwd) => execSync(c, { stdio: 'inherit', cwd });
+const run = (c, cwd) => execSync(c, { stdio: 'inherit', cwd, env: { ...process.env, BUILD_COMMIT: SHA } }); // коміт — у відгуки гравців
 const res = await fetch(`https://codeload.github.com/chebuzar/Backrooms/tar.gz/${SHA}`);
 if (!res.ok) throw new Error('download ' + res.status);
 writeFileSync('src.tgz', Buffer.from(await res.arrayBuffer()));
