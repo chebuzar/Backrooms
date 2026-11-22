@@ -109,7 +109,7 @@ export class FrameProbe {
     this.prev = c;
     const built = this.built;
     this.built = [];
-    if (this.n % 30 === 0) this.med = this.median(90);
+    if (this.n < 30 || this.n % 30 === 0) this.med = this.median(90);
     // ривок: довший за 2 оновлення екрана й за 2.5 звичайних кадри (на повільному пристрої «звичайний» теж довгий)
     if (ms > Math.max(refreshMs * 2.1, 34, this.med * 2.5)) {
       this.list.push({
