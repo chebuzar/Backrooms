@@ -216,6 +216,21 @@ for f in _pf:
         WALL_FACES.setdefault(key, []).append(("base", g))
 print(f"WALL FACES: {len(_wf)} wall pieces, {len(_pf)} plinth pieces")
 
+# чаші басейну: діра в підлозі, кахельні стінки й дно (матеріал wallLow — кахель)
+POOLS = [(p["x"] - p["w"] / 2, p["x"] + p["w"] / 2, p["z"] - p["d"] / 2, p["z"] + p["d"] / 2, p["depth"]) for p in L.get("pools", [])]
+POOL_FACES = {}
+for (px0, px1, pz0, pz1, dep) in POOLS:
+    for f in (("x", 1, px0, pz0, pz1), ("x", -1, px1, pz0, pz1), ("z", 1, pz0, px0, px1), ("z", -1, pz1, px0, px1)):
+        for key, g in split_by_chunks(f):
+            POOL_FACES.setdefault(key, []).append((g, dep))
+
+
+def pool_at(x, z):
+    for (px0, px1, pz0, pz1, dep) in POOLS:
+        if px0 < x < px1 and pz0 < z < pz1:
+            return dep
+    return None
+
 
 
 def box(mb, cx, cy, cz, sx, sy, sz, yaw, mat, skip_back=True):
@@ -340,12 +355,18 @@ def build_chunk(ix, iz):
         zs.append(cz1)
     for a, b in zip(xs[:-1], xs[1:]):
         for c, d in zip(zs[:-1], zs[1:]):
-            mb.quad([P(a, 0, d), P(b, 0, d), P(b, 0, c), P(a, 0, c)], [(a, d), (b, d), (b, c), (a, c)], "floor")
+            dep = pool_at((a + b) / 2, (c + d) / 2)
+            if dep is None:
+                mb.quad([P(a, 0, d), P(b, 0, d), P(b, 0, c), P(a, 0, c)], [(a, d), (b, d), (b, c), (a, c)], "floor")
+            else:
+                mb.quad([P(a, -dep, d), P(b, -dep, d), P(b, -dep, c), P(a, -dep, c)], [(a, d), (b, d), (b, c), (a, c)], "wallLow")
             if THEME["id"] != "yellow":
                 mb.quad([P(a, H, c), P(b, H, c), P(b, H, d), P(a, H, d)], [(a, c), (b, c), (b, d), (a, d)], "ceil")
     if THEME["id"] == "yellow":
         ceiling_tiles(mb, ix, iz)
     add_decor(mb, ix, iz)
+    for f, dep in POOL_FACES.get((ix, iz), []):
+        face_quad(mb, f, -dep, 0, "wallLow")
     for kind, f in WALL_FACES.get((ix, iz), []):
         if kind == "wall":
             if PAINT_H > BASE_H + 0.01:

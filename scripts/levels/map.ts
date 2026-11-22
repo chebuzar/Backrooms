@@ -16,6 +16,8 @@ const zoneCol: Record<string, [number, number, number]> = { rooms: [70, 62, 30],
 const zw = Math.floor(l.cols / 3) * l.cell, zh = Math.floor(l.rows / 3) * l.cell;
 l.zones.forEach((z, i) => rect((i % 3) * zw, Math.floor(i / 3) * zh, (i % 3 === 2 ? l.cols * l.cell : (i % 3 + 1) * zw), (Math.floor(i / 3) === 2 ? l.rows * l.cell : (Math.floor(i / 3) + 1) * zh), zoneCol[z] ?? [50, 50, 50]));
 for (const p of l.lights) rect(p.x - p.w / 2, p.z - p.d / 2, p.x + p.w / 2, p.z + p.d / 2, p.state === 'on' ? [230, 220, 150] : p.state === 'flicker' ? [200, 120, 60] : [40, 40, 40]);
+for (const q of l.pools) rect(q.x - q.w / 2, q.z - q.d / 2, q.x + q.w / 2, q.z + q.d / 2, [30, 90, 140]);
+for (const q of l.puddles) rect(q.x - q.w / 2, q.z - q.d / 2, q.x + q.w / 2, q.z + q.d / 2, [50, 70, 90]);
 for (const w of l.walls) rect(w.x - w.w / 2, w.z - w.d / 2, w.x + w.w / 2, w.z + w.d / 2, w.kind === 'pillar' ? [160, 150, 120] : [235, 235, 225]);
 const dot = (x: number, z: number, c: [number, number, number]) => rect(x - 0.5, z - 0.5, x + 0.5, z + 0.5, c);
 dot(l.spawn.x, l.spawn.z, [60, 200, 255]);

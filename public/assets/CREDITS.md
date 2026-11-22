@@ -31,6 +31,14 @@
 - `models/cabinet.glb` — «Painted Wooden Cabinet» — Kirill Sannikov, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/painted_wooden_cabinet
 - `models/jerrycan.glb` — «Metal Jerrycan Green» — Ulan Cabanilla, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/metal_jerrycan_green
 - `models/microscope.glb` — «Industrial Microscope» — Lukas Walzer, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/industrial_microscope
+- `models/painted-wooden-table.glb` — «Painted Wooden Table» — Kirill Sannikov, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/painted_wooden_table
+- `models/painted-wooden-chair-01.glb` — «Painted Wooden Chair 01» — Kuutti Siitonen, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/painted_wooden_chair_01
+- `models/rubber-duck-toy.glb` — «Rubber Duck Toy» — Plat251, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/rubber_duck_toy
+- `models/dirty-football.glb` — «Dirty Football» — Rohit Seervi, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/dirty_football
+- `models/painted-wooden-bench.glb` — «Painted Wooden Bench» — Kirill Sannikov, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/painted_wooden_bench
+- `models/lifebuoy.glb` — «Lifebuoy» — Hank Kaamura, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/lifebuoy
+- `models/wall-clock.glb` — «Wall Clock» — PierreB3D, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/wall_clock
+- `models/wooden-bucket-01.glb` — «Wooden Bucket 01» — James Ray Cock, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/wooden_bucket_01
 
 ## Текстури Poly Haven
 
@@ -61,7 +69,19 @@
 - гул ламп, гул Шва — синтез у грі (`src/audio/synth.ts`)
 
 ## Монстри
-- `models/figure.glb`, `models/watcher.glb`, `models/blind.glb` — тіла MakeHuman/MPFB2 (системні ассети, **CC0**: шкіра old_caucasian_male, роба male_worksuit01, очі low-poly), зібрані нашим скриптом `scripts/blender/make_monster.py` (пресети figure / watcher / blind); протигаз фигуры — Poly Haven «Old Gas Mask», **CC0**
+- `models/figure.glb`, `models/watcher.glb`, `models/blind.glb`, `models/smiler.glb`, `models/drowned.glb` — тіла MakeHuman/MPFB2 (системні ассети, **CC0**: шкіри old_caucasian_male, young_caucasian_female, middleage_caucasian_male, одяг male_worksuit01 / female_elegantsuit01, зачіски bob01 / short02, зуби teeth_base, очі low-poly), зібрані нашим скриптом `scripts/blender/make_monster.py` (пресети figure / watcher / blind / smiler / drowned); протигаз фигуры — Poly Haven «Old Gas Mask», **CC0**
 - клацання «Слепого» й серцебиття небезпеки — синтез у грі (`src/audio/synth.ts`)
 - `tex/metal_plate_02` — «Metal Plate 02» — Rob Tuytel, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/metal_plate_02
 - `tex/linoleum_brown` — «Linoleum Brown» — Rob Tuytel, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/linoleum_brown
+- `tex/plastered_wall_04` — «Plastered Wall 04» — Rob Tuytel, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/plastered_wall_04
+- `tex/painted_concrete_02` — «Painted Concrete 02» — Rob Tuytel, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/painted_concrete_02
+- `tex/old_linoleum_flooring_01` — «Old Linoleum Flooring 01» — Charlotte Baglioni, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/old_linoleum_flooring_01
+- `tex/white_plaster_02` — «White Plaster 02» — Rob Tuytel, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/white_plaster_02
+- `tex/square_tiled_wall` — «Square Tiled Wall» — Charlotte Baglioni, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/square_tiled_wall
+- `tex/rounded_square_tiled_wall` — «Rounded Square Tiled Wall» — Charlotte Baglioni, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/rounded_square_tiled_wall
+- `tex/blue_floor_tiles_01` — «Blue Floor Tiles 01» — Rob Tuytel, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/blue_floor_tiles_01
+- `tex/dirty_tiles` — «Dirty Tiles» — Matterfield, Jenelle van Heerden, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/dirty_tiles
+- `tex/anti_skid_tiles` — «Anti Skid Tiles» — Amal Kumar, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/anti_skid_tiles
+- `tex/floor_tiles_06` — «Floor Tiles 06» — Rob Tuytel, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/floor_tiles_06
+- `tex/worn_tile_floor` — «Worn Tile Floor» — Dimitrios Savva, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/worn_tile_floor
+- `tex/white_rough_plaster` — «White Rough Plaster» — Rob Tuytel, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/white_rough_plaster
