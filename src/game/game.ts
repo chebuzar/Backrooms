@@ -322,7 +322,8 @@ export class Game {
   async init(onProgress: (p: number) => void = () => {}): Promise<void> {
     this.physics = await Physics.create();
     this.assets = new Assets(this.gfx.renderer);
-    const lvl = await this.loadLevel(0, onProgress);
+    // 92 % — рівень, далі прогрів і тест швидкодії (рядок підготовки не має «застрягати» на 100 %)
+    const lvl = await this.loadLevel(0, (p) => onProgress(p * 0.92));
     const s = lvl.layout.spawn;
     this.player = new Player(this.physics, s.x, 0, s.z);
     this.player.yaw = s.yaw;
@@ -338,7 +339,9 @@ export class Game {
     // заздалегідь зібрати шейдери й завантажити все на GPU, щоб не було ривків при першому погляді на щось нове
     await this.assets.gate();
     this.warm();
+    onProgress(0.95);
     await this.calibrate();
+    onProgress(1);
   }
 
   /** Прогріти поточний рівень (render/warmup.ts) під чорним кадром: його не видно, бо зверху заставка чи «18+». */
@@ -1012,7 +1015,10 @@ export class Game {
       pos: p ? [p.x, p.y, p.z].map((v) => +v.toFixed(2)) : null,
       yaw: this.player ? +this.player.yaw.toFixed(2) : null,
       checkpoint: this.store.progress.checkpoint,
-      quality: { profile: this.profile.name, setting: this.store.settings.quality, scale: +this.governor.scale.toFixed(2) },
+      quality: { profile: this.profile.name, setting: this.store.settings.quality, scale: +this.governor.scale.toFixed(2),
+        test: this.calib ? { preset: this.calib.preset, ms: this.calib.ms, learned: this.calib.learned?.preset ?? null } : null },
+      // плавність за останні ~20 с гри: якщо гравець пише «смикається» — видно, чи це ривки і чому
+      smooth: (() => { const st = this.perf.stats(); return { p50: st.p50, p95: st.p95, max: st.max, hitchesPerMin: st.hitchesPerMin, compile: st.compileHitches }; })(),
       render: { backend: this.gfx.backend, gpu: this.gfx.gpuName, draw: this.gfx.renderer.info.render.drawCalls },
       nerves: +this.psyche.nerves.toFixed(2), battery: +this.bat.level.toFixed(2), camera: this.cam.up,
       input: this.input.lastDevice, touch: this.device.touch
@@ -1112,6 +1118,8 @@ export class Game {
   /** Тривалість одного оновлення екрана (60 Гц → 16.7 мс, 120 Гц → 8.3 мс), середнє за викликами rAF. */
   private refreshMs = 1000 / 60;
   private lastTick = 0;
+  /** Напрям погляду кадру (без нового об'єкта щокадру — менше роботи збирачу сміття, менше мікроривків). */
+  private readonly look3 = new THREE.Vector3();
 
   /** @param ts час оновлення екрана від rAF — рівний крок без «тремтіння» моменту виклику (performance.now() усередині кадру гуляє) */
   frame(ts = performance.now()): void {
@@ -1266,7 +1274,7 @@ export class Game {
       this.adapt += (want - this.adapt) * Math.min(1, dt * (want > this.adapt ? 0.4 : 2.2));
       look.exposure.value = this.baseExposure * this.adapt;
     }
-    const c = this.camera, f = new THREE.Vector3(0, 0, -1).applyQuaternion(c.quaternion);
+    const c = this.camera, f = this.look3.set(0, 0, -1).applyQuaternion(c.quaternion);
     if (this.mode === 'play' && this.interact) {
       // на дотику — значок кнопки «Действие» (той самий, що на екрані), а не клавіша
       const key = this.input.lastDevice === 'gamepad' ? 'A' : 'E', icon = this.input.lastDevice === 'touch' ? svg(ICONS.use) : undefined;
