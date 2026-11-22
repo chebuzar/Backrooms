@@ -51,7 +51,7 @@ function fps(): { avg: number; low: number } | null {
 
 /** Усе, що не пише гравець, але без чого баг не відтворити. Нічого особистого: ні імені, ні адреси. */
 export function collectContext(): Record<string, unknown> {
-  let game: Record<string, unknown> = {};
+  let game: Record<string, unknown>;
   try { game = gameContext(); } catch (e) { game = { error: String(e) }; }
   const nav = navigator as Navigator & { deviceMemory?: number };
   return {

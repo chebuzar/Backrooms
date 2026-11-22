@@ -167,7 +167,7 @@ export class Tasks {
     const gw = seamPlacement(L, near[0], near[1], [{ t: 'door', x: sp.x, y: 0, z: sp.z, yaw: 0, w: 1.6 }]);
     const nx = Math.sin(gw.yaw), nz = Math.cos(gw.yaw), E = probeAt(L.lights, gw.x, gw.z);
     let obj: THREE.Object3D;
-    let gy = 1.0;
+    let gy: number;
     if (g.kind === 'vahta' && desk) {
       obj = desk.scene.clone(true);
       obj.position.set(gw.x + nx * 0.5, 0, gw.z + nz * 0.5);

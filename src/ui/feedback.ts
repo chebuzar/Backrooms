@@ -48,7 +48,7 @@ export function captureView(canvas: HTMLCanvasElement, maxW = 960): Promise<stri
     let tries = 0, finished = false;
     const finish = (cv: HTMLCanvasElement) => {
       if (finished) return;
-      let r: string | null | 'empty' = null;
+      let r: string | null | 'empty';
       try { r = grab(cv, maxW); } catch { r = null; }
       if (r === 'empty' && ++tries < 6) { waiters.push(finish); return; } // наступний намальований кадр
       finished = true;
