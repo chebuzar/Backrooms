@@ -175,7 +175,7 @@ export class Game {
     return this.physics.raycast(x, 1.3, z, dx / l, 0, dz / l, max) ?? max;
   };
 
-  constructor(readonly gfx: RendererHandle, readonly device: DeviceInfo, forced: QualityProfile | null) {
+  constructor(readonly gfx: RendererHandle, readonly device: DeviceInfo, private readonly forced: QualityProfile | null) {
     const canvas = gfx.renderer.domElement;
     this.profile = forced ?? this.qualityFromSettings();
     this.post = new PostPipeline(gfx.renderer, this.scene, this.camera);
@@ -340,7 +340,8 @@ export class Game {
     this.fpsCap = s.fpsLimit === 'off' ? 0 : Number(s.fpsLimit);
     this.audio.setVolumes(s.masterVolume, s.musicVolume, s.sfxVolume);
     Object.assign(this.input.settings, { sensitivity: s.sensitivity, invertY: s.invertY, crouchToggle: s.crouchToggle });
-    const p = this.qualityFromSettings();
+    // ?q=… в адресі (тести, порівняння) має перевагу над збереженими налаштуваннями
+    const p = this.forced ?? this.qualityFromSettings();
     if (p !== this.profile && this.mode !== 'boot') { this.profile = p; this.post.apply(p); this.resize(); }
     this.store.save();
   }

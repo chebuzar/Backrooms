@@ -506,8 +506,10 @@ export function generateLayout(o: LayoutOptions): Layout {
     // дитсадок: у спальнях світло майже ніде не горить; басейн: у залах з чашами більшість плафонів світить (видно воду)
     // дитсадок: коридори здебільшого світлі (острівці безпеки від «Улыбаки»), кімнати — як зона, спальні — темні
     const corridor = preset === 'kinder' && !room;
+    // басейн: біля старту (роздягальні) світло горить — гравець має роздивитися, де він, перш ніж піти в темряву
+    const nearStart = preset === 'pool' && Math.hypot(lx - (plan.start[0] + 0.5) * cell, lz - (plan.start[1] + 0.5) * cell) < 9;
     const st: LightPanel['state'] = room?.kind === 'sleep' && roll < 0.85 ? 'off' : room?.kind === 'pool' ? (roll < 0.62 ? 'on' : roll < 0.75 ? 'flicker' : 'off')
-      : corridor ? (roll < 0.78 ? 'on' : roll < 0.88 ? 'flicker' : 'off') : state;
+      : corridor ? (roll < 0.78 ? 'on' : roll < 0.88 ? 'flicker' : 'off') : nearStart ? (roll < 0.85 ? 'on' : 'flicker') : state;
     lights.push({ x: lx, z: lz, w: L.w, d: L.d, state: st });
   }
 
