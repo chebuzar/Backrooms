@@ -1266,6 +1266,9 @@ export class Game {
       fl.target.position.set(0, -0.08, -6).applyQuaternion(c.quaternion).add(c.position);
       const fo = this.flashOverride;
       if (fo) { fl.position.copy(fo.from); fl.target.position.copy(fo.at); fl.intensity = fo.intensity; }
+      // вимкнений ліхтарик нічого не освітлює — і його тінь не видно: не малюємо карту тіні (цілий прохід сцени),
+      // доки він не засвітиться знову. Вигляд той самий, кадр дешевший.
+      fl.shadow.autoUpdate = fl.intensity > 0.05;
       this.snd.updateHum(dt, lvl, c.position.x, c.position.z, 1 - this.psyche.silence);
       // адаптація ока: скільки світла довкола (живі лампи + власний ліхтарик) → бажана «діафрагма»;
       // у темряві очі звикають за ~6 с (тіні проступають, але чорне лишається чорним), на світлі — за ~0.7 с

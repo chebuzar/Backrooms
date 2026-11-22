@@ -17,6 +17,9 @@ export class Omens {
   private readonly q = new THREE.Quaternion();
   private readonly up = new THREE.Vector3(0, 0, 1);
   private readonly v3 = new THREE.Vector3();
+  /** Позиція й масштаб штриха — ті самі об'єкти щокадру (без сміття для збирача). */
+  private readonly p3 = new THREE.Vector3();
+  private readonly s3 = new THREE.Vector3();
   private vel = new Float32Array(N * 3);
   private life = 0;
   private readonly glow = uniform(0);
@@ -48,7 +51,7 @@ export class Omens {
       const v = this.v3.set(this.vel[i * 3] as number, this.vel[i * 3 + 1] as number, this.vel[i * 3 + 2] as number);
       const len = Math.max(0.01, Math.min(0.12, v.length() * 0.025));
       if (v.lengthSq() > 1e-6) this.q.setFromUnitVectors(this.up, v.normalize()); else this.q.identity();
-      this.m4.compose(new THREE.Vector3(this.spos[i * 3], this.spos[i * 3 + 1], this.spos[i * 3 + 2]), this.q, new THREE.Vector3(1, 1, len));
+      this.m4.compose(this.p3.set(this.spos[i * 3] as number, this.spos[i * 3 + 1] as number, this.spos[i * 3 + 2] as number), this.q, this.s3.set(1, 1, len));
       sp.setMatrixAt(i, this.m4);
     }
     sp.instanceMatrix.needsUpdate = true;

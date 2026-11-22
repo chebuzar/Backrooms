@@ -25,7 +25,7 @@ describe('deviceCap — межі за пристроєм', () => {
 });
 
 describe('choose — найвищий пресет у бюджеті 60 FPS', () => {
-  it('бере найвищий, що вкладається', () => expect(choose({ ultra: 14, high: 9, medium: 6 }, 'ultra')).toBe('high'));
+  it('бере найвищий, що вкладається', () => expect(choose({ ultra: 15, high: 9, medium: 6 }, 'ultra')).toBe('high'));
   it('не вище межі', () => expect(choose({ ultra: 3, high: 2 }, 'high')).toBe('high'));
   it('нічого не вкладається — «Низкое»', () => expect(choose({ medium: 40, low: 30 }, 'ultra')).toBe('low'));
 });
@@ -51,7 +51,7 @@ describe('runCalibration — порядок замірів', () => {
     expect(r.asked).toEqual(['medium']);
     expect(r.preset).toBe('medium');
   });
-  it('бюджет — 70 % кадру 60 FPS', () => expect(BUDGET_MS).toBeCloseTo(11.67, 1));
+  it('бюджет — 80 % кадру 60 FPS', () => expect(BUDGET_MS).toBeCloseTo(13.33, 1));
 });
 
 describe('effectivePreset — вивчене під час гри', () => {

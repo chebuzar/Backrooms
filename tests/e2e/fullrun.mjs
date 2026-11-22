@@ -1,6 +1,6 @@
 // Повне проходження гри ботом-гравцем з відеозаписом: «18+» → пролог → рівні 0–4 (усі записи, батарейки, завдання,
 // Шов) → фінал (вибір, кінцівка, титри) → меню. Лише клавіші й «миша»; тактики проти мисливців — у bot.mjs.
-//   node tests/e2e/fullrun.mjs [webkit|chromium] [--from 3] [--ending stay] [--no-video] [--prod]
+//   node tests/e2e/fullrun.mjs [webkit|chromium] [--from 3] [--ending stay] [--no-video] [--prod] [--query q=high]
 // Результат: .shots/fullrun/<браузер>/{run.webm, *.png, report.json}; код 1 — якщо крок не вдався.
 import { mkdirSync, renameSync, readdirSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -59,7 +59,7 @@ async function playLevel(id) {
 }
 
 try {
-  await gotoGame(page);
+  await gotoGame(page, arg('query', ''));
   if (from > 0) {
     // почати з рівня N: збереження з контрольною точкою, далі «Продолжить» (як після перезапуску)
     await game((n) => { const g = window.__zk.game; g.store.progress.checkpoint = { level: n, spawn: 'start' }; g.store.save(); }, from);
