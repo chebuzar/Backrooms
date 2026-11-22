@@ -163,6 +163,7 @@ export const FINALE = {
     'Идея и руководство — Назар',
     'Разработка — Claude',
     'Текстуры и модели — Poly Haven, ambientCG, MakeHuman (CC0)',
+    'Движения — Quaternius, Universal Animation Library (CC0)',
     'Звуки — Kenney, OpenGameArt (CC0)',
     'Спасибо, что дошли до конца.'
   ],
