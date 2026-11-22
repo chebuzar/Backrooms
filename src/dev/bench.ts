@@ -52,9 +52,7 @@ export async function runBench(game: Game, presets: QualityName[] = ['ultra', 'h
   const pos = new THREE.Vector3(), tgt = new THREE.Vector3(), smooth = new THREE.Vector3();
   let s = 0;
   for (const name of presets) {
-    game.profile = PROFILES[name];
-    game.post.apply(game.profile);
-    game.resize();
+    game.applyProfile(PROFILES[name], true);
     const times: number[] = [];
     let draws = 0, tris = 0, t = 0, prev = performance.now();
     smooth.copy(along(path, s % total, pos));

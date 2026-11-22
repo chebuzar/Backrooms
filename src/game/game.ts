@@ -16,7 +16,8 @@ import { Soundscape } from './soundscape';
 import { Tasks } from './tasks';
 import { RADIO } from '../story/tasks';
 import { lampDeficits } from '../world/materials';
-import { PROFILES, QualityGovernor, autoQuality, type QualityProfile } from '../render/quality';
+import { PROFILES, PresetGovernor, QualityGovernor, autoQuality, type QualityName, type QualityProfile } from '../render/quality';
+import { deviceCap, deviceKey, effectivePreset, loadCalibration, runCalibration, saveCalibration, ORDER, type Calibration, type DeviceSignals } from '../render/autotune';
 import { FrameProbe } from '../render/perf';
 import { warmup } from '../render/warmup';
 import type { DeviceInfo } from '../core/device';
@@ -70,8 +71,10 @@ export class Game {
   readonly post: PostPipeline;
   /** Роздільність рендера — лише в пресеті «Низкая» (правило власника: різкість не жертвуємо в інших пресетах). */
   readonly governor = new QualityGovernor();
-  /** Авто-пресет: якщо стабільно < ~40 FPS, крок на пресет нижче (Ультра → Высокое → Среднее); роздільність не чіпаємо. */
-  private readonly presetGov = new QualityGovernor(0.7, 1000 / 42);
+  /** Авто-пресет під час гри: медіана кадру стабільно задовга → крок на пресет нижче (аж до «Низкого») і запам'ятати. */
+  private readonly presetGov = new PresetGovernor();
+  /** Результат тесту швидкодії цього пристрою (render/autotune.ts); null — ще не міряли або тест неможливий. */
+  calib: Calibration | null = null;
   readonly input: Input;
   readonly rig: CameraRig;
   readonly audio = new AudioEngine();
@@ -234,7 +237,86 @@ export class Game {
 
   private qualityFromSettings(): QualityProfile {
     const q = this.store.settings.quality;
-    return PROFILES[q === 'auto' ? autoQuality(this.device, this.gfx.backend === 'webgpu') : q];
+    return PROFILES[q === 'auto' ? this.autoPreset() : q];
+  }
+
+  /** Що вмикає «Авто»: тест на цьому пристрої (і вивчене під час гри), а до тесту — здогад за пристроєм. */
+  autoPreset(): QualityName {
+    return this.calib ? effectivePreset(this.calib) : autoQuality(this.signals(), this.gfx.backend === 'webgpu');
+  }
+
+  private signals(): DeviceSignals {
+    return { ...this.device, memory: (navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? null };
+  }
+
+  /**
+   * Тест швидкодії (раз на пристрій): кілька кадрів поспіль справжнім конвеєром на найважчому виді рівня (довга освітлена
+   * перспектива), кадр чорний — гравець його не бачить (зверху «18+» або меню з рядком підготовки). Див. render/autotune.ts.
+   */
+  private async calibrate(): Promise<void> {
+    const lvl = this.level;
+    if (!lvl) return;
+    const sig = this.signals();
+    const key = deviceKey(sig, this.gfx.backend, screen);
+    // ?retune[=ultra] — переміряти наново (і з іншою межею) для автотестів; ?nobench — без тесту (здогад за пристроєм)
+    const url = new URLSearchParams(location.search), retune = url.get('retune');
+    this.calib = retune === null ? loadCalibration(key) : null;
+    if (!this.calib && !this.forced && !url.has('nobench')) {
+      const cap = retune && (ORDER as readonly string[]).includes(retune) ? retune as QualityName : deviceCap(sig);
+      const t0 = performance.now();
+      const r = cap === 'low' && sig.software && retune === null ? { preset: 'low' as const, ms: {} } : await this.withBenchView(lvl, () => runCalibration(cap, (q) => this.benchPreset(q)));
+      this.calib = { key, preset: r.preset, ms: r.ms, at: Date.now(), learned: null };
+      saveCalibration(this.calib);
+      console.info(`[autotune] ${r.preset} (межа ${cap}) за ${Math.round(performance.now() - t0)} мс`, r.ms);
+    }
+    const p = this.forced ?? this.qualityFromSettings();
+    this.applyProfile(p);
+  }
+
+  /** Камера на найважчому виді рівня й чорний кадр на час тесту; потім усе як було. */
+  private async withBenchView<T>(lvl: Level, fn: () => Promise<T>): Promise<T> {
+    this.pickMenuShot(lvl);
+    const m = this.menuShot, c = this.camera;
+    const pos = c.position.clone(), q = c.quaternion.clone(), fade = look.fade.value;
+    if (m) { c.position.set(m.x, 1.55, m.z); c.lookAt(m.x + m.dx * 6, 1.5, m.z + m.dz * 6); c.updateMatrixWorld(); }
+    look.fade.value = 1;
+    try { return await fn(); } finally {
+      c.position.copy(pos); c.quaternion.copy(q);
+      look.fade.value = fade;
+    }
+  }
+
+  /** Середній час кадру пресету q, мс: прогрів (нові вузли постобробки), далі 2 серії по 5 кадрів, береться краща. */
+  private async benchPreset(q: QualityName): Promise<number> {
+    this.governor.scale = 1;
+    this.applyProfile(PROFILES[q], true);
+    for (let i = 0; i < 3; i++) this.post.render();
+    await this.gpuIdle();
+    let best = Infinity;
+    for (let k = 0; k < 2; k++) {
+      const t0 = performance.now();
+      for (let i = 0; i < 5; i++) this.post.render();
+      await this.gpuIdle();
+      best = Math.min(best, (performance.now() - t0) / 5);
+    }
+    return best;
+  }
+
+  /** Дочекатися, поки GPU виконає все надіслане (WebGPU — onSubmittedWorkDone, WebGL 2 — fence). */
+  private async gpuIdle(): Promise<void> {
+    const b = this.gfx.renderer.backend as unknown as { device?: GPUDevice; gl?: WebGL2RenderingContext };
+    if (b.device) { await b.device.queue.onSubmittedWorkDone(); return; }
+    const gl = b.gl;
+    if (!gl) return;
+    const sync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+    if (!sync) return;
+    gl.flush();
+    for (let i = 0; i < 2000; i++) {
+      const r = gl.clientWaitSync(sync, 0, 0);
+      if (r === gl.ALREADY_SIGNALED || r === gl.CONDITION_SATISFIED || r === gl.WAIT_FAILED) break;
+      await new Promise((res) => setTimeout(res, 1));
+    }
+    gl.deleteSync(sync);
   }
 
   async init(onProgress: (p: number) => void = () => {}): Promise<void> {
@@ -256,6 +338,7 @@ export class Game {
     // заздалегідь зібрати шейдери й завантажити все на GPU, щоб не було ривків при першому погляді на щось нове
     await this.assets.gate();
     this.warm();
+    await this.calibrate();
   }
 
   /** Прогріти поточний рівень (render/warmup.ts) під чорним кадром: його не видно, бо зверху заставка чи «18+». */
@@ -268,6 +351,7 @@ export class Game {
       this.warmMs = Math.round(ms);
     } catch (e) { console.warn('[warmup]', e); } finally { look.fade.value = fade; }
     this.perf.reset();
+    this.presetGov.reset();
   }
 
   /** Побудувати рівень id (старий звільняється: GPU-пам'ять, колізії); гравця не чіпає. */
@@ -334,6 +418,7 @@ export class Game {
     this.dressed = lvl.id > 0 ? await dressLevel(this.assets, this.physics, lvl, taken) : await furnishNii(this.assets, this.physics, lvl, taken);
     this.phoneAnswered = false; this.writingSeen = false;
     this.setScene(lvl.scene);
+    lvl.flashlight.shadow.mapSize.setScalar(this.profile.shadow);
     if (this.player) this.setupInteractions(lvl);
     this.levelAudio();
     await this.hunt.setup(lvl, this.assets, this.physics);
@@ -380,7 +465,7 @@ export class Game {
     Object.assign(this.input.settings, { sensitivity: s.sensitivity, invertY: s.invertY, crouchToggle: s.crouchToggle });
     // ?q=… в адресі (тести, порівняння) має перевагу над збереженими налаштуваннями
     const p = this.forced ?? this.qualityFromSettings();
-    if (p !== this.profile && this.mode !== 'boot') { this.profile = p; this.post.apply(p); this.resize(); }
+    if (p !== this.profile && this.mode !== 'boot') this.applyProfile(p);
     this.store.save();
   }
 
@@ -478,7 +563,7 @@ export class Game {
   }
 
   private openSettings(back: () => void): void {
-    const auto = autoQuality(this.device, this.gfx.backend === 'webgpu');
+    const auto = this.autoPreset();
     const dev = `${this.device.platform === 'apple' ? 'Apple' : this.device.platform === 'android' ? 'Android' : 'ПК'}, ${this.gfx.backend === 'webgpu' ? 'WebGPU' : 'WebGL 2'}`;
     for (const n of ['menu', 'pause']) this.ui.close(n);
     this.ui.onBack = () => { this.ui.close('settings'); back(); };
@@ -997,14 +1082,20 @@ export class Game {
     this.camera.updateProjectionMatrix();
   }
 
-  /** Автоматичний крок на пресет нижче (лише в режимі «Авто», не нижче «Среднего»). */
+  /** Автоматичний крок на пресет нижче (лише в режимі «Авто»); запам'ятовується для наступних запусків на цьому пристрої. */
   private stepDownPreset(): void {
-    this.presetGov.scale = 1;
-    const order = ['ultra', 'high', 'medium'] as const;
-    const i = order.indexOf(this.profile.name as (typeof order)[number]);
-    if (i < 0 || i >= order.length - 1) return;
-    this.profile = PROFILES[order[i + 1] as (typeof order)[number]];
-    this.post.apply(this.profile);
+    const i = ORDER.indexOf(this.profile.name);
+    if (i <= 0) return;
+    const next = ORDER[i - 1] as QualityName;
+    this.applyProfile(PROFILES[next]);
+    this.perf.mark(`preset ${next}`);
+    if (this.calib) { this.calib.learned = { preset: next, at: Date.now() }; saveCalibration(this.calib); }
+  }
+
+  /** Увімкнути пресет: постобробка, тінь ліхтарика, роздільність. force — перебудувати, навіть якщо пресет той самий. */
+  applyProfile(p: QualityProfile, force = false): void {
+    if (p !== this.profile || force) { this.profile = p; this.post.apply(p); }
+    this.level?.flashlight.shadow.mapSize.setScalar(p.shadow);
     this.resize();
   }
 
@@ -1043,7 +1134,8 @@ export class Game {
     const dt = dtMs / 1000;
     if (this.mode === 'play' && this.autoScale) {
       if (this.profile.name === 'low') { if (this.governor.update(dtMs)) this.resize(); }
-      else if (this.store.settings.quality === 'auto' && this.presetGov.update(dtMs) && this.presetGov.scale < 1) this.stepDownPreset();
+      // межа: < 50 FPS при ліміті 60 чи без ліміту; при ліміті 30 — < 25 FPS
+      else if (this.store.settings.quality === 'auto' && !this.forced && this.presetGov.update(rawMs, this.fpsCap === 30 ? 40 : 20)) this.stepDownPreset();
     }
     this.input.poll(dt);
     if (this.input.consume('pause') && this.mode === 'play') this.pause();

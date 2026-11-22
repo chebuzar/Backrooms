@@ -65,6 +65,8 @@ export class Psyche {
     this.ghostForced = false;
     this.ghostCd = 45 + rnd() * 30; this.silenceCd = 70 + rnd() * 50; this.doorCd = 30 + rnd() * 20;
     this.stills = [];
+    // прихований зразок «людини вдалині»: прогрів рівня збирає його шейдер заздалегідь, і перша поява — без ривка
+    if (figure) { const proto = makeGhost(figure); proto.visible = false; proto.position.set(0, -20, 0); lvl.scene.add(proto); }
     unseen?.traverse((o) => {
       if (o.parent === unseen && !(o as THREE.InstancedMesh).isInstancedMesh) this.stills.push({ p: o.position.clone().setY(1.2), seen: false });
     });
@@ -134,20 +136,9 @@ export class Psyche {
     this.ghostForced = false;
     const d = Math.min(far, 9 + rnd() * 6);
     const x = c.x + fx * d, z = c.z + fz * d;
-    const o = cloneSkinned(this.figure);
+    const o = makeGhost(this.figure);
     o.position.set(x, 0, z);
     o.rotation.y = Math.atan2(c.x - x, c.z - z);
-    o.scale.setScalar(0.8);
-    const dark = new THREE.MeshStandardNodeMaterial({ color: 0x0b0b0a, roughness: 1 });
-    o.traverse((n) => {
-      const mm = n as THREE.Mesh;
-      if (mm.isMesh) { mm.material = dark; mm.frustumCulled = false; mm.layers.set(LAYER_EYE); mm.castShadow = false; }
-      const b = n as THREE.Bone;
-      if (b.isBone) {
-        if (b.name === 'upperarm_l') { b.rotation.y += 1.25; b.rotation.z -= 1.25; }
-        if (b.name === 'upperarm_r') { b.rotation.y -= 1.25; b.rotation.z += 1.25; }
-      }
-    });
     lvl.scene.add(o);
     this.ghost = { o, age: 0, seen: false, away: 0 };
   }
@@ -201,4 +192,21 @@ export class Psyche {
   get stillCount(): number { return this.stills.length; }
   /** Галюцинація зараз стоїть (для перевірок). */
   get ghostAt(): THREE.Vector3 | null { return this.ghost?.o.position ?? null; }
+}
+
+/** «Людина вдалині»: темний силует фігури з розведеними руками, видно лише оком (не крізь камеру). */
+function makeGhost(figure: THREE.Object3D): THREE.Object3D {
+  const o = cloneSkinned(figure);
+  o.scale.setScalar(0.8);
+  const dark = new THREE.MeshStandardNodeMaterial({ color: 0x0b0b0a, roughness: 1 });
+  o.traverse((n) => {
+    const mm = n as THREE.Mesh;
+    if (mm.isMesh) { mm.material = dark; mm.frustumCulled = false; mm.layers.set(LAYER_EYE); mm.castShadow = false; }
+    const b = n as THREE.Bone;
+    if (b.isBone) {
+      if (b.name === 'upperarm_l') { b.rotation.y += 1.25; b.rotation.z -= 1.25; }
+      if (b.name === 'upperarm_r') { b.rotation.y -= 1.25; b.rotation.z += 1.25; }
+    }
+  });
+  return o;
 }

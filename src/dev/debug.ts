@@ -81,9 +81,7 @@ export class DebugPanel {
     const g = this.game, f = this.fx;
     const base: QualityProfile = f.preset === 'auto' ? g.profile : PROFILES[f.preset];
     const prof: QualityProfile = { ...base, ao: f.ao ? base.ao || 0.5 : 0, traa: f.traa, bloom: f.bloom ? base.bloom || 0.5 : 0 };
-    g.profile = prof;
-    g.post.apply(prof);
-    g.resize();
+    g.applyProfile(prof, true);
   }
 
   private tick(dtMs: number): void {
