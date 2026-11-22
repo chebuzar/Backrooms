@@ -116,7 +116,7 @@ const med = (a) => { const q = [...a].sort((x, y) => x - y); return q[Math.floor
 const found = await game(() => { const P = window.__zk.game.store.progress; return { docs: P.docs.length, notes: P.notes.length, tapes: P.tapes.length, deaths: P.deaths, minutes: Math.round(P.playSeconds / 60) }; }).catch(() => null);
 const report = {
   browser: which, wallSeconds: Math.round((Date.now() - t0) / 1000), failed, levels, found,
-  bot: { nudges: bot.m.nudges, chaseSeconds: Math.round(bot.m.chaseS), minMonsterDist: +bot.m.minDist.toFixed(2), facedMonster: bot.m.faced },
+  deathCtx: bot.m.deathCtx, bot: { nudges: bot.m.nudges, chaseSeconds: Math.round(bot.m.chaseS), minMonsterDist: +bot.m.minDist.toFixed(2), facedMonster: bot.m.faced },
   draws: Object.fromEntries(Object.entries(bot.m.draws).map(([k, a]) => [k, { median: med(a), max: Math.max(...a) }])), steps
 };
 writeFileSync(`${OUT}/report.json`, JSON.stringify(report, null, 1));

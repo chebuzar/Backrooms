@@ -45,6 +45,18 @@ describe('monster brain', () => {
     expect(b.state).toBe('patrol');
   });
 
+  it('after giving up ignores sight and sound for a while, then reacts again', () => {
+    const b = new Brain(base, straight, { los: () => true }, { x: 0, y: 0, z: 0 }, rng(3));
+    run(b, player(), 2);
+    expect(b.state).toBe('chase');
+    b.giveUp(5);
+    b.hear({ x: 0, y: 0, z: 3, loudness: 1, t: 0 });
+    run(b, player(), 4);
+    expect(['lost', 'patrol']).toContain(b.state); // стоїть перед очима й шумить — а йому байдуже
+    run(b, player(), 4);
+    expect(b.state).not.toBe('patrol'); // спокій минув — знову помічає
+  });
+
   it('does not notice a crouched player in the dark at distance', () => {
     const b = new Brain(base, straight, { los: () => true }, { x: 0, y: 0, z: 0 }, rng(2));
     run(b, player({ z: 9, light: 0.05, crouched: true }), 3);

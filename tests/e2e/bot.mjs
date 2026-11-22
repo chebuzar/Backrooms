@@ -8,7 +8,8 @@
 import { wait } from './lib.mjs';
 
 export function makeBot(page, { log, shot }) {
-  const m = { nudges: 0, chaseS: 0, minDist: Infinity, draws: {}, faced: 0 };
+  const m = { nudges: 0, chaseS: 0, minDist: Infinity, draws: {}, faced: 0, deathCtx: [] };
+  let lastT = null, sprint = false;
   let tactic = true;
   /** Куди тримати погляд під час ходьби (мисливець, що рухається, лише коли на нього не дивляться). */
   let watch = null;
@@ -58,6 +59,7 @@ export function makeBot(page, { log, shot }) {
 
   /** Тактика проти мисливця (повертає true, якщо цей крок зайнятий нею). */
   async function react(t, dt) {
+    lastT = t;
     if (!t || !tactic) return false;
     const hunting = t.st === 'chase' || t.st === 'investigate';
     if (t.st === 'chase') m.chaseS += dt;
@@ -75,7 +77,10 @@ export function makeBot(page, { log, shot }) {
       await page.keyboard.down('KeyW');
       return true;
     }
-    const crouch = (t.kind === 'blind' && t.d < 10) || (t.kind === 'drowned' && t.wet);
+    // «Утопленник»: поки лежить на дні — у воді пригнутися (тихо); піднявся й полює — бігти геть (у воді він швидший за крок)
+    const up = t.kind === 'drowned' && t.sub < 0.5 && hunting && t.d < 12;
+    if (up !== sprint) { sprint = up; if (up) await page.keyboard.down('ShiftLeft'); else await page.keyboard.up('ShiftLeft'); }
+    const crouch = (t.kind === 'blind' && t.d < 10) || (t.kind === 'drowned' && t.wet && !up);
     const held = await page.evaluate(() => window.__zk.game.player.crouched);
     if (crouch !== held) { if (crouch) await page.keyboard.down('KeyC'); else await page.keyboard.up('KeyC'); }
     return false;
@@ -120,7 +125,7 @@ export function makeBot(page, { log, shot }) {
           return { x: p.pos.x, z: p.pos.z, deaths: g.store.progress.deaths, lv: g.level.id, draw: g.gfx.renderer.info.render.drawCalls, input: g.input.enabled, keys };
         }, [wx, wz, watch]);
         await setKeys(s.keys ?? { KeyW: true, KeyS: false, KeyA: false, KeyD: false });
-        if (s.deaths > deaths0) return 'caught';
+        if (s.deaths > deaths0) { m.deathCtx.push({ at: [+s.x.toFixed(1), +s.z.toFixed(1)], t: lastT && { ...lastT, d: +lastT.d.toFixed(2) }, label }); return 'caught'; }
         (m.draws[s.lv] ??= []).push(s.draw);
         const now = Date.now(), dt = (now - prevT) / 1000; prevT = now;
         if (await react(await threat(), dt)) { path = await navPath(tx, tz); i = 0; last = null; lastMove = Date.now(); continue; }
@@ -161,7 +166,7 @@ export function makeBot(page, { log, shot }) {
       await setKeys({ KeyW: false, KeyS: false, KeyA: false, KeyD: false });
       await page.keyboard.up('KeyW');
       await page.keyboard.up('KeyC');
-      if (run) await page.keyboard.up('ShiftLeft');
+      if (run || sprint) { await page.keyboard.up('ShiftLeft'); sprint = false; }
     }
     await wait(250);
     if (!ok && !quiet) { log(`дойти: ${label}`, false, { to: [tx, tz], at: await state() }); await shot(`fail-walk-${label}`); }

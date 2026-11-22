@@ -13,7 +13,10 @@ export const TRAITS: Record<StalkerKind, Traits> = {
   smiler: { sightRange: 24, fovHalf: 1.3, hearing: 0.6, walkSpeed: 1.0, runSpeed: 3.5, searchTime: 26, alertness: 1.1, fearsLight: true, darkOnly: true },
   // «Утопленник» (басейн): лежить на дні чаші, доки не почує; погано бачить, чує кожен хлюпіт. У воді швидкий,
   // на сухій плитці — повільний і важкий. Втративши слід, повертається в чашу.
-  drowned: { sightRange: 12, fovHalf: 1.0, hearing: 1.35, walkSpeed: 0.75, runSpeed: 2.0, searchTime: 20, alertness: 0.6, waterSpeed: 2.3, submerges: true }
+  // Баланс (бот, 22.11): на сухому погоня 1.5 м/с — повільніше за крок гравця (1.85), тож від нього можна відійти, але
+  // не зупинятися; у калюжі 1.5 × 2.2 = 3.3 м/с — наздоганяє того, хто йде (1.5 у воді), і ледь не того, хто біжить (3.4).
+  // Було 2.0 на сухому: повільний за задумом мисливець був швидший за крок і ловив бота 4–5 разів поспіль.
+  drowned: { sightRange: 12, fovHalf: 1.0, hearing: 1.35, walkSpeed: 0.75, runSpeed: 1.5, searchTime: 20, alertness: 0.6, waterSpeed: 2.2, submerges: true }
 };
 
 /**

@@ -78,6 +78,7 @@ export class Stalker {
   sub = 0;
   private subGoal = 0;
   private blockedT = 0;
+  private dryT = 0;
   private litT = 0;
   private giggleCd = 0;
   private tilt = 1;
@@ -207,6 +208,10 @@ export class Stalker {
         intent.target = this.home; intent.speed = t.walkSpeed;
         if (Math.hypot(this.home.x - this.pos.x, this.home.z - this.pos.z) < 0.6) { this.subGoal = 1; this.onCue?.('submerge', this.pos.x, this.pos.z); }
       }
+      // поза водою висихає: ~9 с на сухій плитці без калюжі — кидає погоню й бреде назад у чашу (поки чаша не злита)
+      const inWater = !!this.water?.wetAt(this.pos.x, this.pos.z) || Math.hypot(this.home.x - this.pos.x, this.home.z - this.pos.z) < 3;
+      this.dryT = inWater || this.sub > 0.5 || dry ? 0 : this.dryT + dt;
+      if (this.dryT > 9 && st !== 'patrol' && st !== 'lost') { this.brain.giveUp(12); this.dryT = 0; }
       this.sub += Math.sign(this.subGoal - this.sub) * Math.min(Math.abs(this.subGoal - this.sub), dt / (this.subGoal ? 2.5 : 2.0));
       if (this.sub > 0.02) { intent.target = null; intent.attack = false; } // поки не встав (чи вже пірнає) — на місці
     }
