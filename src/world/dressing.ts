@@ -1,4 +1,4 @@
-// Обстановка рівнів 1–2 справжніми CC0-моделями (Poly Haven):
+// Обстановка рівнів 1–4 справжніми CC0-моделями (Poly Haven):
 // • база «Глубина-1»: спальні (ряди залізних ліжок), лабораторії (металеві столи з мікроскопами, каністри),
 //   диспетчерська (столи вряд, шафа);
 // • парковка: машини під брезентом уздовж стін, розмітка місць білою фарбою, каністри.
@@ -13,15 +13,17 @@ import { rng } from '../core/rng';
 import type { Level } from './level0';
 import { lightProp } from './level0';
 import { probeAt, probeLit } from './materials';
+import { dressLate } from './dressing-late';
 
-interface Spot { x: number; z: number; yaw: number }
+export interface Spot { x: number; z: number; yaw: number }
 
 function inWall(lvl: Level, x: number, z: number, r: number): boolean {
   return lvl.layout.walls.some((w) => Math.abs(x - w.x) < w.w / 2 + r && Math.abs(z - w.z) < w.d / 2 + r);
 }
 
 /** Місця вздовж стін: ряд із n речей шириною w (м) і глибиною d, з відступом gap; вільно перед стіною. */
-function wallRows(lvl: Level, r: () => number, rows: number, n: number, w: number, d: number, gap: number, avoid: { x: number; z: number; r: number }[]): Spot[][] {
+export function wallRows(lvl: Level, r: () => number, rows: number, n: number, w: number, d: number, gap: number, avoid: { x: number; z: number; r: number }[],
+  opt: { where?: (x: number, z: number) => boolean; dark?: boolean } = {}): Spot[][] {
   const L = lvl.layout, out: Spot[][] = [];
   const walls = L.walls.filter((wl) => wl.kind !== 'pillar' && Math.max(wl.w, wl.d) >= n * (w + gap) + 0.6);
   for (let tries = 0; tries < 300 && out.length < rows; tries++) {
@@ -42,7 +44,8 @@ function wallRows(lvl: Level, r: () => number, rows: number, n: number, w: numbe
       }
       if (avoid.some((a) => Math.hypot(a.x - x, a.z - z) < a.r)) ok = false;
       // у межах рівня (зовнішні стіни мають і «зовнішній» бік) і не в цілковитій темряві — інакше речей ніхто не побачить
-      if (x < 1 || z < 1 || x > L.cols * L.cell - 1 || z > L.rows * L.cell - 1 || probeAt(L.lights, x, z) < 0.38) ok = false;
+      if (x < 1 || z < 1 || x > L.cols * L.cell - 1 || z > L.rows * L.cell - 1 || (!opt.dark && probeAt(L.lights, x, z) < 0.38)) ok = false;
+      if (opt.where && !opt.where(x, z)) ok = false;
       row.push({ x, z, yaw: Math.atan2(nx, nz) });
     }
     if (!ok) continue;
@@ -52,9 +55,10 @@ function wallRows(lvl: Level, r: () => number, rows: number, n: number, w: numbe
   return out;
 }
 
-async function put(assets: Assets, physics: Physics, lvl: Level, file: string, s: Spot, yawOff = 0, y = 0, collide = true): Promise<THREE.Box3> {
+export async function put(assets: Assets, physics: Physics, lvl: Level, file: string, s: Spot, yawOff = 0, y = 0, collide = true, scale = 1): Promise<THREE.Box3> {
   const o = (await assets.model(`assets/models/${file}.glb`)).scene.clone(true);
   o.position.set(s.x, y, s.z);
+  o.scale.setScalar(scale);
   o.rotation.y = s.yaw + yawOff;
   lightProp(o, probeAt(lvl.layout.lights, s.x, s.z));
   lvl.scene.add(o);
@@ -115,6 +119,8 @@ export async function dressLevel(assets: Assets, physics: Physics, lvl: Level, t
       mesh.receiveShadow = true;
       lvl.scene.add(mesh);
     }
+  } else if (lvl.id === 3 || lvl.id === 4) {
+    await dressLate(assets, physics, lvl, r, avoid, shown);
   }
   physics.step();
   return shown;
