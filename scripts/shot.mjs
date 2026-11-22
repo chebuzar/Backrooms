@@ -56,7 +56,9 @@ for (const b of browsers) {
   } catch (e) { logs.push('timeout: ' + e.message.split('\n')[0]); }
   const dev = A.device ? A.device.replace(/\s+/g, '_') : 'desktop';
   const file = path.join(outDir, `${A.name || 'shot'}-${b}-${dev}.png`);
-  await page.screenshot({ path: file });
+  // програмний WebGPU на CI (SwiftShader) з меню-проїздом, що малює кожен кадр, віддає знімок повільно: 30 с за замовчуванням
+  // інколи не вистачає (22.11, run 45048945818). Smoke перевіряє консоль і стан гри, а не швидкість знімка, тож даємо більше часу.
+  await page.screenshot({ path: file, timeout: 90000 });
   if (logs.length) bad = true;
   console.log(JSON.stringify({ file: path.relative(process.cwd(), file), browser: b, device: dev, loadMs: Date.now() - t0, info, logs }));
   await Promise.race([browser.close(), new Promise((r) => setTimeout(r, 5000))]);
