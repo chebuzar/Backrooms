@@ -16,7 +16,6 @@
 - `models/clipboard.glb` — «Clipboard» — ProgrammerOnCoffee, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/clipboard
 - `models/chair.glb` — «School Chair 01» — Ethan Place, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/SchoolChair_01
 - `models/box.glb` — «Cardboard Box 01» — Rahul Chaudhary, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/cardboard_box_01
-- `models/wetsign.glb` — «Wet Floor Sign 01» — Fran Calvente, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/WetFloorSign_01
 - `models/ammo.glb` — «Ammo Box» — DanKit, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/ammo_box
 - `models/cigs.glb` — «Cigarette Pack» — Ulrich Büch, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/cigarette_pack
 - `models/battery.glb` — батарейки 3336Л, власна модель (`scripts/blender/make_battery.py`); текстура — кроп «Metal Plate 02» (Rob Tuytel, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/metal_plate_02), перефарбований (`scripts/assets/make-battery-tex.py`)
