@@ -12,8 +12,16 @@ export interface RendererHandle {
 export async function createRenderer(canvas: HTMLCanvasElement, forceWebGL = false): Promise<RendererHandle> {
   // Без WebGPU одразу просимо WebGL 2 — тоді three.js не пише попередження в консоль.
   let webgpuOk = !forceWebGL && 'gpu' in navigator;
+  // Назву відеокарти беремо з власного адаптера: three.js r187 не зберігає свій у backend, і без цього
+  // програмний рендер (SwiftShader, коли Chrome не довіряє відеокарті) діставав «Ультра» замість «Низкого».
+  let adapterName = '';
   if (webgpuOk) {
-    try { webgpuOk = !!(await navigator.gpu.requestAdapter()); } catch { webgpuOk = false; }
+    try {
+      const ad = await navigator.gpu.requestAdapter();
+      webgpuOk = !!ad;
+      const i = ad?.info as (GPUAdapterInfo & { isFallbackAdapter?: boolean }) | undefined;
+      if (i) adapterName = [i.vendor, i.architecture, i.device, i.description, i.isFallbackAdapter ? 'software' : ''].filter(Boolean).join(' ');
+    } catch { webgpuOk = false; }
   }
   const renderer = new THREE.WebGPURenderer({
     canvas,
@@ -25,13 +33,12 @@ export async function createRenderer(canvas: HTMLCanvasElement, forceWebGL = fal
   // тональна компресія й sRGB — у власному фінальному проході (post.ts)
   renderer.toneMapping = THREE.NoToneMapping;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
-  const backendObj = renderer.backend as unknown as { isWebGPUBackend?: boolean; adapter?: GPUAdapter };
+  const backendObj = renderer.backend as unknown as { isWebGPUBackend?: boolean };
   const backend: Backend = backendObj.isWebGPUBackend ? 'webgpu' : 'webgl2';
   let gpuName = '';
   try {
-    if (backendObj.adapter?.info) {
-      const i = backendObj.adapter.info;
-      gpuName = [i.vendor, i.architecture, i.device, i.description].filter(Boolean).join(' ');
+    if (backend === 'webgpu') {
+      gpuName = adapterName;
     } else {
       const gl = (renderer.backend as unknown as { gl?: WebGL2RenderingContext }).gl;
       if (gl) {

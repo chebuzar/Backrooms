@@ -45,7 +45,7 @@ async function boot(): Promise<void> {
           cache[key] ??= await (await import('./ai/nav')).Nav.fromLayout(l.layout, radius);
           return cache[key];
         },
-        info: () => ({ backend: gfx.backend, quality: game.profile.name, mode: game.mode, draw: gfx.renderer.info.render.drawCalls,
+        info: () => ({ backend: gfx.backend, gpu: device.gpu, quality: game.profile.name, mode: game.mode, draw: gfx.renderer.info.render.drawCalls,
           pos: game.player ? [game.player.pos.x, game.player.pos.y, game.player.pos.z].map((v) => +v.toFixed(2)) : null })
       }
     });
