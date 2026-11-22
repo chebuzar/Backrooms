@@ -5,7 +5,7 @@
 import * as THREE from 'three/webgpu';
 import type { Assets } from '../assets/loader';
 import type { Physics } from '../physics/physics';
-import { generateLayout } from './layout';
+import { generateLayout, type Layout } from './layout';
 import { probeAt } from './materials';
 import { loadThemeTextures, makeThemeMaterials, type ThemeLook } from './theme-materials';
 import { Lamps } from './lamps';
@@ -77,7 +77,7 @@ export async function buildThemedLevel(id: ThemedId, assets: Assets, physics: Ph
   const arrivalAt = seamPlacement(layout, layout.spawn.x, layout.spawn.z, decor);
   const ny = arrivalAt.yaw;
   const [ax, az] = freeNear(layout, arrivalAt.x + Math.sin(ny) * 1.25, arrivalAt.z + Math.cos(ny) * 1.25, 0.4);
-  layout.spawn.x = ax; layout.spawn.z = az; layout.spawn.yaw = ny + Math.PI;
+  layout.spawn.x = ax; layout.spawn.z = az; layout.spawn.yaw = openYaw(layout, ax, az, ny);
   const arrival = new Seam(arrivalAt.x, arrivalAt.z, arrivalAt.yaw, H);
   arrival.life.value = 0;
   scene.add(arrival.group);
@@ -119,3 +119,24 @@ async function placeDoc(assets: Assets, physics: Physics, l: ReturnType<typeof g
   physics.step();
   return { [doc]: { id: doc, x, y: bb.max.y + 0.02, z } };
 }
+
+/**
+ * Куди дивитися після прибуття: від Шва, але туди, де найдовше видно (не впритул у стіну роздягальні).
+ * Вперед для гравця — (−sin yaw, −cos yaw); Шов — позаду (нормаль стіни (sin ny, cos ny) — «від Шва»).
+ */
+function openYaw(l: Layout, x: number, z: number, ny: number): number {
+  const hit = (px: number, pz: number) => l.walls.some((w) => Math.abs(px - w.x) < w.w / 2 + 0.2 && Math.abs(pz - w.z) < w.d / 2 + 0.2)
+    || l.pools.some((q) => Math.abs(px - q.x) < q.w / 2 && Math.abs(pz - q.z) < q.d / 2);
+  let best = ny + Math.PI, bestScore = -1;
+  for (let i = 0; i < 24; i++) {
+    const a = (i / 24) * Math.PI * 2, fx = -Math.sin(a), fz = -Math.cos(a);
+    const away = fx * Math.sin(ny) + fz * Math.cos(ny); // 1 — прямо від Шва
+    if (away < 0.2) continue;
+    let d = 0;
+    while (d < 18 && !hit(x + fx * d, z + fz * d)) d += 0.2;
+    const score = d * (0.75 + 0.25 * away);
+    if (score > bestScore) { bestScore = score; best = a; }
+  }
+  return best;
+}
+

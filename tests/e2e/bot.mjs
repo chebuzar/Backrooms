@@ -1,6 +1,6 @@
 // «Гравець-бот»: ходить лише клавішами (W/S/A/D, Shift, C, F, E) і «мишею» (зсув погляду в Input), маршрути — по navmesh
 // рівня. Знає тактики проти мисливців так, як їх дізнається гравець із записок:
-// • «Наблюдатель» (рівень 1) — коли він близько, обернутися й тримати його поглядом;
+// • «Наблюдатель» (рівень 1) — коли він близько, тримати його поглядом і йти далі задом / боком;
 // • «Слепой» (рівень 2) — не бігати, коли він поруч — пригнутися;
 // • «Улыбака» (рівень 3) — ліхтарик увімкнений, світити їй в обличчя, коли наближається;
 // • «Утопленник» (рівень 4) — не бігати; у калюжах — пригнутися (тихіше).
@@ -10,6 +10,8 @@ import { wait } from './lib.mjs';
 export function makeBot(page, { log, shot }) {
   const m = { nudges: 0, chaseS: 0, minDist: Infinity, draws: {}, faced: 0 };
   let tactic = true;
+  /** Куди тримати погляд під час ходьби (мисливець, що рухається, лише коли на нього не дивляться). */
+  let watch = null;
 
   const state = () => page.evaluate(() => {
     const g = window.__zk.game, p = g.player?.pos;
@@ -60,7 +62,10 @@ export function makeBot(page, { log, shot }) {
     const hunting = t.st === 'chase' || t.st === 'investigate';
     if (t.st === 'chase') m.chaseS += dt;
     if (t.sub < 0.5) m.minDist = Math.min(m.minDist, t.d);
-    if ((t.kind === 'watcher' && t.d < 9 && t.st !== 'patrol') || (t.kind === 'smiler' && t.d < 7 && hunting)) {
+    // «Наблюдатель»: не відводити погляду — іти далі задом / боком, тримаючи його в кадрі (як робить гравець)
+    watch = t.kind === 'watcher' && t.d < 11 && t.st !== 'patrol' ? [t.x, t.z] : null;
+    if (watch) { m.faced++; return false; }
+    if (t.kind === 'smiler' && t.d < 7 && hunting) {
       // обернутися й тримати поглядом (і ліхтариком) ~1.5 с
       if (t.kind === 'smiler' && !t.flash) await page.keyboard.press('KeyF');
       await page.keyboard.up('KeyW');
@@ -76,10 +81,19 @@ export function makeBot(page, { log, shot }) {
     return false;
   }
 
+  const held = { KeyW: false, KeyS: false, KeyA: false, KeyD: false };
+  async function setKeys(want) {
+    for (const k of Object.keys(held)) {
+      if (want[k] === held[k]) continue;
+      if (want[k]) await page.keyboard.down(k); else await page.keyboard.up(k);
+      held[k] = want[k];
+    }
+  }
+
   /** Іти до точки (W, повороти «мишею»); застряг — двері (E) або крок убік; після 5 спроб — «переступити» (рахується). */
   async function walkTo(tx, tz, { stop = 1.1, run = false, timeout = 600000, label = '', quiet = false } = {}) {
     let path = await navPath(tx, tz);
-    await page.keyboard.down('KeyW');
+    await setKeys({ KeyW: true, KeyS: false, KeyA: false, KeyD: false });
     if (run) await page.keyboard.down('ShiftLeft');
     const start = Date.now();
     let i = 0, lastMove = Date.now(), last = null, ok = false, stuck = 0, prevT = Date.now();
@@ -87,14 +101,25 @@ export function makeBot(page, { log, shot }) {
     try {
       while (Date.now() - start < timeout) {
         const [wx, wz] = path[Math.min(i, path.length - 1)];
-        const s = await page.evaluate(([wx, wz]) => {
+        const s = await page.evaluate(([wx, wz, mon]) => {
           const g = window.__zk.game, p = g.player;
-          const want = Math.atan2(-(wx - p.pos.x), -(wz - p.pos.z));
-          const d = Math.atan2(Math.sin(p.yaw - want), Math.cos(p.yaw - want));
-          g.input.lookX += Math.max(-0.35, Math.min(0.35, d));
+          const look = (x, z, lim) => {
+            const want = Math.atan2(-(x - p.pos.x), -(z - p.pos.z));
+            const d = Math.atan2(Math.sin(p.yaw - want), Math.cos(p.yaw - want));
+            g.input.lookX += Math.max(-lim, Math.min(lim, d));
+          };
+          let keys = null;
+          if (mon) {
+            // дивитися на мисливця, а йти до точки маршруту клавішами відносно погляду
+            look(mon[0], mon[1], 0.6);
+            const dx = wx - p.pos.x, dz = wz - p.pos.z, L = Math.hypot(dx, dz) || 1;
+            const f = (dx * -Math.sin(p.yaw) + dz * -Math.cos(p.yaw)) / L, r = (dx * Math.cos(p.yaw) + dz * -Math.sin(p.yaw)) / L;
+            keys = { KeyW: f > 0.3, KeyS: f < -0.3, KeyD: r > 0.3, KeyA: r < -0.3 };
+          } else look(wx, wz, 0.35);
           g.input.lookY += p.pitch * 0.5;
-          return { x: p.pos.x, z: p.pos.z, deaths: g.store.progress.deaths, lv: g.level.id, draw: g.gfx.renderer.info.render.drawCalls, input: g.input.enabled };
-        }, [wx, wz]);
+          return { x: p.pos.x, z: p.pos.z, deaths: g.store.progress.deaths, lv: g.level.id, draw: g.gfx.renderer.info.render.drawCalls, input: g.input.enabled, keys };
+        }, [wx, wz, watch]);
+        await setKeys(s.keys ?? { KeyW: true, KeyS: false, KeyA: false, KeyD: false });
         if (s.deaths > deaths0) return 'caught';
         (m.draws[s.lv] ??= []).push(s.draw);
         const now = Date.now(), dt = (now - prevT) / 1000; prevT = now;
@@ -133,6 +158,7 @@ export function makeBot(page, { log, shot }) {
         await wait(60);
       }
     } finally {
+      await setKeys({ KeyW: false, KeyS: false, KeyA: false, KeyD: false });
       await page.keyboard.up('KeyW');
       await page.keyboard.up('KeyC');
       if (run) await page.keyboard.up('ShiftLeft');
