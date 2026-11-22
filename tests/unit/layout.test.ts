@@ -51,3 +51,27 @@ describe('level presets (base, parking)', () => {
     expect(p.theme.lamp.color[2]).toBeLessThan(0.5);
   });
 });
+
+describe('deep levels (kindergarten, pool)', () => {
+  it.each([['kinder', 3], ['kinder', 31], ['pool', 4], ['pool', 44]] as const)('%s %i: reachable, rooms typed, no lamp in a wall', (preset, seed) => {
+    const l = generateLayout({ seed, preset });
+    // клітинки чаш непрохідні; усі інші досяжні
+    const unreachable = Array.from(l.dist).filter((d) => d < 0).length;
+    const basinCells = l.pools.reduce((n, q) => n + Math.round((q.w / l.cell) * (q.d / l.cell)), 0);
+    expect(unreachable).toBeLessThanOrEqual(basinCells);
+    expect(Math.hypot(l.exit.x - l.spawn.x, l.exit.z - l.spawn.z)).toBeGreaterThan(25);
+    for (const p of l.lights) for (const w of l.walls) {
+      const hit = Math.abs(p.x - w.x) < w.w / 2 + p.w / 2 && Math.abs(p.z - w.z) < w.d / 2 + p.d / 2;
+      expect(hit).toBe(false);
+    }
+    if (preset === 'kinder') {
+      for (const k of ['cloak', 'play', 'sleep', 'hall'] as const) expect(l.rooms.some((r) => r.kind === k)).toBe(true);
+      expect(l.pools.length).toBe(0);
+    } else {
+      expect(l.pools.length).toBeGreaterThanOrEqual(2);
+      expect(l.puddles.length).toBeGreaterThanOrEqual(3);
+      // старт і вихід — не в чаші
+      for (const p of [l.spawn, l.exit]) expect(l.pools.some((q) => Math.abs(p.x - q.x) < q.w / 2 && Math.abs(p.z - q.z) < q.d / 2)).toBe(false);
+    }
+  });
+});
