@@ -102,3 +102,6 @@
 - `sfx/snarl_*` — «Monster snarls» — Darsycho, **CC0 1.0**, OpenGameArt: https://opengameart.org/content/monster-snarls
 - `sfx/growl_*` — «16 monster growls» — StarNinjas, **CC0 1.0**, OpenGameArt: https://opengameart.org/content/16-monster-growls
 - `sfx/breath_0` — «Ghost breath» — qubodup, **CC0 1.0**, OpenGameArt: https://opengameart.org/content/ghost-breath
+- `sfx/heart_0` — «Heartbeat single sound» — qubodup, **CC0 1.0**, OpenGameArt: https://opengameart.org/content/heartbeat-single-sound
+- `sfx/victim_*` — «Grunts: male death and pain» — thebardofblasphemy, **CC0 1.0**, OpenGameArt: https://opengameart.org/content/grunts-male-death-and-pain
+- `sfx/yelp_*` — «15 vocal male strain/hurt/pain/jump sounds» — qubodup, **CC0 1.0**, OpenGameArt: https://opengameart.org/content/15-vocal-male-strainhurtpainjump-sounds
