@@ -24,6 +24,7 @@ import type { DeviceInfo } from '../core/device';
 import { Physics, G } from '../physics/physics';
 import { Player } from './player';
 import { CameraRig } from './camera-rig';
+import { Hand } from './hand';
 import { Input } from '../input/input';
 import { AudioEngine } from '../audio/audio';
 import { SoundBank } from '../audio/bank';
@@ -77,6 +78,8 @@ export class Game {
   calib: Calibration | null = null;
   readonly input: Input;
   readonly rig: CameraRig;
+  /** Рука з ліхтариком (інерція, погойдування). */
+  readonly hand = new Hand();
   readonly audio = new AudioEngine();
   readonly store = new Store();
   readonly ui: UI;
@@ -1218,6 +1221,9 @@ export class Game {
     }
     this.cameraOverride?.(this.camera, dt);
     if (this.mode === 'menu') this.menuCamera(dt);
+    // рука з ліхтариком — після всіх змін камери (шафка, кат-сцени): світить з руки, з легкою інерцією
+    if (this.hide || this.cameraOverride || this.mode !== 'play') this.hand.snap();
+    this.hand.update({ camPos: this.camera.position, camQuat: this.camera.quaternion, phase: this.player.bobPhase, amp: this.hide ? 0 : this.player.bobAmp, shake: Math.min(1, this.rig.shake + this.hunt.danger * 0.35), dt, t: this.time });
     if (lvl) {
       lvl.update(this.time, dt, this.camera);
       this.figure?.update(dt, this.camera, this.mode === 'play');
@@ -1249,8 +1255,8 @@ export class Game {
       // від 1.4 м і далі — як і було
       if ((this.flashT -= dt) <= 0) {
         this.flashT = 0.05;
-        const d = this.fwd.set(0, 0, -1).applyQuaternion(c.quaternion);
-        this.flashHit = this.physics.raycast(c.position.x, c.position.y, c.position.z, d.x, d.y, d.z, 12, G.STATIC | G.DOOR | G.PROP) ?? 12;
+        const d = this.hand.dir;
+        this.flashHit = this.physics.raycast(this.hand.pos.x, this.hand.pos.y, this.hand.pos.z, d.x, d.y, d.z, 12, G.STATIC | G.DOOR | G.PROP) ?? 12;
         this.flashNear = Math.min(10, this.flashHit);
       }
       const nearK = Math.min(1, Math.max(0.1, (this.flashNear / 1.4) ** 2));
@@ -1261,12 +1267,12 @@ export class Game {
       // відбите від плями світло: трохи перед точкою влучання, слабшає з відстанню (пляма більша, але тьмяніша)
       const bounce = fl.userData.bounce as THREE.PointLight | undefined;
       if (bounce) {
-        const d = this.fwd.set(0, 0, -1).applyQuaternion(c.quaternion), h = Math.max(0.3, this.flashHit - 0.45);
-        bounce.position.copy(c.position).addScaledVector(d, h);
+        const h = Math.max(0.3, this.flashHit - 0.45);
+        bounce.position.copy(this.hand.pos).addScaledVector(this.hand.dir, h);
         bounce.intensity = this.flashHit >= 12 ? 0 : fl.intensity * 0.075 / (1 + this.flashHit * 0.12);
       }
-      fl.position.set(0.18, -0.16, 0.05).applyQuaternion(c.quaternion).add(c.position);
-      fl.target.position.set(0, -0.08, -6).applyQuaternion(c.quaternion).add(c.position);
+      fl.position.copy(this.hand.pos);
+      fl.target.position.copy(this.hand.pos).addScaledVector(this.hand.dir, 6);
       const fo = this.flashOverride;
       if (fo) { fl.position.copy(fo.from); fl.target.position.copy(fo.at); fl.intensity = fo.intensity; }
       // вимкнений ліхтарик нічого не освітлює — і його тінь не видно: не малюємо карту тіні (цілий прохід сцени),

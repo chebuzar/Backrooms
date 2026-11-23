@@ -43,6 +43,8 @@ export class TouchControls {
   stickX = 0;
   stickY = 0;
   run = false;
+  /** Палець відтягнуто далеко за кільце стіка вперед — біг. */
+  edgeRun = false;
   crouch = false;
   private readonly root: HTMLDivElement;
   private stickId: number | null = null;
@@ -133,14 +135,18 @@ export class TouchControls {
         const d = Math.hypot(dx, dy);
         if (d > R) { dx *= R / d; dy *= R / d; }
         this.knob.style.transform = `translate(${dx}px, ${dy}px)`;
+        // біг — лише свідомо: палець далеко за кільцем стіка і вперед (з запасом, щоб не «перемикалось» туди-сюди).
+        // Раніше вистачало дотягнути стік до краю — на iPad гравець бігав щоразу, коли просто йшов уперед.
+        const fwd = d > 0 && -dy / d > 0.8;
+        this.edgeRun = fwd && (this.edgeRun ? d > R * 1.25 : d > R * 1.55);
         const m = Math.min(1, d / R);
         const curve = m < 0.12 ? 0 : (m - 0.12) / 0.88;
         this.stickX = d ? (dx / Math.min(d, R)) * curve : 0;
         this.stickY = d ? (-dy / Math.min(d, R)) * curve : 0;
       } else if (t.identifier === this.lookId) {
         const k = 0.0042 * this.input.settings.sensitivity;
-        this.input.lookX += (t.clientX - this.lx) * k;
-        this.input.lookY += (t.clientY - this.ly) * k * (this.input.settings.invertY ? -1 : 1);
+        this.input.touchLookX += (t.clientX - this.lx) * k;
+        this.input.touchLookY += (t.clientY - this.ly) * k * (this.input.settings.invertY ? -1 : 1);
         this.lx = t.clientX; this.ly = t.clientY;
       }
     }
@@ -151,7 +157,7 @@ export class TouchControls {
   private onEnd(e: TouchEvent): void {
     for (const t of Array.from(e.changedTouches)) {
       if (t.identifier === this.stickId) {
-        this.stickId = null; this.stickX = this.stickY = 0;
+        this.stickId = null; this.stickX = this.stickY = 0; this.edgeRun = false;
         this.base.classList.remove('on');
       } else if (t.identifier === this.lookId) this.lookId = null;
     }

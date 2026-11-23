@@ -13,6 +13,10 @@ export class Input {
   readonly move = { x: 0, y: 0 };
   lookX = 0; // рад за кадр
   lookY = 0;
+  /** Поворот від пальця, ще не відданий камері: дотики приходять нерівно (то дві події за кадр, то жодної) —
+   * віддаємо їх плавно, інакше на iPad погляд «смикається» навіть на рівних 60 FPS. */
+  touchLookX = 0;
+  touchLookY = 0;
   run = false;
   crouch = false;
   private keys = new Set<string>();
@@ -114,8 +118,8 @@ export class Input {
     if (this.touch?.active) {
       const t = this.touch;
       if (t.stickX || t.stickY) { x = t.stickX; y = t.stickY; this.lastDevice = 'touch'; }
-      // як у мобільних іграх: стік до краю вперед — біг (кнопка бігу теж працює)
-      run = run || t.run || (t.stickY > 0.93 && Math.hypot(t.stickX, t.stickY) > 0.97);
+      // як у мобільних іграх: палець далеко за край стіка вперед — біг (кнопка бігу теж працює)
+      run = run || t.run || t.edgeRun;
       crouch = crouch || t.crouch;
     }
 
@@ -125,8 +129,12 @@ export class Input {
   }
 
   /** Забрати накопичений поворот погляду. */
-  takeLook(): [number, number] {
-    const r: [number, number] = [this.lookX, this.lookY];
+  takeLook(dt = 1 / 60): [number, number] {
+    // палець: ~30 мс згладжування (непомітна затримка, зате рівний поворот без «сходинок»)
+    const k = 1 - Math.exp(-Math.max(0, dt) / 0.03);
+    const tx = this.touchLookX * k, ty = this.touchLookY * k;
+    this.touchLookX -= tx; this.touchLookY -= ty;
+    const r: [number, number] = [this.lookX + tx, this.lookY + ty];
     this.lookX = 0; this.lookY = 0;
     return this.enabled ? r : [0, 0];
   }

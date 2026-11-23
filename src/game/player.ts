@@ -29,8 +29,9 @@ export const PLAYER = {
   walk: 1.85,
   run: 4.3,
   crouchSpeed: 0.95,
-  accel: 11,
-  decel: 14,
+  accel: 9, // розгін кроком: ~0.25 с до повної швидкості — відчувається вага тіла, але без «ковзанки»
+  runAccel: 4.5, // розгін у біг довший: людина в робі й чоботях не зривається з місця
+  decel: 10,
   staminaDrain: 0.17,
   staminaRegen: 0.11,
   stepWalk: 1.5, // довжина кроку, м
@@ -62,7 +63,6 @@ export class Player {
   /** Фаза кроку, рад (для похитування камери). */
   bobPhase = 0;
   bobAmp = 0;
-  private stepDist = 0;
   onFootstep: ((e: FootstepEvent) => void) | null = null;
 
   constructor(private readonly physics: Physics, x: number, y: number, z: number) {
@@ -131,7 +131,7 @@ export class Player {
 
     const speed = (this.crouched ? PLAYER.crouchSpeed : wantRun ? PLAYER.run : PLAYER.walk) * this.slow;
     const tx = wx * speed * Math.min(1, len), tz = wz * speed * Math.min(1, len);
-    const k = 1 - Math.exp(-(moving ? PLAYER.accel : PLAYER.decel) * dt);
+    const k = 1 - Math.exp(-(moving ? (wantRun && Math.hypot(this.vx, this.vz) > PLAYER.walk * 0.9 ? PLAYER.runAccel : PLAYER.accel) : PLAYER.decel) * dt);
     this.vx += (tx - this.vx) * k;
     this.vz += (tz - this.vz) * k;
     this.vy = this.grounded ? -0.5 : Math.max(-30, this.vy - 9.81 * dt);
@@ -154,11 +154,14 @@ export class Player {
     const ampTarget = this.grounded ? Math.min(1, hs / PLAYER.walk) * (this.running ? 1.6 : 1) : 0;
     this.bobAmp += (ampTarget - this.bobAmp) * (1 - Math.exp(-8 * dt));
     if (this.grounded && hs > 0.15) {
-      const stride = this.running ? PLAYER.stepRun : PLAYER.stepWalk;
+      // довжина кроку плавно росте зі швидкістю (без стрибка при переході в біг)
+      const runK = Math.max(0, Math.min(1, (hs - PLAYER.walk) / (PLAYER.run - PLAYER.walk)));
+      const stride = PLAYER.stepWalk + (PLAYER.stepRun - PLAYER.stepWalk) * runK;
+      const before = Math.floor(this.bobPhase / Math.PI);
       this.bobPhase += (hs * dt / stride) * Math.PI * 2;
-      this.stepDist += hs * dt;
-      if (this.stepDist >= stride / 2) {
-        this.stepDist = 0;
+      // звук кроку — саме тоді, коли голова «осідає» на ногу (фаза кратна π): звук і рух камери збігаються
+      if (Math.floor(this.bobPhase / Math.PI) !== before) {
+        this.bobPhase %= Math.PI * 4;
         const loud = this.crouched ? 0.15 : this.running ? 1 : 0.45;
         this.onFootstep?.({ x: this.pos.x, y: this.pos.y, z: this.pos.z, loudness: loud, running: this.running });
       }
