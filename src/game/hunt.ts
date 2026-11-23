@@ -32,6 +32,12 @@ export class Hunt {
   /** Ліхтарик на мить «провалився» (с): поруч «Наблюдатель», і світло тримає лише ліхтарик. */
   private flashCut = 0;
   private cutCd = 6;
+  /** Попередній стан мозку — щоб почути перехід (помітив → гарчання здалеку, кинувся → рик). */
+  private prevState = '';
+  private growlCd = 0;
+  private snarlCd = 0;
+  /** Подих «Наблюдателя» за спиною: чути, лише коли на нього НЕ дивишся; глянув — тиша. */
+  private breath: SpatialVoice | null = null;
   /** Множник яскравості ліхтарика від мисливця (0 — провал). */
   get flashMul(): number { return this.flashCut > 0 ? 0 : 1; }
 
@@ -102,11 +108,34 @@ export class Hunt {
     this.stalker = s;
     if (kind === 'blind' && ctx) this.voice = this.audio.play3D(tongueClicks(ctx, 3), home.x, 1.6, home.z, { loop: true, gain: 0.7, ref: 2.2, wet: 0.5 });
     if (kind === 'drowned' && ctx) this.voice = this.audio.play3D(drownedBreath(ctx), home.x, 0.4, home.z, { loop: true, gain: 0.3, ref: 2, wet: 0.5 });
+    const br = kind === 'watcher' ? this.sfx.pick('breath_') : null;
+    if (br) this.breath = this.audio.play3D(br, home.x, 1.7, home.z, { loop: true, gain: 0, rate: 0.7, ref: 1.4, wet: 0.3 });
+  }
+
+  /** Голос кожного монстра — той самий запис, але своя «глотка»: низький «Наблюдатель», різкий «Слепой», булькіт «Утопленника». */
+  private static readonly THROAT: Record<StalkerKind, number> = { watcher: 0.72, blind: 1.12, smiler: 0.9, drowned: 0.56 };
+
+  /** Звук переходу стану: помітив щось — глухе гарчання; кинувся в погоню — рик (а «Улыбчивая» — сміється). */
+  private cue(s: Stalker, st: string, d: number, occl: number): void {
+    const sp = s.pos, rate = Hunt.THROAT[s.kind] * (0.94 + Math.random() * 0.12), ctx = this.audio.ctx;
+    if (st === 'chase' && this.prevState !== 'chase' && this.snarlCd <= 0) {
+      this.snarlCd = 16 + Math.random() * 8;
+      if (s.kind === 'smiler' && ctx) { this.audio.play3D(giggle(ctx, Math.floor(Math.random() * 1000)), sp.x, 1.9, sp.z, { gain: 1.1, ref: 2.4, wet: 0.6, occlusion: occl }); return; }
+      const b = this.sfx.pick('snarl_');
+      if (b) this.audio.play3D(b, sp.x, 1.6, sp.z, { gain: 1.25, rate, ref: 2.6, wet: 0.55, occlusion: occl });
+    } else if ((st === 'suspicious' || st === 'investigate') && this.prevState !== st && this.prevState !== 'chase' && this.growlCd <= 0 && d < 26) {
+      this.growlCd = 12 + Math.random() * 8;
+      const b = this.sfx.pick('growl_');
+      if (b) this.audio.play3D(b, sp.x, 1.5, sp.z, { gain: st === 'suspicious' ? 0.45 : 0.7, rate: rate * 0.92, ref: 2, wet: 0.6, occlusion: occl });
+    }
   }
 
   dispose(): void {
     this.voice?.stop(0.2);
     this.voice = null;
+    this.breath?.stop(0.2);
+    this.breath = null;
+    this.prevState = ''; this.growlCd = 4; this.snarlCd = 0;
     this.stalker = null;
     this.nav?.destroy();
     this.nav = null;
@@ -180,6 +209,20 @@ export class Hunt {
     if (hidden) { v.looksAtMe = false; v.litByFlashlight = false; } // крізь жалюзі «тримати поглядом» не вийде
     s.update(dt, v);
     const st = s.brain.state, dist = Math.hypot(sp.x - v.x, sp.z - v.z);
+    // голос монстра: крізь стіни — глухо (без прямої видимості — приглушений)
+    this.growlCd -= dt; this.snarlCd -= dt;
+    if (st !== this.prevState) {
+      const occl = d < 30 && physics.lineOfSight(c.x, c.y, c.z, sp.x, 1.5, sp.z) ? 0 : 0.65;
+      this.cue(s, st, d, occl);
+      this.prevState = st;
+    }
+    if (this.breath) {
+      // «Наблюдатель» дихає, лише поки ти відвернувся; чим ближче — тим чутніше. Обернувся — подих обривається.
+      const want = !v.looksAtMe && !hidden && dist < 10 ? (1 - dist / 10) ** 1.5 * (st === 'chase' ? 1.4 : 0.8) : 0;
+      const g = this.breath.gain.gain;
+      g.value += (want - g.value) * Math.min(1, dt * (want > g.value ? 1.5 : 12));
+      this.breath.setPosition(sp.x, 1.7, sp.z);
+    }
     const close = Math.max(0, 1 - dist / 14);
     this.heartbeat(dt, st === 'chase' ? 1 : Math.max(close * (v.looksAtMe ? 1 : 0.6), st === 'investigate' || st === 'search' ? 0.45 : 0));
     // «Утопленник»: під водою — ледь чутні бульбашки; вийшов — хрипкий мокрий подих
