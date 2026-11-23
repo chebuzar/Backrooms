@@ -69,7 +69,7 @@ export class Player {
     const R = physics.R;
     this.body = physics.world.createRigidBody(R.RigidBodyDesc.kinematicPositionBased().setTranslation(x, y + PLAYER.standHalf + PLAYER.radius, z));
     this.collider = physics.world.createCollider(
-      R.ColliderDesc.capsule(PLAYER.standHalf, PLAYER.radius).setCollisionGroups(groups(G.PLAYER, G.STATIC | G.DOOR | G.PROP | G.MONSTER)),
+      R.ColliderDesc.capsule(PLAYER.standHalf, PLAYER.radius).setCollisionGroups(groups(G.PLAYER, G.STATIC | G.DOOR | G.PROP | G.MONSTER | G.RAG)),
       this.body
     );
     this.ctrl = physics.world.createCharacterController(0.02);
@@ -141,7 +141,7 @@ export class Player {
     this.vz += (tz - this.vz) * k;
     this.vy = this.grounded ? -0.5 : Math.max(-30, this.vy - 9.81 * dt);
 
-    this.ctrl.computeColliderMovement(this.collider, { x: this.vx * dt, y: this.vy * dt, z: this.vz * dt }, undefined, groups(0xffff, G.STATIC | G.DOOR | G.PROP | G.MONSTER));
+    this.ctrl.computeColliderMovement(this.collider, { x: this.vx * dt, y: this.vy * dt, z: this.vz * dt }, undefined, groups(0xffff, G.STATIC | G.DOOR | G.PROP | G.MONSTER | G.RAG));
     const mv = this.ctrl.computedMovement();
     this.grounded = this.ctrl.computedGrounded();
     const t = this.body.translation();

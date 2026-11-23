@@ -108,7 +108,7 @@ export interface PropItem {
 }
 
 /** Фільтр зіткнень речі: зі стінами, дверима, іншими речами, гравцем і монстрами. */
-export const PROP_FILTER = G.STATIC | G.DOOR | G.PROP | G.PLAYER | G.MONSTER;
+export const PROP_FILTER = G.STATIC | G.DOOR | G.PROP | G.PLAYER | G.MONSTER | G.RAG;
 
 /** Точки моделі (у її власних координатах) для опуклої оболонки: не більше ~500, рівномірно. */
 function modelPoints(model: THREE.Object3D): Float32Array {

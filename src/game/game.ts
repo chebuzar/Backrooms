@@ -26,6 +26,7 @@ import type { DeviceInfo } from '../core/device';
 import { Physics, G } from '../physics/physics';
 import { Knockables } from '../physics/knock';
 import { PropPlay } from './props';
+import { Corpses } from '../physics/ragdoll';
 import { Player } from './player';
 import { CameraRig } from './camera-rig';
 import { Hand } from './hand';
@@ -181,6 +182,8 @@ export class Game {
   interact!: Interactions;
   /** Речі: рука, удари, скло. */
   props!: PropPlay;
+  /** Тіла (ragdoll) з минулих смертей. */
+  corpses!: Corpses;
   private stage: 'desk' | 'seam' | 'done' = 'desk';
   private ending = false;
   readonly psyche = new Psyche();
@@ -341,6 +344,7 @@ export class Game {
     this.physics = await Physics.create();
     this.physics.knock = new Knockables(this.physics);
     // речі: удари, скло, рука (взяти, покласти, кинути) — props.ts
+    this.corpses = new Corpses(this.physics);
     this.props = new PropPlay({ physics: this.physics, knock: this.physics.knock, audio: this.audio, sfx: this.sfx, noise: (x, y, z, l) => this.hunt.noise(x, y, z, l) });
     this.assets = new Assets(this.gfx.renderer);
     // ліхтар у руці — до першого рівня, щоб його шейдери прогрілись разом із рівнем
@@ -388,6 +392,7 @@ export class Game {
     const old = this.level;
     if (old) {
       this.props.detach();
+      this.corpses.clear();
       this.physics.knock?.clear();
       const keep = this.player?.collider;
       const list: { handle: number }[] = [];
@@ -424,7 +429,7 @@ export class Game {
       lvl.scene.add(unseen);
       // тіла з минулих спроб на цьому рівні (у калюжах крові)
       this.bloodAtlas = await this.assets.texture('assets/tex/level0/decals.ktx2').catch(() => null);
-      for (const b of this.store.progress.bodies) if (b.level === id) lvl.scene.add(makeBody(gl.scene, b.x, b.z, b.yaw, this.bloodAtlas));
+      for (const b of this.store.progress.bodies) if (b.level === id) { const o = makeBody(gl.scene, b.x, b.z, b.yaw, this.bloodAtlas); lvl.scene.add(o); this.corpses.add(o); }
       if (this.bloodAtlas) { this.deathPool = makeBloodPool(this.bloodAtlas, 0, 0, 1); this.deathPool.visible = false; lvl.scene.add(this.deathPool); }
       this.deathSpray = new BloodSpray(); this.deathSpray.mesh.visible = false; lvl.scene.add(this.deathSpray.mesh);
     } catch { /* без моделі гра йде далі без прихованого й тіл */ }
@@ -452,6 +457,7 @@ export class Game {
     await this.tasks.build(this.assets, this.physics, lvl, busy);
     const taken = [...busy, ...this.tasks.spots(), ...Object.values(lvl.spots)];
     this.dressed = lvl.id > 0 ? await dressLevel(this.assets, this.physics, lvl, taken) : await furnishNii(this.assets, this.physics, lvl, taken);
+    this.corpses.settle(); // тіла лягають до старту, поки рівень ще під заставкою
     this.phoneAnswered = false; this.writingSeen = false;
     this.setScene(lvl.scene);
     lvl.scene.add(this.handLamp.root);
@@ -826,15 +832,25 @@ export class Game {
     for (const d of lvl.doors.list) {
       const doors = lvl.doors;
       this.interact.add({ id: d.id, get x() { return d.cx; }, y: DOOR_H / 2, get z() { return d.cz; }, halfHeight: 0.9, reach: 1.8, enabled: true,
-        get prompt() { return d.target > 0.1 ? HINTS.doorShut : HINTS.doorOpen; }, use: () => doors.toggle(d) });
+        get prompt() { return d.target > 0.1 ? HINTS.doorShut : HINTS.doorOpen; },
+        // присівши — обережно й тихо, на бігу — рвонути (грюкіт чути далеко)
+        use: () => doors.toggle(d, this.player.crouched ? 'quiet' : this.player.running || this.input.run ? 'slam' : 'normal') });
     }
     const doorSound = (name: string, d: { pivot: THREE.Object3D }, gain: number) => {
       const b = this.sfx.pick(name);
       const p = d.pivot.position;
       if (b) this.audio.play3D(b, p.x, 1.2, p.z, { gain, rate: 0.9 + Math.random() * 0.15, ref: 2, wet: 0.4 });
     };
-    lvl.doors.onMove = (d, opening) => { doorSound('creak', d, 0.7); if (opening) doorSound('dooropen', d, 0.6); this.hunt.noise(d.pivot.position.x, 1, d.pivot.position.z, 0.6); };
-    lvl.doors.onShut = (d) => doorSound('doorclose', d, 0.9);
+    lvl.doors.onMove = (d, opening, force) => {
+      const k = force === 'quiet' ? 0.22 : force === 'slam' ? 1 : 0.7;
+      doorSound('creak', d, k);
+      if (opening) doorSound('dooropen', d, force === 'quiet' ? 0.15 : 0.6);
+      this.hunt.noise(d.pivot.position.x, 1, d.pivot.position.z, force === 'quiet' ? 0.15 : force === 'slam' ? 0.9 : 0.6);
+    };
+    lvl.doors.onShut = (d, force) => {
+      doorSound('doorclose', d, force === 'quiet' ? 0.3 : force === 'slam' ? 1.15 : 0.9);
+      if (force === 'slam') { doorSound('knock_wood_', d, 0.7); this.hunt.noise(d.pivot.position.x, 1, d.pivot.position.z, 0.95); }
+    };
     lvl.doors.onBash = (d, by) => {
       if (by === 'player') {
         // плечем на бігу: глухий удар у полотно, грюкіт об стіну; чути далеко — монстр теж почує
@@ -953,7 +969,8 @@ export class Game {
       const scene = new DeathScene({
         camera: this.camera, stalker: s, audio: this.audio, sfx: this.sfx, pool: this.deathPool, spray: this.deathSpray,
         setFlash: (o) => { this.flashOverride = o; },
-        shake: (v) => { this.rig.shake = Math.max(this.rig.shake, v); }
+        shake: (v) => { this.rig.shake = Math.max(this.rig.shake, v); },
+        physics: this.physics
       });
       this.death = scene;
       let done!: () => void;
@@ -971,7 +988,7 @@ export class Game {
     if (this.level) {
       const body = { level: this.level.id, x: p.x, z: p.z, yaw: this.player.yaw };
       this.store.progress.bodies = [...this.store.progress.bodies, body].slice(-12);
-      if (this.figureModel) this.level.scene.add(makeBody(this.figureModel, body.x, body.z, body.yaw, this.bloodAtlas));
+      if (this.figureModel) { const o = makeBody(this.figureModel, body.x, body.z, body.yaw, this.bloodAtlas); this.level.scene.add(o); this.corpses.add(o); this.corpses.settle(60); }
     }
     this.psyche.afterDeath();
     this.bat.afterDeath();
@@ -1243,7 +1260,7 @@ export class Game {
       const m = this.hide ? { x: 0, y: 0, run: false, crouch: false } : { x: this.input.move.x, y: this.input.move.y, run: this.input.run, crouch: this.input.crouch };
       let steps = 0;
       while (this.acc >= STEP) { this.player.update(STEP, m); this.props.step(STEP, this.player); this.physics.step(); this.acc -= STEP; steps++; }
-      if (steps) { this.physics.knock?.sync(steps * STEP); this.props.sync(steps * STEP); }
+      if (steps) { this.physics.knock?.sync(steps * STEP); this.props.sync(steps * STEP); this.corpses.sync(); }
       if (steps && this.level) this.shoulderDoors(this.level);
     }
     if (this.input.consume('flashlight') && this.mode === 'play') {

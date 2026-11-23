@@ -43,8 +43,13 @@ for (const lv of levels) {
   check(`уровень ${lv}: скример — лицо вплотную`, seen.scare.head !== null && seen.scare.head < 0.9, seen.scare);
   check(`уровень ${lv}: оператор на полу, монстр над ним`, seen.feed.camY < 0.4 && seen.feed.head !== null && seen.feed.head < 1.6 && seen.feed2.head < 1.6, seen);
   await page.waitForFunction(() => window.__zk.game.input.enabled && !window.__zk.game.ending, null, { timeout: 60000 });
-  const after = await page.evaluate(() => ({ y: window.__zk.game.camera.position.y, bodies: window.__zk.game.store.progress.bodies.length }));
-  check(`уровень ${lv}: после — снова на ногах, тело осталось`, after.y > 1.2 && after.bodies > 0, after);
+  await wait(1500);
+  const after = await page.evaluate(() => {
+    const g = window.__zk.game, cs = g.corpses, r = cs.all[cs.all.length - 1];
+    const ys = r ? r.parts.map((p) => p.body.translation().y) : [];
+    return { y: g.camera.position.y, bodies: g.store.progress.bodies.length, ragdolls: cs.count, minY: Math.min(...ys), maxY: Math.max(...ys), finite: ys.every(Number.isFinite) };
+  });
+  check(`уровень ${lv}: после — снова на ногах, тело осталось и лежит на полу (ragdoll)`, after.y > 1.2 && after.bodies > 0 && after.ragdolls > 0 && after.finite && after.minY > -0.05 && after.maxY < 0.6, after);
 }
 check('консоль без ошибок', logs.length === 0, logs.slice(0, 5));
 await close(); await srv.close();

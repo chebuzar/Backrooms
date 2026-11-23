@@ -2,7 +2,7 @@
 // настільна лампа б'ється об підлогу, кинута річ розбиває плафон на стелі (лампа гасне), книги знімаються з полиці,
 // стіл штовхається. Консоль — чиста.
 //   node tests/e2e/physics.mjs [webkit|chromium] [--prod]   → .shots/physics-*.png; код 1 — якщо щось не так
-import { startServer, openPage, gotoGame, wait } from './lib.mjs';
+import { startServer, openPage, gotoGame } from './lib.mjs';
 
 const which = process.argv[2] && !process.argv[2].startsWith('--') ? process.argv[2] : 'webkit';
 const srv = await startServer(process.argv.includes('--prod'));
