@@ -2,31 +2,16 @@
 // Справжні CC0-текстури (атлас ambientCG Leaking, 4×2) на плоских квадратах біля поверхонь — усі грані рівня осьові, тож
 // проєкція не потрібна. Змішування «множенням»: декаль лише темнить уже освітлену поверхню, тому світло й тіні — від стіни,
 // і пляма не виглядає «приклеєною». Один меш на рівень (один виклик малювання).
+// Нормаль і швидкість у MRT декаль пише свої: вона лежить у площині поверхні, тож вони збігаються з поверхнею.
+// (Підміна їх на «1» під множенням ламала GTAO: чорні прямокутники на стелі на «Средней» і вищих якостях.)
 import * as THREE from 'three/webgpu';
-import { texture, uv, vec4, mix, smoothstep, positionView, float, attribute, output } from 'three/tsl';
+import { texture, uv, vec4, mix, smoothstep, positionView, float, attribute } from 'three/tsl';
 import { rng } from '../core/rng';
 import type { Layout } from './layout';
 import type { Decor } from './decor';
 
-/**
- * MRT декалі: у головному проході сцени пише колір і «1» у нормалі/швидкості (множення лишає їх без змін).
- * У будь-якому іншому рендер-таргеті без цих імен стандартний MRTNode дає порожню структуру (помилка WGSL у WebGPU) —
- * тоді лишаємо лише основний вихід кольору.
- */
-class DecalMRT extends THREE.MRTNode {
-  override setup(builder: THREE.NodeBuilder): THREE.Node | null {
-    const rt = builder.renderer.getRenderTarget() as { textures?: { name: string }[] } | null;
-    const names = rt?.textures?.map((t) => t.name) ?? [];
-    if (!names.some((n) => n in this.outputNodes)) {
-      const out = (this.outputNodes as Record<string, THREE.Node>).output as THREE.Node;
-      (this as unknown as { members: THREE.Node[] }).members = [out];
-      return THREE.OutputStructNode.prototype.setup.call(this, builder) as THREE.Node | null;
-    }
-    return super.setup(builder) as THREE.Node | null;
-  }
-}
-
-type Quad = { c: [number, number, number]; u: [number, number, number]; v: [number, number, number]; cell: number; flip: boolean };
+/** k — сила плями (0..1): на стінах підтьоки виразні, на стелі й підлозі — легкі, інакше читаються як чорні діри. */
+type Quad = { c: [number, number, number]; u: [number, number, number]; v: [number, number, number]; cell: number; flip: boolean; k: number };
 
 /** Розставити декалі детерміновано з планування й деталей будівлі. */
 function placeDecals(l: Layout, decor: Decor[]): Quad[] {
@@ -41,7 +26,7 @@ function placeDecals(l: Layout, decor: Decor[]): Quad[] {
   const onWall = (x: number, y: number, z: number, nx: number, nz: number, w: number, h: number, cells: number[]) => {
     out.push({
       c: [x + nx * OFF, y, z + nz * OFF], u: [nz * w / 2, 0, -nx * w / 2], v: [0, -h / 2, 0],
-      cell: pick(cells), flip: r() < 0.5
+      cell: pick(cells), flip: r() < 0.5, k: 0.85
     });
   };
   // під решітками — довгий підтьок униз
@@ -73,7 +58,7 @@ function placeDecals(l: Layout, decor: Decor[]): Quad[] {
     if (inWall(x, z, s * 0.45)) continue;
     const ceil = r() < 0.35;
     const ang = r() * Math.PI * 2, ca = Math.cos(ang) * s / 2, sa = Math.sin(ang) * s / 2;
-    out.push({ c: [x, ceil ? H - OFF : OFF, z], u: [ca, 0, sa], v: [-sa * (ceil ? -1 : 1), 0, ca * (ceil ? -1 : 1)], cell: 3, flip: r() < 0.5 });
+    out.push({ c: [x, ceil ? H - OFF : OFF, z], u: [ca, 0, sa], v: [-sa * (ceil ? -1 : 1), 0, ca * (ceil ? -1 : 1)], cell: 3, flip: r() < 0.5, k: ceil ? 0.42 : 0.3 });
   }
   return out;
 }
@@ -81,7 +66,7 @@ function placeDecals(l: Layout, decor: Decor[]): Quad[] {
 export function buildDecals(l: Layout, decor: Decor[], atlas: THREE.Texture): THREE.Mesh {
   const quads = placeDecals(l, decor);
   const pos = new Float32Array(quads.length * 12), uvs = new Float32Array(quads.length * 8), nrm = new Float32Array(quads.length * 12);
-  const loc = new Float32Array(quads.length * 8); // локальні 0..1 — для м'якого згасання до країв
+  const loc = new Float32Array(quads.length * 12); // локальні 0..1 — для м'якого згасання до країв; z — сила плями
   const idx: number[] = [];
   quads.forEach((q, i) => {
     const corners: [number, number][] = [[-1, -1], [1, -1], [1, 1], [-1, 1]];
@@ -93,7 +78,7 @@ export function buildDecals(l: Layout, decor: Decor[], atlas: THREE.Texture): TH
       const fu = q.flip ? 1 - (a + 1) / 2 : (a + 1) / 2;
       uvs[i * 8 + k * 2] = u0 + fu * 0.25;
       uvs[i * 8 + k * 2 + 1] = v0 + ((b + 1) / 2) * 0.5;
-      loc[i * 8 + k * 2] = (a + 1) / 2; loc[i * 8 + k * 2 + 1] = (b + 1) / 2;
+      loc[i * 12 + k * 3] = (a + 1) / 2; loc[i * 12 + k * 3 + 1] = (b + 1) / 2; loc[i * 12 + k * 3 + 2] = q.k;
       nrm[i * 12 + k * 3] = n.x; nrm[i * 12 + k * 3 + 1] = n.y; nrm[i * 12 + k * 3 + 2] = n.z;
     });
     const o = i * 4;
@@ -103,7 +88,7 @@ export function buildDecals(l: Layout, decor: Decor[], atlas: THREE.Texture): TH
   g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   g.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
   g.setAttribute('normal', new THREE.BufferAttribute(nrm, 3));
-  g.setAttribute('local', new THREE.BufferAttribute(loc, 2));
+  g.setAttribute('local', new THREE.BufferAttribute(loc, 3));
   g.setIndex(idx);
   g.computeBoundingSphere();
 
@@ -116,11 +101,9 @@ export function buildDecals(l: Layout, decor: Decor[], atlas: THREE.Texture): TH
   // далеко плями зливаються з туманом — плавно згасають
   const fade = smoothstep(16.0, 30.0, positionView.z.negate());
   // м'які краї: жодної прямокутної межі плями (і захист від сусідніх клітинок атласу на дальніх mip-рівнях)
-  const lc = attribute<'vec2'>('local', 'vec2');
+  const lc = attribute<'vec3'>('local', 'vec3');
   const edge = smoothstep(0.0, 0.22, lc.x).mul(float(1).sub(smoothstep(0.78, 1.0, lc.x))).mul(smoothstep(0.0, 0.18, lc.y)).mul(float(1).sub(smoothstep(0.82, 1.0, lc.y)));
-  m.colorNode = vec4(mix(float(1), texture(atlas, uv()).rgb, edge.mul(fade.oneMinus())), 1);
-  // у буфери нормалей і швидкостей пишемо 1 — множення залишає їх без змін (AO й TRAA не бачать декалей)
-  m.mrtNode = new DecalMRT({ output, normal: vec4(1), velocity: vec4(1) }) as unknown as typeof m.mrtNode;
+  m.colorNode = vec4(mix(float(1), texture(atlas, uv()).rgb, edge.mul(fade.oneMinus()).mul(lc.z)), 1);
   const mesh = new THREE.Mesh(g, m);
   mesh.renderOrder = 2;
   mesh.frustumCulled = false;

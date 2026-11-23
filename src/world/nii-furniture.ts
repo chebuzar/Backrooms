@@ -224,7 +224,7 @@ export async function furnishNii(assets: Assets, physics: Physics, lvl: Level, t
       shown.push({ ...s, kind: 'lecture' });
       b.add('chalkboard', s.x, s.z, s.yaw);
       for (const p of free) {
-        if (chairsOnly) { b.add(r() < 0.5 ? 'chair' : 'painted-wooden-chair-01', p.x, p.z, s.yaw + (r() - 0.5) * 0.25); avoid.push({ x: p.x, z: p.z, r: 0.5 }); continue; }
+        if (chairsOnly) { b.add('chair', p.x, p.z, s.yaw + (r() - 0.5) * 0.25); avoid.push({ x: p.x, z: p.z, r: 0.5 }); continue; }
         b.add('school-desk', p.x, p.z, s.yaw + Math.PI + (r() - 0.5) * 0.12);
         const ch = { x: p.x + Math.sin(s.yaw) * (0.55 + r() * 0.2), z: p.z + Math.cos(s.yaw) * (0.55 + r() * 0.2) };
         b.add('chair', ch.x, ch.z, s.yaw + (r() - 0.5) * 0.5);

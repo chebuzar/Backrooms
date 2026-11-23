@@ -138,7 +138,7 @@ export function makeNiiMaterials(t: Level0Textures, L: Layout) {
     const worn = smoothstep(0.55, 0.85, maskAt(positionWorld.xz, 0.03, 0.27));
     col = mix(col, col.mul(vec3(1.18, 1.12, 1.02)).add(0.02), worn.mul(0.35));
     const damp = smoothstep(0.42, 0.78, texture(t.mold, positionWorld.xz.mul(0.045)).r.oneMinus()).mul(M.z.mul(0.8).add(0.2));
-    col = mix(col, col.mul(vec3(0.52, 0.47, 0.4)), damp.mul(0.65));
+    col = mix(col, col.mul(vec3(0.62, 0.57, 0.5)), damp.mul(0.4));
     const rough = mix(mix(mix(texture(t.parquet_r, pUV).r.mul(0.3).add(0.36), texture(t.lino_r, lUV).r.mul(0.3).add(0.42), isL),
       texture(t.wcf_r, fUV).r, isT), float(0.2), damp);
     const nrm = mix(mix(texture(t.parquet_n, pUV).rgb, texture(t.lino_n, lUV).rgb, isL), texture(t.wcf_n, fUV).rgb, isT);
@@ -149,11 +149,11 @@ export function makeNiiMaterials(t: Level0Textures, L: Layout) {
   const cUV = positionWorld.xz.div(PAINT_M);
   const ceilColor = Fn(() => {
     const M = el(miscT, codeAt(0));
-    const pc = texture(t.paint_c, cUV).r.mul(0.5).add(0.5);
-    let c = vec3(0.84, 0.83, 0.78).mul(pc);
+    const pc = texture(t.paint_c, cUV).r.mul(0.25).add(0.8);
+    let c = vec3(0.86, 0.85, 0.81).mul(pc);
     const leak = texture(t.mold, positionWorld.xz.mul(0.06).add(0.31)).r.oneMinus();
     const ring = smoothstep(0.6, 0.7, leak).mul(float(1).sub(smoothstep(0.7, 0.82, leak)));
-    c = mix(c, c.mul(vec3(0.66, 0.58, 0.44)), clamp(ring.mul(0.7).add(smoothstep(0.68, 0.9, leak).mul(0.3)), 0, 1).mul(M.z.mul(0.7).add(0.3)));
+    c = mix(c, c.mul(vec3(0.66, 0.58, 0.44)), clamp(ring.mul(0.45).add(smoothstep(0.72, 0.92, leak).mul(0.2)), 0, 1).mul(M.z.mul(0.8).add(0.1)));
     return c;
   });
 
