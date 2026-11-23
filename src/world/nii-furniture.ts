@@ -17,7 +17,7 @@ import { rng } from '../core/rng';
 import type { Level } from './level0';
 import { probeAt, probeLit } from './materials';
 import { wallRows, type Spot } from './dressing';
-import { zoneOf } from './decor';
+import type { Room } from './layout';
 
 interface Place { m: THREE.Matrix4; E: number; zone: number; parts?: InstancePart[] }
 
@@ -182,73 +182,126 @@ export async function furnishNii(assets: Assets, physics: Physics, lvl: Level, t
   const sp = lvl.seam.group.position, ap = lvl.arrival.group.position;
   const avoid = [...taken.map((t) => ({ ...t, r: 1.7 })), { x: sp.x, z: sp.z, r: 3.2 }, { x: ap.x, z: ap.z, r: 3.2 }, { x: L.spawn.x, z: L.spawn.z, r: 3.5 },
     ...lvl.doors.list.map((d) => ({ x: d.cx, z: d.cz, r: 1.5 }))];
-  const zone = (k: string) => (x: number, z: number) => zoneOf(L, x, z) === k;
   const b = new Batch(lvl);
   const deskTop = (await b.box(assets, 'desk')).max.y;
 
-  // кабінети: робочі місця (стіл 2×0.95 м, стілець відсунутий під різними кутами, на столі — лампа чи папери)
-  for (const row of wallRows(lvl, r, 16, 1 + (r() < 0.35 ? 1 : 0), 2.0, 0.95, 0.5, avoid, { where: zone('rooms') })) {
-    shown.push({ ...(row[0] as Spot), kind: 'desk' });
-    for (const s of row) {
-      b.add('desk', s.x, s.z, s.yaw);
-      const c = at(s, (r() - 0.5) * 0.6, 0.75 + r() * 0.35);
-      b.add('chair', c.x, c.z, s.yaw + Math.PI + (r() - 0.5) * 0.9);
-      const k = r();
-      if (k < 0.45) { const p = at(s, -0.65, -0.12); b.add('desk-lamp', p.x, p.z, s.yaw + Math.PI * 0.85 + (r() - 0.5) * 0.4, { y: deskTop + 0.002 }); }
-      if (k > 0.3) { const p = at(s, 0.35 + r() * 0.2, 0.05); b.add('notepads', p.x, p.z, s.yaw + (r() - 0.5) * 0.5, { y: deskTop + 0.004, scale: 0.42 }); }
-    }
-  }
-  // кабінети й архіви: шафи вздовж стін (по 1–3 поруч)
-  const cabs: [string, number, number][] = [['drawer-cabinet', 1.16, 0.5], ['bookshelf', 1.4, 0.6], ['vintage-cabinet', 2.05, 0.68]];
-  for (let k = 0; k < 3; k++) {
-    const [file, w, d] = cabs[k] as [string, number, number];
-    for (const row of wallRows(lvl, r, k === 2 ? 3 : 7, k === 2 ? 1 : 1 + Math.floor(r() * 3), w, d, 0.04, avoid, { where: (x, z) => zoneOf(L, x, z) !== 'hall' })) {
-      shown.push({ ...(row[0] as Spot), kind: file });
-      for (const s of row) {
-        b.add(file, s.x, s.z, s.yaw);
-        if (file === 'bookshelf') fillShelf(b, r, s);
+  const c = L.cell;
+  /** Стіни довкола приміщення (з обох боків межі) і перевірка «точка в приміщенні». */
+  const wallsOf = (q: Room) => L.walls.filter((w) => w.kind !== 'pillar' && w.x + w.w / 2 > q.x0 * c - 0.2 && w.x - w.w / 2 < q.x1 * c + 0.2
+    && w.z + w.d / 2 > q.y0 * c - 0.2 && w.z - w.d / 2 < q.y1 * c + 0.2);
+  const inside = (q: Room, m = 0.15) => (x: number, z: number) => x > q.x0 * c + m && x < q.x1 * c - m && z > q.y0 * c + m && z < q.y1 * c - m;
+  const rowsIn = (q: Room, rows: number, n: number, w: number, d: number, gap: number, dark = false) =>
+    wallRows(lvl, r, rows, n, w, d, gap, avoid, { walls: wallsOf(q), where: inside(q), dark });
+  /** Робоче місце: стіл спиною до стіни, стілець відсунутий під різними кутами, на столі — лампа чи папери. */
+  const workplace = (s: Spot, messy: boolean) => {
+    b.add('desk', s.x, s.z, s.yaw);
+    const ch = at(s, (r() - 0.5) * 0.6, 0.75 + r() * 0.35);
+    if (messy && r() < 0.5) b.add('chair', ch.x, ch.z, r() * 6.28, { tilt: new THREE.Euler(0, 0, Math.PI / 2), y: 0.28 });
+    else b.add('chair', ch.x, ch.z, s.yaw + Math.PI + (r() - 0.5) * 0.9);
+    const k = r();
+    if (k < 0.5) { const p = at(s, -0.65, -0.12); b.add('desk-lamp', p.x, p.z, s.yaw + Math.PI * 0.85 + (r() - 0.5) * 0.4, { y: deskTop + 0.002 }); }
+    if (k > 0.3) { const p = at(s, 0.35 + r() * 0.2, 0.05); b.add('notepads', p.x, p.z, s.yaw + (r() - 0.5) * 0.5, { y: deskTop + 0.004, scale: 0.42 }); }
+  };
+  const cabinets = (q: Room, k: number, dark = false) => {
+    const opts: [string, number, number][] = [['drawer-cabinet', 1.16, 0.5], ['bookshelf', 1.4, 0.6], ['vintage-cabinet', 2.05, 0.68]];
+    for (let i = 0; i < k; i++) {
+      const [file, w, d] = opts[Math.floor(r() * (q.kind === 'director' ? 3 : 2))] as [string, number, number];
+      for (const row of rowsIn(q, 1, 1 + Math.floor(r() * 2), w, d, 0.04, dark)) {
+        shown.push({ ...(row[0] as Spot), kind: file });
+        for (const s of row) { b.add(file, s.x, s.z, s.yaw); if (file === 'bookshelf') fillShelf(b, r, s); }
       }
     }
+  };
+  /** Ряди парт/стільців перед дошкою (лекторій, креслярська, актова зала). */
+  const lecture = (q: Room, cols: number, rowsN: number, step: number, chairsOnly: boolean) => {
+    for (const row of rowsIn(q, 1, 1, 1.0, 0.8, 0)) {
+      const s = row[0] as Spot;
+      const spots: { x: number; z: number }[] = [];
+      for (let i = 0; i < rowsN; i++) for (let j = 0; j < cols; j++) spots.push(at(s, (j - (cols - 1) / 2) * (chairsOnly ? 0.62 : 1.25), 1.9 + i * step));
+      const free = spots.filter((p) => inside(q, 0.7)(p.x, p.z) && !L.walls.some((w) => Math.abs(p.x - w.x) < w.w / 2 + 0.6 && Math.abs(p.z - w.z) < w.d / 2 + 0.6))
+        .filter((p) => !avoid.some((a) => Math.hypot(a.x - p.x, a.z - p.z) < a.r));
+      if (free.length < 4) continue;
+      shown.push({ ...s, kind: 'lecture' });
+      b.add('chalkboard', s.x, s.z, s.yaw);
+      for (const p of free) {
+        if (chairsOnly) { b.add(r() < 0.5 ? 'chair' : 'painted-wooden-chair-01', p.x, p.z, s.yaw + (r() - 0.5) * 0.25); avoid.push({ x: p.x, z: p.z, r: 0.5 }); continue; }
+        b.add('school-desk', p.x, p.z, s.yaw + Math.PI + (r() - 0.5) * 0.12);
+        const ch = { x: p.x + Math.sin(s.yaw) * (0.55 + r() * 0.2), z: p.z + Math.cos(s.yaw) * (0.55 + r() * 0.2) };
+        b.add('chair', ch.x, ch.z, s.yaw + (r() - 0.5) * 0.5);
+        avoid.push({ x: p.x, z: p.z, r: 1.0 });
+      }
+    }
+  };
+  /** Безлад: перекинуті стільці посеред кімнати (тут щось сталося). */
+  const chaos = (q: Room, n: number) => {
+    for (let k = 0, m = 0; k < 120 && m < n; k++) {
+      const x = (q.x0 + 0.6 + r() * (q.x1 - q.x0 - 1.2)) * c, z = (q.y0 + 0.6 + r() * (q.y1 - q.y0 - 1.2)) * c;
+      if (L.walls.some((w) => Math.abs(x - w.x) < w.w / 2 + 0.6 && Math.abs(z - w.z) < w.d / 2 + 0.6)) continue;
+      if (avoid.some((a) => Math.hypot(a.x - x, a.z - z) < a.r)) continue;
+      const back = r() < 0.4;
+      b.add('chair', x, z, r() * 6.28, { tilt: back ? new THREE.Euler(-Math.PI / 2, 0, 0) : new THREE.Euler(0, 0, Math.PI / 2), y: back ? 0.34 : 0.28 });
+      avoid.push({ x, z, r: 1.2 });
+      m++;
+    }
+  };
+
+  // кожне приміщення обставлене за призначенням
+  for (const q of L.rooms) {
+    const area = (q.x1 - q.x0) * (q.y1 - q.y0);
+    switch (q.kind) {
+      case 'office':
+        for (const row of rowsIn(q, area > 34 ? 3 : 2, 1 + (r() < 0.4 ? 1 : 0), 2.0, 0.95, 0.5)) { shown.push({ ...(row[0] as Spot), kind: 'desk' }); for (const s of row) workplace(s, false); }
+        cabinets(q, 1 + Math.floor(r() * 2));
+        break;
+      case 'director':
+        for (const row of rowsIn(q, 1, 1, 2.0, 0.95, 0)) { shown.push({ ...(row[0] as Spot), kind: 'desk' }); for (const s of row) workplace(s, false); }
+        cabinets(q, 3);
+        break;
+      case 'lab':
+        for (const row of rowsIn(q, 3, 2, 2.0, 0.95, 0.4)) {
+          shown.push({ ...(row[0] as Spot), kind: 'lab' });
+          for (const s of row) {
+            b.add('desk', s.x, s.z, s.yaw);
+            const p = at(s, (r() - 0.5) * 0.8, -0.05);
+            b.add('microscope', p.x, p.z, s.yaw + Math.PI + (r() - 0.5) * 0.6, { y: deskTop + 0.002 });
+          }
+        }
+        for (const row of rowsIn(q, 2, 1 + Math.floor(r() * 2), 1.12, 0.52, 0.05)) for (const s of row) b.add('steel-shelves', s.x, s.z, s.yaw, { scale: 0.1 });
+        break;
+      case 'drafting':
+        lecture(q, 3, 3, 1.3, false);
+        cabinets(q, 1);
+        break;
+      case 'archive': case 'store':
+        // стелажі вздовж усіх стін — архів забитий під стелю
+        for (const row of rowsIn(q, 6, 2 + Math.floor(r() * 2), 1.12, 0.52, 0.04)) { shown.push({ ...(row[0] as Spot), kind: 'shelves' }); for (const s of row) b.add('steel-shelves', s.x, s.z, s.yaw, { scale: 0.1 }); }
+        cabinets(q, 1);
+        break;
+      case 'assembly':
+        lecture(q, 6, 5, 1.0, true);
+        break;
+      case 'lobby':
+        // лави під стінами — чекали прийому
+        for (const row of rowsIn(q, 3, 1, 1.6, 0.5, 0)) for (const s of row) b.add('painted-wooden-bench', s.x, s.z, s.yaw);
+        break;
+      case 'dark':
+        for (const row of rowsIn(q, 2, 1, 2.0, 0.95, 0.5, true)) for (const s of row) workplace(s, true);
+        cabinets(q, 1, true);
+        chaos(q, 3);
+        break;
+      default:
+        break;
+    }
   }
-  // архів у коридорах: металеві стелажі (модель у сантиметрах)
-  for (const row of wallRows(lvl, r, 4, 1 + Math.floor(r() * 2), 1.12, 0.52, 0.05, avoid, { where: zone('corridors') })) {
-    shown.push({ ...(row[0] as Spot), kind: 'shelves' });
-    for (const s of row) b.add('steel-shelves', s.x, s.z, s.yaw, { scale: 0.1 });
-  }
-  // коридори: стільці під стіною — чекали прийому
-  for (const row of wallRows(lvl, r, 8, 2 + Math.floor(r() * 2), 0.6, 0.6, 0.12, avoid, { where: zone('corridors') })) {
+  // коридори: стільці під стіною біля кабінетів (чекали прийому) і подекуди стелаж, який не влазив в архів
+  const corridor = (x: number, z: number) => !L.rooms.some((q) => inside(q, -0.1)(x, z));
+  for (const row of wallRows(lvl, r, 6, 2 + Math.floor(r() * 2), 0.6, 0.6, 0.12, avoid, { where: corridor })) {
     shown.push({ ...(row[0] as Spot), kind: 'waiting' });
     for (const s of row) b.add('chair', s.x, s.z, s.yaw + Math.PI + (r() - 0.5) * 0.15);
   }
-  // зали: дошка під стіною, перед нею ряди парт зі стільцями (3 ряди по 3)
-  for (const row of wallRows(lvl, r, 3, 1, 1.0, 0.8, 0, avoid, { where: zone('hall') })) {
-    const s = row[0] as Spot;
-    const desks: { x: number; z: number }[] = [];
-    for (let i = 0; i < 3; i++) for (let j = -1; j <= 1; j++) desks.push(at(s, j * 1.25, 1.9 + i * 1.3));
-    const free = desks.filter((p) => !L.walls.some((w) => Math.abs(p.x - w.x) < w.w / 2 + 0.75 && Math.abs(p.z - w.z) < w.d / 2 + 0.75))
-      .filter((p) => !avoid.some((a) => Math.hypot(a.x - p.x, a.z - p.z) < a.r));
-    if (free.length < 5) continue;
-    shown.push({ ...s, kind: 'lecture' });
-    b.add('chalkboard', s.x, s.z, s.yaw);
-    for (const p of free) {
-      // парта дивиться на дошку; стілець за партою (деякі відсунуті)
-      b.add('school-desk', p.x, p.z, s.yaw + Math.PI + (r() - 0.5) * 0.12);
-      const c = { x: p.x + Math.sin(s.yaw) * (0.55 + r() * 0.2), z: p.z + Math.cos(s.yaw) * (0.55 + r() * 0.2) };
-      b.add('chair', c.x, c.z, s.yaw + (r() - 0.5) * 0.5);
-      avoid.push({ x: p.x, z: p.z, r: 1.0 });
-    }
-  }
-  // темні відділи: перекинуті стільці посеред кімнат і відсунута від стіни шафа
-  for (let k = 0, n = 0; k < 400 && n < 14; k++) {
-    const x = 1.5 + r() * (L.cols * L.cell - 3), z = 1.5 + r() * (L.rows * L.cell - 3);
-    if (zoneOf(L, x, z) !== 'dark') continue;
-    if (L.walls.some((w) => Math.abs(x - w.x) < w.w / 2 + 0.6 && Math.abs(z - w.z) < w.d / 2 + 0.6)) continue;
-    if (avoid.some((a) => Math.hypot(a.x - x, a.z - z) < a.r)) continue;
-    // на боці або на спинці
-    const back = r() < 0.4;
-    b.add('chair', x, z, r() * 6.28, { tilt: back ? new THREE.Euler(-Math.PI / 2, 0, 0) : new THREE.Euler(0, 0, Math.PI / 2), y: back ? 0.34 : 0.28 });
-    avoid.push({ x, z, r: 1.2 });
-    n++;
+  for (const row of wallRows(lvl, r, 3, 1, 1.12, 0.52, 0.05, avoid, { where: corridor })) {
+    shown.push({ ...(row[0] as Spot), kind: 'shelves' });
+    for (const s of row) b.add('steel-shelves', s.x, s.z, s.yaw, { scale: 0.1 });
   }
   await b.build(assets, physics, lvl.scene);
   physics.step();

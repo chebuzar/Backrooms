@@ -12,6 +12,7 @@ import { G } from '../physics/physics';
 import { KNOCKABLE, instanceView, instanceLight, type InstancePart } from '../physics/knock';
 import { rng } from '../core/rng';
 import type { Level } from './level0';
+import type { WallBox } from './layout';
 import { probeAt, probeLit } from './materials';
 import { dressLate } from './dressing-late';
 
@@ -23,9 +24,9 @@ function inWall(lvl: Level, x: number, z: number, r: number): boolean {
 
 /** Місця вздовж стін: ряд із n речей шириною w (м) і глибиною d, з відступом gap; вільно перед стіною. */
 export function wallRows(lvl: Level, r: () => number, rows: number, n: number, w: number, d: number, gap: number, avoid: { x: number; z: number; r: number }[],
-  opt: { where?: (x: number, z: number) => boolean; dark?: boolean } = {}): Spot[][] {
+  opt: { where?: (x: number, z: number) => boolean; dark?: boolean; walls?: WallBox[] } = {}): Spot[][] {
   const L = lvl.layout, out: Spot[][] = [];
-  const walls = L.walls.filter((wl) => wl.kind !== 'pillar' && Math.max(wl.w, wl.d) >= n * (w + gap) + 0.6);
+  const walls = (opt.walls ?? L.walls).filter((wl) => wl.kind !== 'pillar' && Math.max(wl.w, wl.d) >= n * (w + gap) + 0.6);
   for (let tries = 0; tries < 300 && out.length < rows; tries++) {
     const wl = walls[Math.floor(r() * walls.length)];
     if (!wl) break;

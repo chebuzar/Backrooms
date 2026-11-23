@@ -29,7 +29,9 @@ def fetch(asset):
     os.makedirs(d, exist_ok=True)
     with tempfile.TemporaryDirectory() as td:
         z = os.path.join(td, 'a.zip')
-        urllib.request.urlretrieve(f'https://ambientcg.com/get?file={asset}_2K-JPG.zip', z)
+        req = urllib.request.Request(f'https://ambientcg.com/get?file={asset}_2K-JPG.zip', headers={'User-Agent': 'zakulisye-assets'})
+        with urllib.request.urlopen(req) as r, open(z, 'wb') as f:
+            f.write(r.read())
         with zipfile.ZipFile(z) as zf:
             for n in zf.namelist():
                 if n.endswith('.jpg') and '/' not in n:
@@ -70,9 +72,10 @@ def save(name, arr, enc, srgb_space, size=None):
         encode(png, name, enc, srgb_space)
 
 
-for a in ['PaintedPlaster017', 'Plaster007', 'WoodFloor034']:
-    fetch(a)
 only = sys.argv[1:]
+for a, part in [('PaintedPlaster017', 'paint'), ('Plaster007', 'peel'), ('WoodFloor034', 'parquet')]:
+    if not only or part in only:
+        fetch(a)
 
 # --- фарба/побілка: лише світлота й дрібна фактура (колір — у шейдері); середнє ≈ 0.5, щоб множення на колір фарби давало сам колір
 if not only or 'paint' in only:
@@ -105,3 +108,27 @@ if not only or 'parquet' in only:
     save('parquet_c', c2, 'uastc', True)
     save('parquet_n', load(f'{p}_NormalGL.jpg'), 'uastc', False)
     save('parquet_r', load(f'{p}_Roughness.jpg', mode='L'), 'etc1s', False, 512)
+
+# --- кахель лабораторії й санвузла (білий глазурований 15×15 см) і підлога санвузла (метлахська плитка)
+PH = '.assets-src/polyhaven/tex'
+if not only or 'tile' in only:
+    # Poly Haven floor_tiles_08 (CC0): 30 см плитки, у шейдері — масштаб удвічі дрібніший. Знебарвлено в білу глазур:
+    # різниця тону між плитками лишається (як у справжнього кахлю з різних партій), шви — темні
+    d = f'{PH}/floor_tiles_08'
+    c = load(f'{d}/diff.jpg')
+    l = lum(c)
+    rough = load(f'{d}/rough.jpg', mode='L')
+    grout = np.clip((l.mean() - l) * 5.0 - 0.6, 0, 1)
+    tilev = 0.86 + (l - l.mean()) * 0.35
+    white = np.array([0.9, 0.9, 0.86], np.float32)
+    col = white[None, None, :] * tilev[..., None]
+    col = col * (1 - grout[..., None]) + np.array([0.33, 0.32, 0.3], np.float32)[None, None, :] * grout[..., None]
+    save('tile_c', col, 'uastc', True)
+    save('tile_n', load(f'{d}/nor_gl.jpg'), 'uastc', False)
+    save('tile_r', np.clip(0.18 + grout * 0.7 + (rough - rough.mean()) * 0.2, 0, 1), 'etc1s', False, 512)
+if not only or 'wcfloor' in only:
+    # Poly Haven dirty_tiles (CC0): брудна метлахська плитка підлоги санвузла (2.26 м на текстуру)
+    d = f'{PH}/dirty_tiles'
+    save('wcf_c', load(f'{d}/diff.jpg'), 'uastc', True)
+    save('wcf_n', load(f'{d}/nor_gl.jpg'), 'uastc', False)
+    save('wcf_r', load(f'{d}/rough.jpg', mode='L'), 'etc1s', False, 512)

@@ -6,7 +6,8 @@ import type { Assets } from '../assets/loader';
 import type { Physics } from '../physics/physics';
 import { KNOCKABLE } from '../physics/knock';
 import { generateLayout, type Layout } from './layout';
-import { loadLevel0Textures, makeLevel0Materials, probeLit, probeAt } from './materials';
+import { loadLevel0Textures, probeLit, probeAt, setProbeModel } from './materials';
+import { makeNiiMaterials } from './nii-materials';
 import { Lamps } from './lamps';
 import { Seam } from './seam';
 import { decorate, type Decor } from './decor';
@@ -46,15 +47,17 @@ export interface Level {
 }
 
 export async function buildLevel0(assets: Assets, physics: Physics, onProgress: (p: number) => void): Promise<Level> {
-  const layout = generateLayout({ seed: LEVEL0_SEED });
+  const layout = generateLayout({ seed: LEVEL0_SEED, preset: 'nii' });
+  // освітленість речей — з урахуванням стін, підігнана під запечене світло цього планування
+  setProbeModel(layout.lights, { walls: layout.walls, a: 1.675, s: 3, b: 0.17, leak: 0.1 });
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x000000);
-  // казенний серпанок НИИ: далекі кабінети тонуть у сірувато-оливковому мареві пилу й люмінесцентного світла
-  scene.fog = new THREE.FogExp2(new THREE.Color().setRGB(0.30, 0.30, 0.24, THREE.SRGBColorSpace), 0.032);
+  // глибина: далекий кінець коридору тоне в темряві (не в світлому мареві — воно робило кадр пласким)
+  scene.fog = new THREE.FogExp2(new THREE.Color().setRGB(0.045, 0.048, 0.045, THREE.SRGBColorSpace), 0.03);
 
   const tex = await loadLevel0Textures(assets);
   onProgress(0.2);
-  await loadChunks(assets, 'level0', scene, makeLevel0Materials(tex, layout), (p) => onProgress(0.2 + 0.7 * p));
+  await loadChunks(assets, 'level0', scene, makeNiiMaterials(tex, layout), (p) => onProgress(0.2 + 0.7 * p));
   addLayoutColliders(physics, layout);
   const H = layout.height;
 

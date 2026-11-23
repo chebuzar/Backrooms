@@ -63,7 +63,7 @@ export class HandLamp {
     this.model.add(o);
     // у кисті ліхтар трохи розвернутий до центру й нахилений: видно бік, ручку й край скла, а не лише «зад»
     this.model.rotation.set(-0.06, 0.2, 0.08, 'YXZ');
-    this.model.scale.setScalar(0.82);
+    this.model.scale.setScalar(0.7); // менший і нижче: лише край ліхтаря в куті кадру, не «брусок» на пів екрана
     this.ready = true;
   }
 

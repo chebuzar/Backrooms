@@ -4,7 +4,7 @@
 import { rng, irange, pick, type Rng } from '../core/rng';
 
 export type ZoneStyle = 'rooms' | 'hall' | 'corridors' | 'dark';
-export type Preset = 'yellow' | 'base' | 'parking' | 'kinder' | 'pool';
+export type Preset = 'yellow' | 'nii' | 'base' | 'parking' | 'kinder' | 'pool';
 type RGB = [number, number, number];
 
 /** Вигляд рівня: висота, фарба на стінах, лампи, альбедо для запікання (Blender) — спільне для гри й Blender. */
@@ -22,6 +22,13 @@ export interface Theme {
 }
 
 export const THEMES: Record<Preset, Theme> = {
+  // рівень 0 «Бесконечный НИИ» (задуманий поверх інституту): стеля 3 м, побілка, ЛПО з лампами ЛБ — яскраві острови світла
+  // й темні проміжки між ними (світильники висять там, де їх повісили б, а не сіткою)
+  nii: {
+    id: 'nii', height: 3.0, paintH: 0, plinth: true, pillar: 0.5,
+    lamp: { w: 1.2, d: 0.6, spacing: 3, color: [1.0, 0.97, 0.9], power: 34, offP: 0.1, flickerP: 0.06 },
+    albedo: { wall: [0.5, 0.5, 0.45], wallLow: [0.5, 0.5, 0.45], base: [0.18, 0.13, 0.09], floor: [0.28, 0.2, 0.13], ceil: [0.74, 0.74, 0.7] }
+  },
   yellow: {
     id: 'yellow', height: 2.7, paintH: 0, plinth: true, pillar: 0.56,
     lamp: { w: 1.2, d: 0.6, spacing: 2, color: [1.0, 0.95, 0.8], power: 22, offP: 0.06, flickerP: 0.05 },
@@ -55,7 +62,9 @@ export const THEMES: Record<Preset, Theme> = {
 };
 
 /** Кімната з відомим призначенням (для обстановки): клітинки [x0, x1) × [y0, y1). */
-export type RoomKind = 'cloak' | 'play' | 'sleep' | 'hall' | 'kitchen' | 'medic' | 'pool';
+export type RoomKind = 'cloak' | 'play' | 'sleep' | 'hall' | 'kitchen' | 'medic' | 'pool'
+  // НИИ (рівень 0)
+  | 'office' | 'director' | 'lab' | 'drafting' | 'archive' | 'store' | 'assembly' | 'lobby' | 'wc' | 'stairs' | 'dark';
 export interface Room { x0: number; y0: number; x1: number; y1: number; kind: RoomKind }
 /** Чаша басейну (центр і розміри в метрах; глибина — від підлоги до дна). */
 export interface Pool { x: number; z: number; w: number; d: number; depth: number }
@@ -199,7 +208,121 @@ function carveCorridors(g: EdgeGrid, r: Rng, x0: number, y0: number, x1: number,
   }
 }
 
-interface Plan { g: EdgeGrid; pillars: [number, number][]; zones: ZoneStyle[]; start: [number, number]; rooms?: Room[]; pools?: [number, number, number, number][]; puddles?: [number, number, number, number][] }
+interface Plan {
+  g: EdgeGrid; pillars: [number, number][]; zones: ZoneStyle[]; start: [number, number]; rooms?: Room[];
+  pools?: [number, number, number, number][]; puddles?: [number, number, number, number][];
+  /** Задумане світло (у клітинках: центр x, y; rot — світильник уздовж Z), замість сітки. */
+  lamps?: { x: number; y: number; rot: boolean; state: LightPanel['state'] }[];
+  /** Задуманий вихід (клітинка) замість найдальшої. */
+  exit?: [number, number];
+  /** Задумане місце «Розлому» (клітинка). */
+  rift?: [number, number];
+}
+
+/**
+ * «Бесконечный НИИ» — задуманий поверх радянського інституту (40×40 клітинок, 48×48 м), а не випадкові коробки:
+ * два довгі коридори (північний і південний) з кабінетами обабіч, бічні переходи між ними (кільце — можна обійти),
+ * у центрі — вестибюль з колонами, актова зала, сходова клітка (вихід), санвузол і склад; на південному сході — темне крило.
+ * Кожне приміщення має призначення (обстановка й оздоблення — за ним). Світло — там, де його повісили б: ряди ЛПО над
+ * робочими місцями, лампи через 3.6 м у коридорах із ділянками мертвих ламп (довгі темні проміжки).
+ * Зерно змінює лише дрібниці (де двері, які лампи мертві), задум — незмінний.
+ */
+function planNii(r: Rng, cols: number, rows: number): Plan {
+  const g = new EdgeGrid(cols, rows);
+  const rooms: Room[] = [];
+  const lamps: NonNullable<Plan['lamps']> = [];
+  /** Стіна на межі рядків Y (між Y-1 і Y), x0..x1, крім дверей. */
+  const H = (Y: number, x0: number, x1: number, doors: number[] = []) => { for (let x = x0; x < x1; x++) g.setH(x, Y - 1, !doors.includes(x)); };
+  /** Стіна на межі стовпців X (між X-1 і X), y0..y1, крім дверей. */
+  const V = (X: number, y0: number, y1: number, doors: number[] = []) => { for (let y = y0; y < y1; y++) g.setV(X - 1, y, !doors.includes(y)); };
+  const door = (a: number, b: number) => (b - a >= 4 ? (r() < 0.5 ? a + 1 : b - 2) : a + ((b - a) >> 1));
+
+  /** Ряд приміщень між y0 і y1 від x0; двері — на межі doorY (бік коридору); стіни між приміщеннями. */
+  const band = (y0: number, y1: number, x0: number, specs: [number, RoomKind][], doorY: number) => {
+    let x = x0;
+    specs.forEach(([w, kind], i) => {
+      const x1 = x + w;
+      if (i > 0) V(x, y0, y1);
+      // широкі зали — двоє дверей (на обох кінцях), кабінети — одні, ближче до кута
+      H(doorY, x, x1, w >= 8 ? [x + 1, x1 - 2] : [door(x, x1)]);
+      rooms.push({ x0: x, y0, x1, y1, kind });
+      x = x1;
+    });
+    return x;
+  };
+
+  // --- північне крило: кабінети, приймальня директора, лабораторія; двері — у північний коридор (рядки 7–8)
+  band(0, 7, 0, [[5, 'office'], [4, 'office'], [6, 'director'], [5, 'office'], [8, 'lab'], [6, 'office'], [6, 'archive']], 7);
+  // --- між північним коридором і центром: кабінети й креслярська; посередині — перехід до вестибюля (стовпці 19–20)
+  band(9, 15, 2, [[5, 'office'], [6, 'office'], [6, 'store']], 9);
+  V(19, 9, 15);
+  band(9, 15, 21, [[6, 'drafting'], [5, 'office'], [6, 'office']], 9);
+  V(21, 9, 15);
+  H(15, 2, 19); H(15, 21, 38);
+  // --- центр: актова зала (захід), вестибюль з колонами, схід — короткий хол до сходів, санвузол, склад, кабінет
+  rooms.push({ x0: 2, y0: 15, x1: 14, y1: 25, kind: 'assembly' });
+  V(14, 15, 25, [17, 22]);
+  rooms.push({ x0: 14, y0: 15, x1: 26, y1: 25, kind: 'lobby' });
+  const pillars: [number, number][] = [[17, 18], [23, 18], [17, 22], [23, 22]];
+  V(26, 15, 25, [19, 20]);
+  H(19, 26, 38, [28, 34]); V(31, 15, 19);
+  rooms.push({ x0: 26, y0: 15, x1: 31, y1: 19, kind: 'wc' }, { x0: 31, y0: 15, x1: 38, y1: 19, kind: 'stairs' });
+  H(21, 26, 38, [28, 35]); V(32, 21, 25);
+  rooms.push({ x0: 26, y0: 21, x1: 32, y1: 25, kind: 'store' }, { x0: 32, y0: 21, x1: 38, y1: 25, kind: 'office' });
+  H(25, 2, 19); H(25, 21, 38);
+  // --- між центром і південним коридором; на сході починається темне крило
+  band(25, 31, 2, [[6, 'office'], [5, 'office'], [6, 'archive']], 31);
+  V(19, 25, 31);
+  band(25, 31, 21, [[5, 'office'], [6, 'dark'], [6, 'dark']], 31);
+  V(21, 25, 31);
+  // --- південне крило (двері в південний коридор, рядки 31–32): кабінети, креслярська зала, темні відділи
+  band(33, 40, 0, [[6, 'office'], [5, 'office'], [9, 'drafting'], [6, 'office'], [5, 'dark'], [5, 'dark'], [4, 'dark']], 33);
+  // --- бічні переходи між коридорами (стовпці 0–1 і 38–39): кільце, щоб від Фігури можна було піти по колу
+  V(2, 9, 31, [20]);
+  V(38, 9, 31, [19, 20]);
+
+  // --- світло
+  type St = LightPanel['state'];
+  /** Коридор: лампи через 3 клітинки; ділянки по 2–4 живих і 1–3 мертвих (довгі темні проміжки). */
+  const corridor = (fixed: number, a: number, b: number, alongX: boolean, darkness: number) => {
+    let run = 0, lit = r() < 0.7;
+    for (let t = a + 1.5; t < b; t += 3) {
+      if (run <= 0) { lit = !lit; run = lit ? irange(r, 2, 4) : irange(r, 1, 3) + (r() < darkness ? 2 : 0); }
+      run--;
+      const st: St = lit ? (r() < 0.12 ? 'flicker' : 'on') : r() < 0.15 ? 'flicker' : 'off';
+      lamps.push(alongX ? { x: t, y: fixed, rot: false, state: st } : { x: fixed, y: t, rot: true, state: st });
+    }
+  };
+  corridor(8, 0, 40, true, 0.2);
+  corridor(32, 0, 40, true, 0.5);
+  corridor(1, 9, 31, false, 0.3);
+  corridor(39, 9, 31, false, 0.6);
+  corridor(20, 9, 15, false, 0);
+  corridor(20, 25, 31, false, 0.3);
+  corridor(20, 26, 38, true, 0.2);
+  // приміщення: ряди світильників уздовж довшого боку; «настрій» кімнати — освітлена, мертва, мерехтить
+  for (const q of rooms) {
+    const w = q.x1 - q.x0, h = q.y1 - q.y0;
+    if (q.kind === 'lobby') {
+      // між колонами: 3×3 плафони навколо осі
+      for (const lx of [15.5, 20, 24.5]) for (const ly of [16.5, 20, 23.5]) lamps.push({ x: lx, y: ly, rot: false, state: r() < 0.15 ? 'off' : r() < 0.1 ? 'flicker' : 'on' });
+      continue;
+    }
+    const mood = q.kind === 'dark' ? (r() < 0.75 ? 'dead' : 'flicker')
+      : q.kind === 'stairs' || q.kind === 'wc' ? 'flicker'
+      : q.kind === 'lab' || q.kind === 'drafting' || q.kind === 'director' ? (r() < 0.85 ? 'lit' : 'flicker')
+      : r() < 0.18 ? 'dead' : r() < 0.15 ? 'flicker' : 'lit';
+    const nx = Math.max(1, Math.round(w / 3)), ny = Math.max(1, Math.round(h / 3.2));
+    const flickerAt = irange(r, 0, nx * ny - 1);
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+      const st: St = mood === 'dead' ? (r() < 0.12 ? 'flicker' : 'off') : mood === 'flicker' && j * nx + i === flickerAt ? 'flicker' : mood === 'flicker' && r() < 0.3 ? 'off' : r() < 0.06 ? 'off' : 'on';
+      lamps.push({ x: q.x0 + (i + 0.5) * (w / nx), y: q.y0 + (j + 0.5) * (h / ny), rot: h > w, state: st });
+    }
+  }
+  // зони 3×3 (для старих правил: зала — без дверних полотен, темний відділ — безлад)
+  const zones: ZoneStyle[] = ['rooms', 'rooms', 'rooms', 'rooms', 'hall', 'rooms', 'rooms', 'corridors', 'dark'];
+  return { g, pillars, zones, rooms, lamps, start: [3, 36], exit: [34, 17], rift: [36, 37] };
+}
 
 /** Жовті кімнати: зони 3×3 різних стилів (кімнати, зал із колонами, коридори, темрява). */
 function planYellow(r: Rng, cols: number, rows: number, zonesOpt?: ZoneStyle[]): Plan {
@@ -435,10 +558,10 @@ function planPool(r: Rng, cols: number, rows: number): Plan {
 
 export function generateLayout(o: LayoutOptions): Layout {
   const preset = o.preset ?? 'yellow', theme = THEMES[preset];
-  const dflt = preset === 'yellow' ? 60 : preset === 'kinder' || preset === 'pool' ? 48 : 40;
+  const dflt = preset === 'yellow' ? 60 : preset === 'nii' ? 40 : preset === 'kinder' || preset === 'pool' ? 48 : 40;
   const cols = o.cols ?? dflt, rows = o.rows ?? dflt, cell = o.cell ?? 1.2, height = o.height ?? theme.height;
   const r = rng(o.seed);
-  const plan = preset === 'yellow' ? planYellow(r, cols, rows, o.zones) : preset === 'base' ? planBase(r, cols, rows)
+  const plan = preset === 'yellow' ? planYellow(r, cols, rows, o.zones) : preset === 'nii' ? planNii(r, cols, rows) : preset === 'base' ? planBase(r, cols, rows)
     : preset === 'kinder' ? planKinder(r, cols, rows) : preset === 'pool' ? planPool(r, cols, rows) : planParking(r, cols, rows);
   const { g, pillars, zones } = plan;
   // клітинки чаш — непрохідні (по них не ходять ні гравець, ні мисливець)
@@ -494,7 +617,8 @@ export function generateLayout(o: LayoutOptions): Layout {
   // світло: світильники через theme.lamp.spacing клітинок; у темних зонах більшість вимкнена
   const lights: LightPanel[] = [];
   const L = theme.lamp, sp = L.spacing;
-  for (let y = 0; y < rows; y += sp) for (let x = 0; x < cols; x += sp) {
+  for (const p of plan.lamps ?? []) lights.push({ x: p.x * cell, z: p.y * cell, w: p.rot ? L.d : L.w, d: p.rot ? L.w : L.d, state: p.state });
+  if (!plan.lamps) for (let y = 0; y < rows; y += sp) for (let x = 0; x < cols; x += sp) {
     const zi = Math.min(2, Math.floor(x / zw)) + 3 * Math.min(2, Math.floor(y / zh));
     const dark = zones[zi] === 'dark';
     const roll = r();
@@ -522,6 +646,7 @@ export function generateLayout(o: LayoutOptions): Layout {
   // вихід («Шов») — найдальша досяжна клітинка
   let far = 0;
   for (let c = 0; c < dist.length; c++) if ((dist[c] as number) > (dist[far] as number)) far = c;
+  if (plan.exit) far = plan.exit[1] * cols + plan.exit[0];
   const ex = far % cols, ey = (far / cols) | 0;
   const at = (cx: number, cy: number, yaw = 0): Spot => ({ x: (cx + 0.5) * cell, z: (cy + 0.5) * cell, yaw });
 
@@ -538,6 +663,7 @@ export function generateLayout(o: LayoutOptions): Layout {
     if (zones[zi] !== 'dark' || Math.hypot(x - ex, y - ey) < 12 || dist[c] === -1) continue;
     if (rift < 0 || (dist[c] as number) > (dist[rift] as number)) rift = c;
   }
+  if (plan.rift) rift = plan.rift[1] * cols + plan.rift[0];
   if (rift < 0) { const t7 = Math.floor((dist[far] as number) * 0.7); for (let c = 0; c < dist.length; c++) if (dist[c] === t7) { rift = c; break; } }
 
   return {
