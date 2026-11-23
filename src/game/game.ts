@@ -4,6 +4,7 @@ import * as THREE from 'three/webgpu';
 import type { RendererHandle } from '../render/renderer';
 import { PostPipeline, look, setFilm } from '../render/post';
 import { Camcorder } from './camcorder';
+import { canFullscreen, isFullscreen, toggleFullscreen, onFullscreenChange } from '../core/fullscreen';
 import { Notebook } from '../ui/notebook';
 import { MapMemory } from './mapmem';
 import { buildUnseen } from '../world/unseen';
@@ -252,7 +253,17 @@ export class Game {
     document.addEventListener('pointerlockchange', () => { if (!this.input.pointerLocked && this.mode === 'play' && !this.device.touch) this.pause(); });
     // будь-який жест «оживляє» звук (iOS)
     for (const ev of ['pointerdown', 'keydown', 'touchend'] as const) addEventListener(ev, () => this.audio.unlock(), { passive: true });
+    // розмір полотна — за його справжнім розміром на екрані (100dvh): після повороту iPad, появи/зникнення панелей Safari
+    // і входу в повний екран innerWidth/innerHeight бувають ще старими — ResizeObserver бачить кінцевий розмір
     addEventListener('resize', () => this.resize());
+    new ResizeObserver(() => this.resize()).observe(canvas);
+    visualViewport?.addEventListener('resize', () => this.resize());
+    // повний екран увімкнули чи вимкнули (зокрема свайпом / Esc): оновити підпис кнопки в меню
+    onFullscreenChange(() => {
+      this.resize();
+      if (this.mode === 'pause' && !this.hud.readerOpen) { this.ui.close('pause'); this.pauseMenuAgain(); }
+      else if (this.mode === 'menu') { this.ui.close('menu'); this.showMenu(); }
+    });
     document.addEventListener('visibilitychange', () => { if (document.hidden && this.mode === 'play') this.pause(); });
   }
 
@@ -601,7 +612,8 @@ export class Game {
       },
       onSettings: () => this.openSettings(() => this.showMenu()),
       onAbout: () => { this.ui.close('menu'); this.ui.about(() => this.showMenu()); },
-      onFeedback: () => { this.ui.close('menu'); openFeedback(this.ui, { canvas: this.gfx.renderer.domElement, shotByDefault: false, onClose: () => this.showMenu() }); }
+      onFeedback: () => { this.ui.close('menu'); openFeedback(this.ui, { canvas: this.gfx.renderer.domElement, shotByDefault: false, onClose: () => this.showMenu() }); },
+      ...(canFullscreen() ? { fullscreen: { on: isFullscreen(), toggle: () => void toggleFullscreen() } } : {})
     });
   }
 
@@ -1058,6 +1070,7 @@ export class Game {
       onControls: () => { this.ui.close('pause'); this.ui.onBack = () => { this.ui.close('controls'); this.pauseMenuAgain(); }; this.ui.controls(this.device.touch, () => { this.ui.close('controls'); this.pauseMenuAgain(); }); },
       onMenu: () => { this.ui.closeAll(); this.showMenu(); },
       onFeedback: () => { this.ui.close('pause'); openFeedback(this.ui, { canvas: this.gfx.renderer.domElement, shotByDefault: true, onClose: () => this.pauseMenuAgain() }); },
+      ...(canFullscreen() ? { fullscreen: { on: isFullscreen(), toggle: () => void toggleFullscreen() } } : {}),
       docs: [...this.store.progress.docs, ...this.store.progress.notes, ...this.store.progress.tapes].map((id) => ({ id, title: this.docOf(id)?.title ?? id })),
       onDoc: (id) => {
         const d = this.docOf(id);
@@ -1170,7 +1183,8 @@ export class Game {
   }
 
   resize(): void {
-    const w = innerWidth, h = innerHeight;
+    const c = this.gfx.renderer.domElement;
+    const w = Math.max(1, Math.round(c.clientWidth || innerWidth)), h = Math.max(1, Math.round(c.clientHeight || innerHeight));
     const r = this.gfx.renderer;
     r.setPixelRatio(Math.min(this.device.dpr, this.profile.maxPixelRatio) * (this.profile.name === 'low' ? this.governor.scale : 1));
     r.setSize(w, h, false);

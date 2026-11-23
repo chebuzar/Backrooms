@@ -6,10 +6,10 @@ import { execFileSync } from 'node:child_process';
 
 const which = process.argv[2] ?? 'webkit', name = process.argv[3] ?? 'cur', extra = process.argv[4] ?? '';
 // [мітка, x, z, yaw, pitch, ліхтарик]; точка зсувається до найближчого вільного місця
+// задуманий поверх НИИ (40×40 клітинок по 1.2 м): коридори, кабінет, вестибюль, актова зала, лабораторія, туалет, архів, темне крило
 const VIEWS = [
-  ['spawn-n', 12.6, 12.6, 0, 0, 0], ['spawn-sw', 12.6, 12.6, 3.93, 0, 0], ['spawn-up', 12.6, 12.6, 1.2, 0.55, 0], ['door', 16, 15, 2.4, -0.05, 0],
-  ['hall', 58, 10, 2.3, 0, 0], ['corridor', 60, 36, 0.8, 0, 0], ['rooms', 36, 36, 1.9, -0.1, 0],
-  ['dark', 12, 36, 0.4, 0, 1], ['flash-wall', 13.5, 12.6, 1.57, -0.1, 1]
+  ['corridor-n', 2.4, 9.6, -1.57, 0, 0], ['office', 3.6, 3.0, 3.14, -0.05, 0], ['lobby', 24, 29.5, 0, 0, 0], ['assembly', 3.6, 24, -1.57, 0, 0],
+  ['lab', 34.8, 2.4, 3.14, -0.05, 0], ['wc', 32.4, 21.6, -0.8, -0.1, 0], ['corridor-s', 46, 38.4, 1.57, 0, 0], ['dark', 43.2, 43.2, 1.57, -0.05, 1]
 ];
 const srv = await createServer({ root: process.cwd(), server: { port: 5191, strictPort: true }, logLevel: 'error' });
 await srv.listen();
