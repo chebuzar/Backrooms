@@ -53,7 +53,7 @@ export function makeThemeMaterials(t: ThemeTextures, look: ThemeLook) {
   const lowColor = Fn(() => {
     const c = repaint(texture(t.low_c, uv(0).div(look.scale.low)).rgb, look.paint.low, look.gain?.low);
     // панель знизу затерта й обдерта біля підлоги
-    return aged(c.mul(float(1).sub(smoothstep(0.4, 0.0, positionWorld.y).mul(0.25))));
+    return aged(c.mul(float(1).sub(float(1).sub(smoothstep(0.0, 0.4, positionWorld.y)).mul(0.25))));
   });
   const floorUV = positionWorld.xz.div(look.scale.floor);
   const floorColor = Fn(() => {

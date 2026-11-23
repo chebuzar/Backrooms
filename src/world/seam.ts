@@ -19,7 +19,7 @@ export class Seam {
     const d = abs(u.x.sub(0.5).add(jag.mul(0.5)));
     const core = smoothstep(halfW, halfW.mul(0.2), d);
     const glow = smoothstep(halfW.mul(6.0), float(0), d).mul(0.12);
-    const ends = smoothstep(0.0, 0.18, u.y).mul(smoothstep(1.0, 0.82, u.y));
+    const ends = smoothstep(0.0, 0.18, u.y).mul(float(1).sub(smoothstep(0.82, 1.0, u.y)));
     const pulse = sin(time.mul(0.9)).mul(0.15).add(0.85).add(fract(time.mul(0.37)).mul(0.05));
     const intensity = core.mul(3.2).add(glow).mul(ends).mul(pulse);
     mat.colorNode = mix(vec3(0.55, 0.8, 1.0), vec3(1.0), core).mul(intensity).mul(this.life);
@@ -31,7 +31,7 @@ export class Seam {
     const frostMat = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
     const fu = uv().sub(0.5).mul(vec3(1.0, 0.55, 1).xy);
     const fr = fu.length();
-    frostMat.colorNode = vec3(0.03, 0.08, 0.16).mul(smoothstep(0.45, 0.0, fr)).mul(sin(time.mul(0.6)).mul(0.1).add(0.9)).mul(this.life);
+    frostMat.colorNode = vec3(0.03, 0.08, 0.16).mul(float(1).sub(smoothstep(0.0, 0.45, fr))).mul(sin(time.mul(0.6)).mul(0.1).add(0.9)).mul(this.life);
     const frost = new THREE.Mesh(new THREE.PlaneGeometry(2.4, height * 0.95), frostMat);
     frost.position.set(0, height * 0.47, -0.002);
     frost.renderOrder = 4;

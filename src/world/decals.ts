@@ -117,7 +117,7 @@ export function buildDecals(l: Layout, decor: Decor[], atlas: THREE.Texture): TH
   const fade = smoothstep(16.0, 30.0, positionView.z.negate());
   // м'які краї: жодної прямокутної межі плями (і захист від сусідніх клітинок атласу на дальніх mip-рівнях)
   const lc = attribute<'vec2'>('local', 'vec2');
-  const edge = smoothstep(0.0, 0.22, lc.x).mul(smoothstep(1.0, 0.78, lc.x)).mul(smoothstep(0.0, 0.18, lc.y)).mul(smoothstep(1.0, 0.82, lc.y));
+  const edge = smoothstep(0.0, 0.22, lc.x).mul(float(1).sub(smoothstep(0.78, 1.0, lc.x))).mul(smoothstep(0.0, 0.18, lc.y)).mul(float(1).sub(smoothstep(0.82, 1.0, lc.y)));
   m.colorNode = vec4(mix(float(1), texture(atlas, uv()).rgb, edge.mul(fade.oneMinus())), 1);
   // у буфери нормалей і швидкостей пишемо 1 — множення залишає їх без змін (AO й TRAA не бачать декалей)
   m.mrtNode = new DecalMRT({ output, normal: vec4(1), velocity: vec4(1) }) as unknown as typeof m.mrtNode;

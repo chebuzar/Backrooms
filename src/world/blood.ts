@@ -21,7 +21,7 @@ function bloodMaterial(atlas: THREE.Texture): THREE.MeshStandardNodeMaterial {
   m.opacityNode = smoothstep(0.0, 0.18, k).mul(0.96);
   // темна венозна кров, що вже трохи згорнулася по краях
   m.colorNode = vec3(0.16, 0.012, 0.01).mul(smoothstep(-0.1, 0.6, k).mul(0.45).add(0.55));
-  m.roughnessNode = float(0.12).add(smoothstep(0.5, 0.0, k).mul(0.35));
+  m.roughnessNode = float(0.12).add(float(1).sub(smoothstep(0.0, 0.5, k)).mul(0.35));
   m.metalnessNode = float(0);
   cache.set(atlas, m);
   return m;
