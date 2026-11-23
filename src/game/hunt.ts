@@ -29,6 +29,11 @@ export class Hunt {
   danger = 0;
   private readonly view: PlayerView = { x: 0, y: 0, z: 0, vx: 0, vz: 0, light: 0, flashlightOn: false, crouched: false, looksAtMe: false, litByFlashlight: false };
   private readonly fwd = new THREE.Vector3();
+  /** Ліхтарик на мить «провалився» (с): поруч «Наблюдатель», і світло тримає лише ліхтарик. */
+  private flashCut = 0;
+  private cutCd = 6;
+  /** Множник яскравості ліхтарика від мисливця (0 — провал). */
+  get flashMul(): number { return this.flashCut > 0 ? 0 : 1; }
 
   constructor(private readonly audio: AudioEngine, private readonly sfx: SoundBank, private readonly ev: HuntEvents) {}
 
@@ -105,6 +110,7 @@ export class Hunt {
     this.nav?.destroy();
     this.nav = null;
     this.danger = 0;
+    this.flashCut = 0; this.cutCd = 6;
     if (this.heartGain) this.heartGain.gain.value = 0;
   }
 
@@ -157,6 +163,15 @@ export class Hunt {
     v.litByFlashlight = clear && flashlightOn && ang < 0.42 && d < 18;
     const near = lvl.lamps.nearest(sp.x, sp.z, 1)[0];
     const lampLit = probeAt(lvl.layout.lights, sp.x, sp.z) * (near === undefined ? 0 : lvl.lamps.levelOf(near));
+    // «Наблюдатель» зблизька в темряві: ліхтарик зрідка «провалюється» на пів секунди — і цього досить для ривка.
+    // Рідко (раз на 10–16 с, лише в погоні ближче 9 м і лише коли його тримає саме ліхтарик): страшно, але чесно.
+    this.flashCut = Math.max(0, this.flashCut - dt);
+    this.cutCd = Math.max(0, this.cutCd - dt);
+    if (s.kind === 'watcher' && s.brain.state === 'chase' && d < 9 && v.litByFlashlight && lampLit < 0.3 && this.cutCd <= 0 && Math.random() < dt * 0.3) {
+      this.flashCut = 0.35 + Math.random() * 0.25;
+      this.cutCd = 10 + Math.random() * 6;
+    }
+    if (this.flashCut > 0) v.litByFlashlight = false;
     v.looksAtMe = clear && (v.litByFlashlight || lampLit > 0.3 || d < 2.2);
     if (hidden) { v.looksAtMe = false; v.litByFlashlight = false; } // крізь жалюзі «тримати поглядом» не вийде
     s.update(dt, v);
