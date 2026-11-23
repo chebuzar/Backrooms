@@ -4,6 +4,7 @@ import * as THREE from 'three/webgpu';
 import { Fn, length, exp, smoothstep, sin, mix, vec3 } from 'three/tsl';
 import type { Assets } from '../assets/loader';
 import type { Physics } from '../physics/physics';
+import { KNOCKABLE } from '../physics/knock';
 import { generateLayout, type Layout } from './layout';
 import { loadLevel0Textures, makeLevel0Materials, probeLit, probeAt } from './materials';
 import { Lamps } from './lamps';
@@ -236,7 +237,12 @@ async function placeProps(assets: Assets, physics: Physics, l: Layout, scene: TH
     o.updateMatrixWorld(true);
     const box = new THREE.Box3().setFromObject(o);
     if (d.file === 'desk') deskTop = box.max.y;
-    if (d.collide) {
+    const k = KNOCKABLE[d.file];
+    if (d.collide && k && physics.knock) {
+      // стілець, ящик, відро — можна зачепити й перекинути
+      const local = new THREE.Box3().setFromObject(g.scene);
+      physics.knock.add((w) => { w.decompose(o.position, o.quaternion, o.scale); }, o.matrixWorld.clone(), local, k.mass, k.kind);
+    } else if (d.collide) {
       const c = box.getCenter(new THREE.Vector3()), s = box.getSize(new THREE.Vector3());
       physics.addBox(c.x, c.y, c.z, Math.max(0.05, s.x / 2 - 0.02), s.y / 2, Math.max(0.05, s.z / 2 - 0.02), 0, 1 << 3);
     }

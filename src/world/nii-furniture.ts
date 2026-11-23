@@ -12,13 +12,14 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { Assets } from '../assets/loader';
 import type { Physics } from '../physics/physics';
 import { G } from '../physics/physics';
+import { KNOCKABLE, instanceView } from '../physics/knock';
 import { rng } from '../core/rng';
 import type { Level } from './level0';
 import { probeAt, probeLit } from './materials';
 import { wallRows, type Spot } from './dressing';
 import { zoneOf } from './decor';
 
-interface Place { m: THREE.Matrix4; E: number; zone: number }
+interface Place { m: THREE.Matrix4; E: number; zone: number; knock?: THREE.InstancedMesh[]; parts?: { im: THREE.InstancedMesh; i: number }[] }
 
 /** Набір розстановок: модель → місця; build() робить інстанси й тіла зіткнень. */
 class Batch {
@@ -34,9 +35,11 @@ class Batch {
     const zw = Math.floor(L.cols / 3) * L.cell, zh = Math.floor(L.rows / 3) * L.cell;
     const zone = Math.min(2, Math.floor(x / zw)) + 3 * Math.min(2, Math.floor(z / zh));
     const list = this.items.get(file) ?? [];
-    list.push({ m, E: probeAt(L.lights, x, z), zone });
+    // стільці тощо — не нерухомі коробки, а речі, які можна зачепити й перекинути (тіло — у build)
+    const knock = o.collide !== false && !!KNOCKABLE[file];
+    list.push({ m, E: probeAt(L.lights, x, z), zone, ...(knock ? { parts: [] } : {}) });
     this.items.set(file, list);
-    if (o.collide !== false) this.solid.push({ file, m });
+    if (o.collide !== false && !knock) this.solid.push({ file, m });
   }
 
   /** Габарити моделі в її власних координатах. */
@@ -68,7 +71,7 @@ class Batch {
         const eNode = instancedBufferAttribute(E) as unknown as THREE.Node<'float'>;
         for (const { geometry, material } of parts) {
           const im = new THREE.InstancedMesh(geometry, probeLit(material, eNode), ps.length);
-          ps.forEach((p, i) => im.setMatrixAt(i, p.m));
+          ps.forEach((p, i) => { im.setMatrixAt(i, p.m); p.parts?.push({ im, i }); });
           im.castShadow = shadow; im.receiveShadow = true;
           im.computeBoundingSphere();
           group.add(im);
@@ -76,6 +79,13 @@ class Batch {
       }
     }
     scene.add(group);
+    for (const [file, places] of this.items) {
+      const k = KNOCKABLE[file];
+      if (!k) continue;
+      if (!physics.knock) { for (const p of places) if (p.parts) this.solid.push({ file, m: p.m }); continue; }
+      const box = await this.box(assets, file);
+      for (const p of places) if (p.parts) physics.knock.add(instanceView(p.parts), p.m, box, k.mass, k.kind, p.parts.map((x) => x.im));
+    }
     // тіла зіткнень: коробка за габаритами (після повороту — осьова обгортка)
     for (const s of this.solid) {
       const bb = (await this.box(assets, s.file)).clone().applyMatrix4(s.m);

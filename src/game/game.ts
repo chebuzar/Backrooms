@@ -24,6 +24,7 @@ import { FrameProbe } from '../render/perf';
 import { warmup } from '../render/warmup';
 import type { DeviceInfo } from '../core/device';
 import { Physics, G } from '../physics/physics';
+import { Knockables } from '../physics/knock';
 import { Player } from './player';
 import { CameraRig } from './camera-rig';
 import { Hand } from './hand';
@@ -332,6 +333,13 @@ export class Game {
 
   async init(onProgress: (p: number) => void = () => {}): Promise<void> {
     this.physics = await Physics.create();
+    this.physics.knock = new Knockables(this.physics);
+    this.physics.knock.onImpact = (x, y, z, k, kind, topple) => {
+      // стілець перекинувся, відро покотилось: справжній звук удару — і монстр чує
+      const b = this.sfx.pick(topple && kind === 'wood' ? 'topple_' : kind === 'metal' ? 'knock_metal_' : 'knock_wood_');
+      if (b) this.audio.play3D(b, x, y, z, { gain: (kind === 'soft' ? 0.25 : 0.4) + k * 0.6, rate: (kind === 'soft' ? 1.25 : 0.92) + Math.random() * 0.14, ref: 2.5, wet: 0.45 });
+      if (kind !== 'soft' || k > 0.5) this.hunt.noise(x, y, z, Math.min(1, 0.25 + k * 0.75));
+    };
     this.assets = new Assets(this.gfx.renderer);
     // 92 % — рівень, далі прогрів і тест швидкодії (рядок підготовки не має «застрягати» на 100 %)
     const lvl = await this.loadLevel(0, (p) => onProgress(p * 0.92));
@@ -375,6 +383,7 @@ export class Game {
   private async loadLevel(id: number, onProgress: (p: number) => void = () => {}): Promise<Level> {
     const old = this.level;
     if (old) {
+      this.physics.knock?.clear();
       const keep = this.player?.collider;
       const list: { handle: number }[] = [];
       this.physics.world.forEachCollider((c) => { if (c !== keep) list.push(c); });
@@ -818,13 +827,33 @@ export class Game {
     };
     lvl.doors.onMove = (d, opening) => { doorSound('creak', d, 0.7); if (opening) doorSound('dooropen', d, 0.6); this.hunt.noise(d.pivot.position.x, 1, d.pivot.position.z, 0.6); };
     lvl.doors.onShut = (d) => doorSound('doorclose', d, 0.9);
-    lvl.doors.onBash = (d) => {
+    lvl.doors.onBash = (d, by) => {
+      if (by === 'player') {
+        // плечем на бігу: глухий удар у полотно, грюкіт об стіну; чути далеко — монстр теж почує
+        doorSound('knock_wood_', d, 0.9);
+        doorSound('doorclose', d, 0.85);
+        this.hunt.noise(d.pivot.position.x, 1, d.pivot.position.z, 0.85);
+        this.rig.shake = Math.max(this.rig.shake, 0.35);
+        return;
+      }
       // вибиті двері: удар і грюкіт полотна об стіну; поруч — здригання камери
       doorSound('hit_', d, 1);
       doorSound('doorclose', d, 1);
       const p = d.pivot.position, near = Math.hypot(p.x - this.player.pos.x, p.z - this.player.pos.z);
       if (near < 9) { this.rig.shake = Math.max(this.rig.shake, 0.6 * (1 - near / 9)); look.fear.value = Math.min(1, look.fear.value + 0.3); }
     };
+  }
+
+  /** На бігу в зачинені двері — плечем: вони розчахуються (гучно). Без бігу двері відчиняються рукою, як завжди. */
+  private shoulderDoors(lvl: Level): void {
+    const p = this.player, v = Math.hypot(p.vx, p.vz);
+    if (!p.running || v < 2.6) return;
+    const ux = p.vx / v, uz = p.vz / v;
+    for (const d of lvl.doors.list) {
+      if (d.target > 0.1) continue;
+      const dx = d.cx - p.pos.x, dz = d.cz - p.pos.z, dist = Math.hypot(dx, dz);
+      if (dist < 0.85 && (dx * ux + dz * uz) / Math.max(1e-3, dist) > 0.55) lvl.doors.bash(d, 'player');
+    }
   }
 
   /** Документ, записка чи плівка (як аркуш із розшифровкою) за id. */
@@ -1202,7 +1231,10 @@ export class Game {
       if (!this.hide) this.player.look(lx, ly);
       this.acc += dt;
       const m = this.hide ? { x: 0, y: 0, run: false, crouch: false } : { x: this.input.move.x, y: this.input.move.y, run: this.input.run, crouch: this.input.crouch };
-      while (this.acc >= STEP) { this.player.update(STEP, m); this.physics.step(); this.acc -= STEP; }
+      let steps = 0;
+      while (this.acc >= STEP) { this.player.update(STEP, m); this.physics.step(); this.acc -= STEP; steps++; }
+      if (steps) this.physics.knock?.sync(steps * STEP);
+      if (steps && this.level) this.shoulderDoors(this.level);
     }
     if (this.input.consume('flashlight') && this.mode === 'play') {
       this.flashlightOn = !this.flashlightOn;

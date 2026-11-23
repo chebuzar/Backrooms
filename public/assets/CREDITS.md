@@ -105,3 +105,5 @@
 - `sfx/heart_0` — «Heartbeat single sound» — qubodup, **CC0 1.0**, OpenGameArt: https://opengameart.org/content/heartbeat-single-sound
 - `sfx/victim_*` — «Grunts: male death and pain» — thebardofblasphemy, **CC0 1.0**, OpenGameArt: https://opengameart.org/content/grunts-male-death-and-pain
 - `sfx/yelp_*` — «15 vocal male strain/hurt/pain/jump sounds» — qubodup, **CC0 1.0**, OpenGameArt: https://opengameart.org/content/15-vocal-male-strainhurtpainjump-sounds
+- `sfx/knock_wood_*`, `sfx/knock_metal_*` — «Wood and Metal Sound Effects Volume 2» — Ogrebane, **CC0 1.0**, OpenGameArt: https://opengameart.org/content/wood-and-metal-sound-effects-volume-2 (+ `bfh1_wood_hit_*`, `bfh1_metal_hit_*` з набору нижче)
+- `sfx/topple_*` — «75 CC0 breaking / falling / hit sfx» — rubberduck, **CC0 1.0**, OpenGameArt: https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx

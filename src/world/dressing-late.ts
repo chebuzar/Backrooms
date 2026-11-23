@@ -41,7 +41,7 @@ export async function dressLate(assets: Assets, physics: Physics, lvl: Level, r:
       const bb = await put(assets, physics, lvl, 'cabinet', s);
       await put(assets, physics, lvl, 'rubber-duck-toy', { x: s.x, z: s.z, yaw: s.yaw + r() }, 0, bb.max.y, false, 1.4);
       const f = out(s, 1.2 + r()), g = along(f, (r() - 0.5) * 2);
-      await put(assets, physics, lvl, r() < 0.5 ? 'dirty-football' : 'rubber-duck-toy', { ...g, yaw: r() * 6 }, 0, 0, false, r() < 0.5 ? 0.75 : 1.6);
+      await put(assets, physics, lvl, r() < 0.5 ? 'dirty-football' : 'rubber-duck-toy', { ...g, yaw: r() * 6 }, 0, 0, true, r() < 0.5 ? 0.75 : 1.6);
     }
     // роздягальні: шафки рядами
     for (const row of wallRows(lvl, r, count('cloak') * 2, 4, 0.5, 0.5, 0.05, avoid, { where: inKind('cloak'), dark: true })) {

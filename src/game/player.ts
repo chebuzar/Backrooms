@@ -79,6 +79,11 @@ export class Player {
     this.ctrl.enableAutostep(0.32, 0.15, false); // пороги й сходинки до 32 см
     this.ctrl.enableSnapToGround(0.35);
     this.ctrl.setSlideEnabled(true);
+    // не «прилипати» до кутів і стику стін — ковзати вздовж
+    this.ctrl.setNormalNudgeFactor(1e-4);
+    // штовхає речі (стільці, відра): імпульс, як від людини ~45 кг «ефективної» ваги — зачепив на бігу — полетіло
+    this.ctrl.setApplyImpulsesToDynamicBodies(true);
+    this.ctrl.setCharacterMass(45);
     this.pos.x = x; this.pos.y = y; this.pos.z = z;
     this.prev.x = x; this.prev.y = y; this.prev.z = z;
   }
