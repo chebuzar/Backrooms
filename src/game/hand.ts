@@ -19,7 +19,7 @@ export interface HandInput {
 }
 
 /** Де в руці ліхтар відносно очей (м): тримають за ручку, правіше й нижче погляду, на зігнутій руці. */
-const HOLD = new THREE.Vector3(0.22, -0.26, -0.52);
+const HOLD = new THREE.Vector3(0.25, -0.31, -0.5);
 
 export class Hand {
   /** Орієнтація руки (запізнюється за поглядом). */

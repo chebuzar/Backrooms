@@ -106,7 +106,7 @@ export class UI {
     });
   }
 
-  menu(o: { canContinue: boolean; onContinue: Handler; onStart: Handler; onSettings: Handler; onAbout: Handler; onFeedback?: Handler }): void {
+  menu(o: { canContinue: boolean; onContinue: Handler; onStart: Handler; onSettings: Handler; onAbout: Handler; onFeedback?: Handler; fullscreen?: { on: boolean; toggle: Handler } }): void {
     const m = T.menu;
     const el = this.make('menu', 'dossier-wrap', `<div class="dossier" aria-label="${m.title}">
       <div class="head"><div>${m.object}<br>${m.caseNo}</div><div class="stamp">${m.secret}</div></div>
@@ -117,11 +117,12 @@ export class UI {
         <button class="line-btn" data-s ${o.canContinue ? '' : 'autofocus'}>${o.canContinue ? m.restart : m.start}</button>
         <button class="line-btn minor" data-o>${m.settings}</button>
         <button class="line-btn minor" data-a>${m.about}</button>
+        ${o.fullscreen ? `<button class="line-btn minor" data-fs>${o.fullscreen.on ? T.pause.windowed : T.pause.fullscreen}</button>` : ''}
         ${o.onFeedback ? `<button class="line-btn minor" data-fb>${T.feedback.open}</button>` : ''}
       </nav>
       <div class="foot"><span>Арх. № 4-Б/87-07</span><span class="pencil">${m.note}</span></div>
     </div>`);
-    this.bind(el, { '[data-c]': o.onContinue, '[data-s]': o.onStart, '[data-o]': o.onSettings, '[data-a]': o.onAbout, '[data-fb]': () => o.onFeedback?.() });
+    this.bind(el, { '[data-c]': o.onContinue, '[data-s]': o.onStart, '[data-o]': o.onSettings, '[data-a]': o.onAbout, '[data-fb]': () => o.onFeedback?.(), '[data-fs]': () => o.fullscreen?.toggle() });
     setTimeout(() => this.focusFirst(), 60);
   }
 
@@ -195,7 +196,7 @@ export class UI {
     setTimeout(() => this.focusFirst(), 60);
   }
 
-  pause(o: { onResume: Handler; onSettings: Handler; onControls?: Handler; onMenu: Handler; onFeedback?: Handler; docs?: { id: string; title: string }[]; onDoc?: (id: string) => void }): void {
+  pause(o: { onResume: Handler; onSettings: Handler; onControls?: Handler; onMenu: Handler; onFeedback?: Handler; docs?: { id: string; title: string }[]; onDoc?: (id: string) => void; fullscreen?: { on: boolean; toggle: Handler } }): void {
     const p = T.pause;
     // журнал: знайдені документи й записки — можна перечитати
     const docs = o.docs?.length ? `<div class="pencil journal-h">${p.journal}</div><nav class="menu journal">${o.docs.map((d) =>
@@ -206,10 +207,11 @@ export class UI {
         <button class="line-btn" data-r autofocus>${p.resume}</button>
         <button class="line-btn minor" data-s>${p.settings}</button>
         <button class="line-btn minor" data-ctl>${p.controls}</button>
+        ${o.fullscreen ? `<button class="line-btn minor" data-fs>${o.fullscreen.on ? p.windowed : p.fullscreen}</button>` : ''}
         ${o.onFeedback ? `<button class="line-btn minor" data-fb>${T.feedback.open}</button>` : ''}
         <button class="line-btn minor" data-m>${p.toMenu}</button>
       </nav>${docs}</div>`);
-    this.bind(el, { '[data-r]': o.onResume, '[data-s]': o.onSettings, '[data-m]': o.onMenu, '[data-ctl]': () => o.onControls?.(), '[data-fb]': () => o.onFeedback?.() });
+    this.bind(el, { '[data-r]': o.onResume, '[data-s]': o.onSettings, '[data-m]': o.onMenu, '[data-ctl]': () => o.onControls?.(), '[data-fb]': () => o.onFeedback?.(), '[data-fs]': () => o.fullscreen?.toggle() });
     el.querySelectorAll<HTMLButtonElement>('[data-doc]').forEach((b) => b.addEventListener('click', () => o.onDoc?.(b.dataset.doc as string)));
     setTimeout(() => this.focusFirst(), 60);
   }

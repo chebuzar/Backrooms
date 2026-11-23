@@ -10,6 +10,7 @@ await gotoGame(page, 'q=high');
 await page.click('.age [data-go]');
 await page.waitForFunction(() => document.querySelector('.menu'), null, { timeout: 30000 });
 // той самий ракурс, що й після повернення; авто-пресет вимкнено (інакше він сам перебудовує постобробку під повільний headless)
+await page.waitForFunction(() => window.__zk.game.player && window.__zk.game.dressed?.length > 0, null, { timeout: 180000 });
 await page.evaluate(() => { const g = window.__zk.game; g.autoScale = false; g.enterLevelStart(); g.play(); });
 const snap = async (label) => {
   await wait(2500); // кілька кадрів: усе, що потрібно рівню, вже на GPU

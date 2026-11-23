@@ -32,17 +32,22 @@ export interface Door {
   index: number;
 }
 
+/** Як рука веде двері: обережно (присівши — повільно, ледь чутно), звичайно, різко (на бігу — грюкає). */
+export type DoorForce = 'quiet' | 'normal' | 'slam';
+
 export class Doors {
   readonly group = new THREE.Group();
   readonly list: Door[] = [];
-  /** Викликається, коли двері рушили (для звуку): позиція й швидкість. */
-  onMove: ((d: Door, opening: boolean) => void) | null = null;
-  /** Полотно стало в раму (глухий стук). */
-  onShut: ((d: Door) => void) | null = null;
+  /** Викликається, коли двері рушили (для звуку): куди й з якою силою (тихо — присівши, різко — на бігу). */
+  onMove: ((d: Door, opening: boolean, force: DoorForce) => void) | null = null;
+  /** Полотно стало в раму (глухий стук; обережно — ледь клацнуло, різко — грюкнуло). */
+  onShut: ((d: Door, force: DoorForce) => void) | null = null;
   /** Двері вибили (удар, полотно відлітає до стіни). */
   onBash: ((d: Door, by: 'monster' | 'player') => void) | null = null;
   /** Двері, що зараз відлітають після удару (швидкий рух). */
   private readonly fast = new Set<Door>();
+  /** Двері, які ведуть обережно (повільно, без рипу). */
+  private readonly slow = new Set<Door>();
 
   /** Полотна й ручки всіх дверей (по екземпляру на двері). */
   private leaves: THREE.InstancedMesh | null = null;
@@ -114,7 +119,7 @@ export class Doors {
     if (d.target <= 0.1) return;
     d.target = 0;
     this.fast.add(d);
-    this.onMove?.(d, false);
+    this.onMove?.(d, false, 'slam');
   }
 
   /** Тихо поставити полотно в інше положення (поки ніхто не дивиться): без рипу й руху. */
@@ -124,10 +129,13 @@ export class Doors {
     this.apply(d);
   }
 
-  /** Відчинити/зачинити. */
-  toggle(d: Door): void {
-    d.target = d.target > 0.1 ? 0 : 1.5;
-    this.onMove?.(d, d.target > 0);
+  /** Відчинити/зачинити рукою з різною силою. */
+  toggle(d: Door, force: DoorForce = 'normal'): void {
+    d.target = d.target > 0.1 ? 0 : force === 'slam' ? 1.6 : 1.5;
+    this.fast.delete(d); this.slow.delete(d);
+    if (force === 'slam') this.fast.add(d);
+    if (force === 'quiet') this.slow.add(d);
+    this.onMove?.(d, d.target > 0, force);
   }
 
   private apply(d: Door): void {
@@ -152,11 +160,12 @@ export class Doors {
     for (const d of this.list) {
       if (Math.abs(d.target - d.angle) < 1e-3) continue;
       // важке полотно: розгін і гальмування, без стрибків
-      const fast = this.fast.has(d);
-      const step = (d.target - d.angle) * Math.min(1, dt * (fast ? 14 : 3.2));
-      d.angle += Math.sign(step) * Math.min(Math.abs(step), dt * (fast ? 9 : 1.9));
+      const fast = this.fast.has(d), slow = this.slow.has(d);
+      const step = (d.target - d.angle) * Math.min(1, dt * (fast ? 14 : slow ? 1.6 : 3.2));
+      d.angle += Math.sign(step) * Math.min(Math.abs(step), dt * (fast ? 9 : slow ? 0.7 : 1.9));
       if (fast && Math.abs(d.target - d.angle) < 0.02) this.fast.delete(d);
-      if (d.target === 0 && d.angle < 0.02) { d.angle = 0; this.onShut?.(d); }
+      if (slow && Math.abs(d.target - d.angle) < 0.01) this.slow.delete(d);
+      if (d.target === 0 && d.angle < 0.02) { d.angle = 0; this.slow.delete(d); this.onShut?.(d, slow ? 'quiet' : fast ? 'slam' : 'normal'); }
       this.apply(d);
     }
   }

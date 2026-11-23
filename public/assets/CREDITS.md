@@ -108,3 +108,5 @@
 - `sfx/yelp_*` — «15 vocal male strain/hurt/pain/jump sounds» — qubodup, **CC0 1.0**, OpenGameArt: https://opengameart.org/content/15-vocal-male-strainhurtpainjump-sounds
 - `sfx/knock_wood_*`, `sfx/knock_metal_*` — «Wood and Metal Sound Effects Volume 2» — Ogrebane, **CC0 1.0**, OpenGameArt: https://opengameart.org/content/wood-and-metal-sound-effects-volume-2 (+ `bfh1_wood_hit_*`, `bfh1_metal_hit_*` з набору нижче)
 - `sfx/topple_*` — «75 CC0 breaking / falling / hit sfx» — rubberduck, **CC0 1.0**, OpenGameArt: https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx
+- `sfx/glass_break_*`, `sfx/glass_hit_*`, `sfx/knock_soft_*` — «75 CC0 breaking / falling / hit sfx» — rubberduck, **CC0 1.0**, OpenGameArt: https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx
+- `tex/floor_tiles_08` — «Floor Tiles 08» — Rob Tuytel, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/floor_tiles_08

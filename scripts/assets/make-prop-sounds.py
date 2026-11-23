@@ -45,6 +45,13 @@ for i, f in enumerate(files('metal*.aif')[:6] + files('bfh1_metal_hit_*.ogg')[:4
     conv(f, f'knock_metal_{i}', -21, 1.0)
 for i, f in enumerate(files('bfh1_wood_falling_*.ogg') + files('bfh1_falling_0[1-4].ogg')):
     conv(f, f'topple_{i}', -18, 1.6)
+# скло (фізика 23.11): лампа/плафон б'ється на друзки; дзенькіт уламків; глухий удар паперу, книг, м'яких речей
+for i, f in enumerate(files('bfh1_glass_breaking_*.ogg')):
+    conv(f, f'glass_break_{i}', -17, 1.8)
+for i, f in enumerate(files('bfh1_glass_hit_*.ogg') + files('bfh1_glass_falling_*.ogg')):
+    conv(f, f'glass_hit_{i}', -22, 1.0)
+for i, f in enumerate(files('bfh1_hit_*.ogg')[:8]):
+    conv(f, f'knock_soft_{i}', -24, 0.7)
 
 idx_path = f'{OUT}/index.json'
 idx = set(json.load(open(idx_path))) if os.path.exists(idx_path) else set()

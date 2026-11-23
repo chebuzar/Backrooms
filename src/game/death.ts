@@ -12,6 +12,8 @@ import type { AudioEngine } from '../audio/audio';
 import type { SoundBank } from '../audio/bank';
 import { look } from '../render/post';
 import type { BloodSpray } from '../world/blood';
+import type RAPIER from '@dimforge/rapier3d-compat';
+import { G, groups, type Physics } from '../physics/physics';
 
 export interface DeathDeps {
   camera: THREE.PerspectiveCamera;
@@ -25,6 +27,8 @@ export interface DeathDeps {
   /** Куди світить ліхтарик (null — звичайний, з руки). */
   setFlash(o: { from: THREE.Vector3; at: THREE.Vector3; intensity: number } | null): void;
   shake(v: number): void;
+  /** Фізика: тіло падає по-справжньому (стіна за спиною, стілець під ногами), а не за кривою. */
+  physics?: Physics;
 }
 
 const ease = (k: number) => k * k * (3 - 2 * k);
@@ -70,6 +74,11 @@ export class DeathScene {
   private readonly mouth = new THREE.Vector3();
   private splashed = false;
   private dripT = 0;
+  /** Тіло, що падає (капсула 1.7 м): удар монстра штовхає назад, далі — гравітація, підлога, стіни, меблі. */
+  private fall: RAPIER.RigidBody | null = null;
+  private fallDone = false;
+  private readonly fq = new THREE.Quaternion();
+  private readonly fv = new THREE.Vector3();
 
   constructor(private readonly d: DeathDeps) {
     const c = d.camera, s = d.stalker;
@@ -122,12 +131,16 @@ export class DeathScene {
     if (!this.grabSet) { this.grabSet = true; this.grabAt.copy(s.root.position); this.play('yelp_', 0.8, 1); }
     // кров, що влучила в очі, — червона пелена
     if (d.spray) this.hurt = Math.min(1, this.hurt + d.spray.update(step, c.position) * 0.12);
-    // 2) падіння навзнак: вільне падіння (прискорюється), а не плавний наїзд; удар потилицею — відскок
+    // 2) падіння навзнак. З фізикою — справжнє тіло: удар відкидає назад, далі гравітація; за спиною стіна — сповзаєш
+    //    по ній, позаду стілець — летить убік. Без фізики (тести) — вільне падіння за кривою.
     const tf = clamp01((t - DEATH.lunge) / DEATH.fall);
-    c.position.lerpVectors(this.eye, this.floor, tf * tf);
-    if (t >= IMPACT) {
+    const phys = this.fallStep(t);
+    if (!phys) c.position.lerpVectors(this.eye, this.floor, tf * tf);
+    else c.position.copy(this.floor);
+    const landed = phys ? this.floor.y < 0.45 || t >= IMPACT + 0.15 : t >= IMPACT;
+    if (landed) {
       const u = t - IMPACT;
-      c.position.y += Math.abs(Math.sin(u * 22)) * 0.045 * Math.exp(-u * 9);
+      if (!phys) c.position.y += Math.abs(Math.sin(u * 22)) * 0.045 * Math.exp(-u * 9);
       if (!this.impacted) {
         this.impacted = true;
         this.play('hit_', 1.0, 0.5);
@@ -223,8 +236,42 @@ export class DeathScene {
     return t >= this.length;
   }
 
+  /** Тіло, що падає: створити в мить удару, вести очі за ним, а коли ляже — прибрати (далі сцена над тілом).
+   *  Повертає true, поки камера йде за фізикою (floor — де зараз очі, feet — куди лягли ноги). */
+  private fallStep(t: number): boolean {
+    const P = this.d.physics;
+    if (!P || this.fallDone) return !!P && this.fallDone;
+    if (!this.fall) {
+      const R = P.R, b = P.world.createRigidBody(R.RigidBodyDesc.dynamic().setTranslation(this.eye.x, 0.86, this.eye.z)
+        .setLinearDamping(0.1).setAngularDamping(1.2).setCcdEnabled(true));
+      P.world.createCollider(R.ColliderDesc.capsule(0.6, 0.24).setMass(75).setFriction(0.25).setRestitution(0.05)
+        .setCollisionGroups(groups(G.RAG, G.STATIC | G.DOOR | G.PROP)), b);
+      // тертя мале: за спиною стіна — тіло сповзає по ній на підлогу (ноги їдуть уперед), а не застигає навскіс
+      // удар у груди: верх тіла летить назад (кутова швидкість навколо осі «вбік»), саме тіло — трохи назад
+      b.setAngvel({ x: this.side.x * 4.2, y: 0, z: this.side.z * 4.2 }, true);
+      b.setLinvel({ x: -this.fwd.x * 1.3, y: 0, z: -this.fwd.z * 1.3 }, true);
+      this.fall = b;
+    }
+    const b = this.fall, tr = b.translation(), r = b.rotation();
+    this.fq.set(r.x, r.y, r.z, r.w);
+    // очі — на 0.74 м над центром уздовж осі тіла; ноги — протилежний кінець
+    this.fv.set(0, 0.74, 0).applyQuaternion(this.fq);
+    this.floor.set(tr.x + this.fv.x, Math.max(0.13, tr.y + this.fv.y), tr.z + this.fv.z);
+    const lx = -this.fv.x, lz = -this.fv.z, ll = Math.hypot(lx, lz) || 1;
+    this.feet.set(this.floor.x + (lx / ll) * 0.62, 0, this.floor.z + (lz / ll) * 0.62);
+    // лягло (або 0.6 с після удару) — тіло більше не потрібне: сцена над тілом іде від цієї точки
+    if (t >= IMPACT + 0.6) {
+      this.fallDone = true;
+      P.world.removeRigidBody(b);
+      this.fall = null;
+      if (this.d.pool) this.d.pool.position.set(this.floor.x + (lx / ll) * 0.25, 0.006, this.floor.z + (lz / ll) * 0.25);
+    }
+    return true;
+  }
+
   /** Прибрати наслідки сцени з кадру (перед «Связь потеряна»). */
   end(): void {
+    if (this.fall && this.d.physics) { this.d.physics.world.removeRigidBody(this.fall); this.fall = null; }
     look.hurt.value = 0;
     look.saturation.value = this.sat0;
     this.d.setFlash(null);

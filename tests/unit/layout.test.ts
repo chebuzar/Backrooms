@@ -75,3 +75,28 @@ describe('deep levels (kindergarten, pool)', () => {
     }
   });
 });
+
+describe('level 0 «Бесконечный НИИ» (designed floor)', () => {
+  const l = generateLayout({ seed: 1987, preset: 'nii' });
+  it('every cell is reachable and the exit is the stairwell', () => {
+    expect(Array.from(l.dist).filter((d) => d < 0).length).toBe(0);
+    const stairs = l.rooms.find((q) => q.kind === 'stairs');
+    expect(stairs).toBeDefined();
+    expect(l.exit.cx).toBeGreaterThanOrEqual(stairs!.x0);
+    expect(l.exit.cx).toBeLessThan(stairs!.x1);
+    expect(Math.hypot(l.exit.x - l.spawn.x, l.exit.z - l.spawn.z)).toBeGreaterThan(25);
+  });
+  it('has rooms of every purpose and lamps only where they belong', () => {
+    for (const k of ['office', 'director', 'lab', 'drafting', 'archive', 'assembly', 'lobby', 'wc', 'stairs', 'dark'] as const) {
+      expect(l.rooms.some((q) => q.kind === k)).toBe(true);
+    }
+    // острови світла й темні проміжки: світить більшість, але не всі
+    const on = l.lights.filter((x) => x.state === 'on').length;
+    expect(on / l.lights.length).toBeGreaterThan(0.5);
+    expect(on / l.lights.length).toBeLessThan(0.85);
+    for (const p of l.lights) {
+      const inWall = l.walls.some((w) => Math.abs(p.x - w.x) < w.w / 2 + 0.05 && Math.abs(p.z - w.z) < w.d / 2 + 0.05);
+      expect(inWall).toBe(false);
+    }
+  });
+});

@@ -29,8 +29,16 @@ export function zoneOf(l: Layout, x: number, z: number): string {
   return l.zones[Math.min(2, Math.floor(x / zw)) + 3 * Math.min(2, Math.floor(z / zh))] ?? 'rooms';
 }
 
+/** Чи точка в коридорі: у задуманому НИИ — поза будь-яким приміщенням, на старих рівнях — у зоні коридорів. */
+function inCorridor(l: Layout, x: number, z: number): boolean {
+  if (l.theme.id !== 'nii') return zoneOf(l, x, z) === 'corridors';
+  const c = l.cell;
+  return !l.rooms.some((q) => x > q.x0 * c && x < q.x1 * c && z > q.y0 * c && z < q.y1 * c);
+}
+
 export function decorate(l: Layout): Decor[] {
   const r = rng(l.seed ^ 0x5eed);
+  const nii = l.theme.id === 'nii';
   const out: Decor[] = [];
   const T = l.wallThickness, H = l.height;
   const walls = l.walls.filter((w) => w.kind === 'wall');
@@ -52,7 +60,7 @@ export function decorate(l: Layout): Decor[] {
       const gap = start - end;
       if (Math.abs(gap - (l.cell - T)) > 0.02) continue; // лише вузькі прорізи в одну клітинку
       const cx = horiz ? (end + start) / 2 : a.x, cz = horiz ? a.z : (end + start) / 2;
-      if (zoneOf(l, cx, cz) === 'hall' || r() < 0.12) continue; // у залах і подекуди — просто отвір
+      if ((!nii && zoneOf(l, cx, cz) === 'hall') || r() < 0.12) continue; // у залах і подекуди — просто отвір
       out.push({ t: 'door', x: cx, y: 0, z: cz, yaw: horiz ? 0 : Math.PI / 2, w: gap });
     }
   }
@@ -66,7 +74,6 @@ export function decorate(l: Layout): Decor[] {
     const horiz = w.w >= w.d, len = horiz ? w.w : w.d;
     if (len < 1.4) continue;
     const half = len / 2 - 0.35;
-    const zone = zoneOf(l, w.x, w.z);
     for (const side of [1, -1]) {
       const nx = horiz ? 0 : side, nz = horiz ? side : 0;
       const yaw = Math.atan2(nx, nz);
@@ -84,11 +91,12 @@ export function decorate(l: Layout): Decor[] {
       const ex = horiz ? w.x + s : w.x, ez = horiz ? w.z : w.z + s;
       if (nearDoor(ex, ez, 1.2) && r() < 0.8) place('switch', s, 1.5, 0.08);
       if (len > 2.2 && r() < 0.16) place('vent', (r() * 2 - 1) * Math.max(0, half - 0.3), r() < 0.08 ? 0.35 : H - 0.3, r() < 0.3 ? 0.6 : 0.36);
-      if (zone === 'corridors' && len > 2.0 && r() < 0.1) place('panel', (r() * 2 - 1) * Math.max(0, half - 0.4), 1.45, 0.42);
+      if (inCorridor(l, w.x + nx * 0.4, w.z + nz * 0.4) && len > 2.0 && r() < (nii ? 0.2 : 0.1)) place('panel', (r() * 2 - 1) * Math.max(0, half - 0.4), 1.45, 0.42);
     }
   }
 
-  // --- вирвані плити стелі (темна порожнина над ними); частіше в темних зонах
+  // --- вирвані плити стелі (темна порожнина над ними); частіше в темних зонах. У НИИ стеля побілена, плит немає
+  if (nii) return out;
   const nx = Math.floor((l.cols * l.cell) / 0.6), nz = Math.floor((l.rows * l.cell) / 0.6);
   for (let i = 0; i < l.cols * l.rows * 0.07; i++) {
     const tx = irange(r, 0, nx - 1), tz = irange(r, 1, nz - 1);

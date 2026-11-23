@@ -48,6 +48,10 @@ export class HandLamp {
       if (!mesh.isMesh) return;
       const src = mesh.material as THREE.MeshStandardMaterial;
       const mat = probeLit(src, this.E as unknown as THREE.Node<'float'>, false);
+      // корпус пофарбований (емаль — не голий метал), а без карти оточення «метал» лише чорніє; фарба оливкова й темна,
+      // тож трохи світліша — інакше в руці в освітленій кімнаті лишався чорний силует замість ліхтаря
+      mat.metalness = 0;
+      mat.color.multiplyScalar(1.7);
       if (src.name.includes('glass')) {
         mat.emissive.setRGB(1.0, 0.72, 0.42);
         mat.emissiveIntensity = 0;
@@ -63,7 +67,7 @@ export class HandLamp {
     this.model.add(o);
     // у кисті ліхтар трохи розвернутий до центру й нахилений: видно бік, ручку й край скла, а не лише «зад»
     this.model.rotation.set(-0.06, 0.2, 0.08, 'YXZ');
-    this.model.scale.setScalar(0.82);
+    this.model.scale.setScalar(0.7); // менший і нижче: лише край ліхтаря в куті кадру, не «брусок» на пів екрана
     this.ready = true;
   }
 

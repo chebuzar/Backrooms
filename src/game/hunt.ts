@@ -9,7 +9,8 @@ import { Stalker, type StalkerKind } from '../world/monsters/stalker';
 import { probeAt } from '../world/materials';
 import type { Level } from '../world/level0';
 import type { Assets } from '../assets/loader';
-import type { Physics } from '../physics/physics';
+import { G, groups, type Physics } from '../physics/physics';
+import type RAPIER from '@dimforge/rapier3d-compat';
 import type { AudioEngine, SpatialVoice } from '../audio/audio';
 import { tongueClicks, heartbeat } from '../audio/synth';
 import { splashStep, drownedBreath, giggle } from '../audio/synth2';
@@ -38,6 +39,8 @@ export class Hunt {
   private snarlCd = 0;
   /** Подих «Наблюдателя» за спиною: чути, лише коли на нього НЕ дивишся; глянув — тиша. */
   private breath: SpatialVoice | null = null;
+  /** Тіло мисливця для фізики речей (кінематичне): на бігу збиває стільці, відра, парти — гуркіт чути здалеку. */
+  private pusher: { body: RAPIER.RigidBody; physics: Physics } | null = null;
   /** Множник яскравості ліхтарика від мисливця (0 — провал). */
   get flashMul(): number { return this.flashCut > 0 ? 0 : 1; }
 
@@ -108,6 +111,10 @@ export class Hunt {
     };
     lvl.scene.add(s.root);
     this.stalker = s;
+    // капсула ~1.7 м, зіштовхується лише з речами (гравця й стіни не чіпає — його рух веде navmesh)
+    const R = physics.R, body = physics.world.createRigidBody(R.RigidBodyDesc.kinematicPositionBased().setTranslation(s.pos.x, 0.85, s.pos.z));
+    physics.world.createCollider(R.ColliderDesc.capsule(0.55, 0.27).setCollisionGroups(groups(G.MONSTER, G.PROP)), body);
+    this.pusher = { body, physics };
     if (kind === 'blind' && ctx) this.voice = this.audio.play3D(tongueClicks(ctx, 3), home.x, 1.6, home.z, { loop: true, gain: 0.7, ref: 2.2, wet: 0.5 });
     if (kind === 'drowned' && ctx) this.voice = this.audio.play3D(drownedBreath(ctx), home.x, 0.4, home.z, { loop: true, gain: 0.3, ref: 2, wet: 0.5 });
     const br = kind === 'watcher' ? this.sfx.pick('breath_') : null;
@@ -132,7 +139,18 @@ export class Hunt {
     }
   }
 
+  /** Тіло мисливця — за ним. Стрибок (ривок «Наблюдателя», поява) — переставити, а не «пролетіти» крізь кімнату;
+   *  під водою («Утопленник» на дні) — прибрати вниз, щоб не штовхав речі з-під води. */
+  private movePusher(s: Stalker): void {
+    const p = this.pusher;
+    if (!p) return;
+    const t = p.body.translation(), x = s.pos.x, z = s.pos.z, y = s.sub > 0.5 ? -5 : 0.85;
+    if (Math.hypot(x - t.x, z - t.z) > 0.6 || Math.abs(y - t.y) > 0.1) p.body.setTranslation({ x, y, z }, true);
+    else p.body.setNextKinematicTranslation({ x, y, z });
+  }
+
   dispose(): void {
+    if (this.pusher) { const { body, physics } = this.pusher; if (physics.world.getRigidBody(body.handle)) physics.world.removeRigidBody(body); this.pusher = null; }
     this.voice?.stop(0.2);
     this.voice = null;
     this.breath?.stop(0.2);
@@ -182,6 +200,7 @@ export class Hunt {
     hidden: { x: number; z: number; seen: boolean } | null = null): void {
     const s = this.stalker;
     if (!s) { this.heartbeat(dt, 0); return; } // без мисливця серце чути лише від нервів
+    this.movePusher(s);
     const v = this.view, sp = s.pos;
     Object.assign(v, { x: player.pos.x, y: player.pos.y, z: player.pos.z, vx: player.vx, vz: player.vz, flashlightOn, crouched: player.crouched, hidden: !!hidden, hiddenSeen: !!hidden?.seen });
     if (hidden) {

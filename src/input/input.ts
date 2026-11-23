@@ -1,7 +1,7 @@
 // Керування: клавіатура+миша, геймпад, сенсорний екран — усе зводиться до одних «дій».
 import { TouchControls } from './touch';
 
-export type Action = 'interact' | 'flashlight' | 'pause' | 'camera' | 'journal' | 'dosimeter' | 'zoom' | 'watch';
+export type Action = 'interact' | 'flashlight' | 'pause' | 'camera' | 'journal' | 'dosimeter' | 'zoom' | 'watch' | 'throw';
 
 export interface InputSettings {
   sensitivity: number; // 0.2..3
@@ -19,6 +19,8 @@ export class Input {
   touchLookY = 0;
   run = false;
   crouch = false;
+  /** Права кнопка миші затиснута: рух миші крутить річ у руці, а не погляд. */
+  rmb = false;
   private keys = new Set<string>();
   private pressed = new Set<Action>();
   private crouchLatched = false;
@@ -30,10 +32,19 @@ export class Input {
   constructor(private readonly canvas: HTMLCanvasElement, uiRoot: HTMLElement, public settings: InputSettings) {
     addEventListener('keydown', (e) => this.onKey(e, true));
     addEventListener('keyup', (e) => this.onKey(e, false));
-    addEventListener('blur', () => { this.keys.clear(); this.run = false; });
+    addEventListener('blur', () => { this.keys.clear(); this.run = false; this.rmb = false; });
     // колесо миші (з захопленим курсором) — приближення камери
     let wheelT = 0;
     addEventListener('wheel', (e) => { if (!this.pointerLocked || Math.abs(e.deltaY) < 4 || performance.now() - wheelT < 250) return; wheelT = performance.now(); this.pressed.add('zoom'); }, { passive: true });
+    // ліва кнопка (курсор захоплено) — кинути річ із руки; права — затиснути й крутити річ
+    addEventListener('mousedown', (e) => {
+      if (!this.enabled || document.pointerLockElement !== this.canvas) return;
+      this.lastDevice = 'keyboard';
+      if (e.button === 0) this.pressed.add('throw');
+      if (e.button === 2) this.rmb = true;
+    });
+    addEventListener('mouseup', (e) => { if (e.button === 2) this.rmb = false; });
+    addEventListener('contextmenu', (e) => { if (document.pointerLockElement === this.canvas) e.preventDefault(); });
     addEventListener('mousemove', (e) => {
       if (!this.enabled || document.pointerLockElement !== this.canvas) return;
       const k = 0.0021 * this.settings.sensitivity;
@@ -109,6 +120,7 @@ export class Input {
       if (edge(5)) this.pressed.add('dosimeter');
       if (edge(4)) this.pressed.add('zoom');
       if (edge(12)) this.pressed.add('watch');
+      if (edge(6)) this.pressed.add('throw');
       if (edge(1)) this.crouchLatched = !this.crouchLatched;
       if (b[1] !== undefined) crouch = crouch || this.crouchLatched;
       this.padPrev = b;

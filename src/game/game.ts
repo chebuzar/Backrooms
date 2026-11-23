@@ -4,6 +4,7 @@ import * as THREE from 'three/webgpu';
 import type { RendererHandle } from '../render/renderer';
 import { PostPipeline, look, setFilm } from '../render/post';
 import { Camcorder } from './camcorder';
+import { canFullscreen, isFullscreen, toggleFullscreen, onFullscreenChange } from '../core/fullscreen';
 import { Notebook } from '../ui/notebook';
 import { MapMemory } from './mapmem';
 import { buildUnseen } from '../world/unseen';
@@ -17,7 +18,7 @@ import { Psyche } from './psyche';
 import { Soundscape } from './soundscape';
 import { Tasks } from './tasks';
 import { RADIO } from '../story/tasks';
-import { lampDeficits } from '../world/materials';
+import { lampDeficits, probeAt } from '../world/materials';
 import { PROFILES, PresetGovernor, QualityGovernor, autoQuality, type QualityName, type QualityProfile } from '../render/quality';
 import { deviceCap, deviceKey, effectivePreset, loadCalibration, runCalibration, saveCalibration, ORDER, type Calibration, type DeviceSignals } from '../render/autotune';
 import { FrameProbe } from '../render/perf';
@@ -25,6 +26,8 @@ import { warmup } from '../render/warmup';
 import type { DeviceInfo } from '../core/device';
 import { Physics, G } from '../physics/physics';
 import { Knockables } from '../physics/knock';
+import { PropPlay } from './props';
+import { Corpses } from '../physics/ragdoll';
 import { Player } from './player';
 import { CameraRig } from './camera-rig';
 import { Hand } from './hand';
@@ -86,6 +89,8 @@ export class Game {
   readonly hand = new Hand();
   /** Ліхтар у руці (модель, світло скла, промінь у повітрі). */
   readonly handLamp = new HandLamp();
+  private handProbe = 0.5;
+  private handProbeT = 0;
   readonly audio = new AudioEngine();
   readonly store = new Store();
   readonly ui: UI;
@@ -178,6 +183,10 @@ export class Game {
   hud!: HUD;
   readonly ambience = new Ambience(this.audio);
   interact!: Interactions;
+  /** Речі: рука, удари, скло. */
+  props!: PropPlay;
+  /** Тіла (ragdoll) з минулих смертей. */
+  corpses!: Corpses;
   private stage: 'desk' | 'seam' | 'done' = 'desk';
   private ending = false;
   readonly psyche = new Psyche();
@@ -246,7 +255,17 @@ export class Game {
     document.addEventListener('pointerlockchange', () => { if (!this.input.pointerLocked && this.mode === 'play' && !this.device.touch) this.pause(); });
     // будь-який жест «оживляє» звук (iOS)
     for (const ev of ['pointerdown', 'keydown', 'touchend'] as const) addEventListener(ev, () => this.audio.unlock(), { passive: true });
+    // розмір полотна — за його справжнім розміром на екрані (100dvh): після повороту iPad, появи/зникнення панелей Safari
+    // і входу в повний екран innerWidth/innerHeight бувають ще старими — ResizeObserver бачить кінцевий розмір
     addEventListener('resize', () => this.resize());
+    new ResizeObserver(() => this.resize()).observe(canvas);
+    visualViewport?.addEventListener('resize', () => this.resize());
+    // повний екран увімкнули чи вимкнули (зокрема свайпом / Esc): оновити підпис кнопки в меню
+    onFullscreenChange(() => {
+      this.resize();
+      if (this.mode === 'pause' && !this.hud.readerOpen) { this.ui.close('pause'); this.pauseMenuAgain(); }
+      else if (this.mode === 'menu') { this.ui.close('menu'); this.showMenu(); }
+    });
     document.addEventListener('visibilitychange', () => { if (document.hidden && this.mode === 'play') this.pause(); });
   }
 
@@ -337,12 +356,9 @@ export class Game {
   async init(onProgress: (p: number) => void = () => {}): Promise<void> {
     this.physics = await Physics.create();
     this.physics.knock = new Knockables(this.physics);
-    this.physics.knock.onImpact = (x, y, z, k, kind, topple) => {
-      // стілець перекинувся, відро покотилось: справжній звук удару — і монстр чує
-      const b = this.sfx.pick(topple && kind === 'wood' ? 'topple_' : kind === 'metal' ? 'knock_metal_' : 'knock_wood_');
-      if (b) this.audio.play3D(b, x, y, z, { gain: (kind === 'soft' ? 0.25 : 0.4) + k * 0.6, rate: (kind === 'soft' ? 1.25 : 0.92) + Math.random() * 0.14, ref: 2.5, wet: 0.45 });
-      if (kind !== 'soft' || k > 0.5) this.hunt.noise(x, y, z, Math.min(1, 0.25 + k * 0.75));
-    };
+    // речі: удари, скло, рука (взяти, покласти, кинути) — props.ts
+    this.corpses = new Corpses(this.physics);
+    this.props = new PropPlay({ physics: this.physics, knock: this.physics.knock, audio: this.audio, sfx: this.sfx, noise: (x, y, z, l) => this.hunt.noise(x, y, z, l) });
     this.assets = new Assets(this.gfx.renderer);
     // ліхтар у руці — до першого рівня, щоб його шейдери прогрілись разом із рівнем
     await this.handLamp.load(this.assets).catch((e) => console.warn('[hand-lamp]', e));
@@ -388,6 +404,8 @@ export class Game {
   private async loadLevel(id: number, onProgress: (p: number) => void = () => {}): Promise<Level> {
     const old = this.level;
     if (old) {
+      this.props.detach();
+      this.corpses.clear();
       this.physics.knock?.clear();
       const keep = this.player?.collider;
       const list: { handle: number }[] = [];
@@ -424,7 +442,7 @@ export class Game {
       lvl.scene.add(unseen);
       // тіла з минулих спроб на цьому рівні (у калюжах крові)
       this.bloodAtlas = await this.assets.texture('assets/tex/level0/decals.ktx2').catch(() => null);
-      for (const b of this.store.progress.bodies) if (b.level === id) lvl.scene.add(makeBody(gl.scene, b.x, b.z, b.yaw, this.bloodAtlas));
+      for (const b of this.store.progress.bodies) if (b.level === id) { const o = makeBody(gl.scene, b.x, b.z, b.yaw, this.bloodAtlas); lvl.scene.add(o); this.corpses.add(o); }
       if (this.bloodAtlas) { this.deathPool = makeBloodPool(this.bloodAtlas, 0, 0, 1); this.deathPool.visible = false; lvl.scene.add(this.deathPool); }
       this.deathSpray = new BloodSpray(); this.deathSpray.mesh.visible = false; lvl.scene.add(this.deathSpray.mesh);
     } catch { /* без моделі гра йде далі без прихованого й тіл */ }
@@ -434,6 +452,7 @@ export class Game {
     // НИИ, ще без печаток: за пів хвилини рупор кличе Оператора № 7 на вахту — так гравець дізнається, куди йти й що його чекають
     if (lvl.id === 0 && !this.store.progress.items.some((i) => i.startsWith('0:stamp_'))) this.soundscape.schedule(0, 30);
     this.level = lvl;
+    this.props.attach(lvl.scene, lvl.lamps, lvl.layout.lights, lvl.layout.height, (x, z) => probeAt(lvl.layout.lights, x, z));
     this.bat.forLevel(lvl.id);
     setFilm(lvl.id);
     this.saveMap();
@@ -451,6 +470,7 @@ export class Game {
     await this.tasks.build(this.assets, this.physics, lvl, busy);
     const taken = [...busy, ...this.tasks.spots(), ...Object.values(lvl.spots)];
     this.dressed = lvl.id > 0 ? await dressLevel(this.assets, this.physics, lvl, taken) : await furnishNii(this.assets, this.physics, lvl, taken);
+    this.corpses.settle(); // тіла лягають до старту, поки рівень ще під заставкою
     this.phoneAnswered = false; this.writingSeen = false;
     this.setScene(lvl.scene);
     lvl.scene.add(this.handLamp.root);
@@ -594,7 +614,8 @@ export class Game {
       },
       onSettings: () => this.openSettings(() => this.showMenu()),
       onAbout: () => { this.ui.close('menu'); this.ui.about(() => this.showMenu()); },
-      onFeedback: () => { this.ui.close('menu'); openFeedback(this.ui, { canvas: this.gfx.renderer.domElement, shotByDefault: false, onClose: () => this.showMenu() }); }
+      onFeedback: () => { this.ui.close('menu'); openFeedback(this.ui, { canvas: this.gfx.renderer.domElement, shotByDefault: false, onClose: () => this.showMenu() }); },
+      ...(canFullscreen() ? { fullscreen: { on: isFullscreen(), toggle: () => void toggleFullscreen() } } : {})
     });
   }
 
@@ -825,15 +846,25 @@ export class Game {
     for (const d of lvl.doors.list) {
       const doors = lvl.doors;
       this.interact.add({ id: d.id, get x() { return d.cx; }, y: DOOR_H / 2, get z() { return d.cz; }, halfHeight: 0.9, reach: 1.8, enabled: true,
-        get prompt() { return d.target > 0.1 ? HINTS.doorShut : HINTS.doorOpen; }, use: () => doors.toggle(d) });
+        get prompt() { return d.target > 0.1 ? HINTS.doorShut : HINTS.doorOpen; },
+        // присівши — обережно й тихо, на бігу — рвонути (грюкіт чути далеко)
+        use: () => doors.toggle(d, this.player.crouched ? 'quiet' : this.player.running || this.input.run ? 'slam' : 'normal') });
     }
     const doorSound = (name: string, d: { pivot: THREE.Object3D }, gain: number) => {
       const b = this.sfx.pick(name);
       const p = d.pivot.position;
       if (b) this.audio.play3D(b, p.x, 1.2, p.z, { gain, rate: 0.9 + Math.random() * 0.15, ref: 2, wet: 0.4 });
     };
-    lvl.doors.onMove = (d, opening) => { doorSound('creak', d, 0.7); if (opening) doorSound('dooropen', d, 0.6); this.hunt.noise(d.pivot.position.x, 1, d.pivot.position.z, 0.6); };
-    lvl.doors.onShut = (d) => doorSound('doorclose', d, 0.9);
+    lvl.doors.onMove = (d, opening, force) => {
+      const k = force === 'quiet' ? 0.22 : force === 'slam' ? 1 : 0.7;
+      doorSound('creak', d, k);
+      if (opening) doorSound('dooropen', d, force === 'quiet' ? 0.15 : 0.6);
+      this.hunt.noise(d.pivot.position.x, 1, d.pivot.position.z, force === 'quiet' ? 0.15 : force === 'slam' ? 0.9 : 0.6);
+    };
+    lvl.doors.onShut = (d, force) => {
+      doorSound('doorclose', d, force === 'quiet' ? 0.3 : force === 'slam' ? 1.15 : 0.9);
+      if (force === 'slam') { doorSound('knock_wood_', d, 0.7); this.hunt.noise(d.pivot.position.x, 1, d.pivot.position.z, 0.95); }
+    };
     lvl.doors.onBash = (d, by) => {
       if (by === 'player') {
         // плечем на бігу: глухий удар у полотно, грюкіт об стіну; чути далеко — монстр теж почує
@@ -952,7 +983,8 @@ export class Game {
       const scene = new DeathScene({
         camera: this.camera, stalker: s, audio: this.audio, sfx: this.sfx, pool: this.deathPool, spray: this.deathSpray,
         setFlash: (o) => { this.flashOverride = o; },
-        shake: (v) => { this.rig.shake = Math.max(this.rig.shake, v); }
+        shake: (v) => { this.rig.shake = Math.max(this.rig.shake, v); },
+        physics: this.physics
       });
       this.death = scene;
       let done!: () => void;
@@ -970,7 +1002,7 @@ export class Game {
     if (this.level) {
       const body = { level: this.level.id, x: p.x, z: p.z, yaw: this.player.yaw };
       this.store.progress.bodies = [...this.store.progress.bodies, body].slice(-12);
-      if (this.figureModel) this.level.scene.add(makeBody(this.figureModel, body.x, body.z, body.yaw, this.bloodAtlas));
+      if (this.figureModel) { const o = makeBody(this.figureModel, body.x, body.z, body.yaw, this.bloodAtlas); this.level.scene.add(o); this.corpses.add(o); this.corpses.settle(60); }
     }
     this.psyche.afterDeath();
     this.bat.afterDeath();
@@ -1040,6 +1072,7 @@ export class Game {
       onControls: () => { this.ui.close('pause'); this.ui.onBack = () => { this.ui.close('controls'); this.pauseMenuAgain(); }; this.ui.controls(this.device.touch, () => { this.ui.close('controls'); this.pauseMenuAgain(); }); },
       onMenu: () => { this.ui.closeAll(); this.showMenu(); },
       onFeedback: () => { this.ui.close('pause'); openFeedback(this.ui, { canvas: this.gfx.renderer.domElement, shotByDefault: true, onClose: () => this.pauseMenuAgain() }); },
+      ...(canFullscreen() ? { fullscreen: { on: isFullscreen(), toggle: () => void toggleFullscreen() } } : {}),
       docs: [...this.store.progress.docs, ...this.store.progress.notes, ...this.store.progress.tapes].map((id) => ({ id, title: this.docOf(id)?.title ?? id })),
       onDoc: (id) => {
         const d = this.docOf(id);
@@ -1152,7 +1185,8 @@ export class Game {
   }
 
   resize(): void {
-    const w = innerWidth, h = innerHeight;
+    const c = this.gfx.renderer.domElement;
+    const w = Math.max(1, Math.round(c.clientWidth || innerWidth)), h = Math.max(1, Math.round(c.clientHeight || innerHeight));
     const r = this.gfx.renderer;
     r.setPixelRatio(Math.min(this.device.dpr, this.profile.maxPixelRatio) * (this.profile.name === 'low' ? this.governor.scale : 1));
     r.setSize(w, h, false);
@@ -1235,12 +1269,14 @@ export class Game {
       if (this.input.consume('interact')) this.exitLocker();
     }
     if (this.mode === 'play') {
+      // права кнопка миші з річчю в руці — крутимо річ, погляд стоїть
+      if (this.props.carry.held && this.input.rmb) { this.props.carry.rotate(lx * 1.6, ly * 1.6); lx = 0; ly = 0; }
       if (!this.hide) this.player.look(lx, ly);
       this.acc += dt;
       const m = this.hide ? { x: 0, y: 0, run: false, crouch: false } : { x: this.input.move.x, y: this.input.move.y, run: this.input.run, crouch: this.input.crouch };
       let steps = 0;
-      while (this.acc >= STEP) { this.player.update(STEP, m); this.physics.step(); this.acc -= STEP; steps++; }
-      if (steps) this.physics.knock?.sync(steps * STEP);
+      while (this.acc >= STEP) { this.player.update(STEP, m); this.props.step(STEP, this.player); this.physics.step(); this.acc -= STEP; steps++; }
+      if (steps) { this.physics.knock?.sync(steps * STEP); this.props.sync(steps * STEP); this.corpses.sync(); }
       if (steps && this.level) this.shoulderDoors(this.level);
     }
     if (this.input.consume('flashlight') && this.mode === 'play') {
@@ -1329,9 +1365,13 @@ export class Game {
       // ліхтар у руці: видно, поки граєш (не з відеокамерою біля ока, не в шафці, не в кат-сцені)
       // світіння нитки — без «автодіафрагми» біля стін (лампа не тьмяніє, коли світиш у стіну)
       const glow = fo ? 0 : Math.min(1, fl.intensity / (26 * Math.max(0.1, this.flashK)));
+      // освітленість ліхтаря в руці — той самий «зонд», що й у меблів поруч (підігнаний під запечене світло, стіни
+      // затуляють лампи), інакше корпус темніший за все довкола й читається чорним силуетом; раз на 0.15 с
+      this.handProbeT -= dt;
+      if (this.handProbeT <= 0) { this.handProbeT = 0.15; this.handProbe = probeAt(lvl.layout.lights, c.position.x, c.position.z) * lvl.lamps.master.value; }
       this.handLamp.update(this.hand, {
         // корпус у темряві освітлює світло, відбите від плями (ближча стіна — світліший корпус)
-        light: glow, low, reach: this.flashHit, E: 0.35 + Math.max(Elamps, glow * (2.6 + 3 / (1 + this.flashHit * this.flashHit * 0.25))), dt,
+        light: glow, low, reach: this.flashHit, E: 0.2 + Math.max(this.handProbe, glow * (2.6 + 3 / (1 + this.flashHit * this.flashHit * 0.25))), dt,
         visible: this.mode === 'play' && !this.cameraOverride && !this.hide && this.cam.k < 0.35 && !this.ending
       });
       const want = Math.min(1.75, Math.max(0.85, Math.sqrt(0.75 / (E + 0.26))));
@@ -1344,9 +1384,22 @@ export class Game {
       const key = this.input.lastDevice === 'gamepad' ? 'A' : 'E', icon = this.input.lastDevice === 'touch' ? svg(ICONS.use) : undefined;
       if (this.hide) this.hud.setPrompt(HINTS.unhide, key, icon); // у шафці — лише «Выйти» (обробляється вище)
       else {
-        const it = this.interact.update(c, f.x, f.y, f.z);
-        this.hud.setPrompt(it ? it.prompt : null, key, icon);
-        if (it && this.input.consume('interact')) { it.use(); this.tried.add('use'); }
+        const carry = this.props.carry, e = this.props.eye(this.player);
+        if (carry.held) {
+          // у руці річ: E — покласти, ЛКМ / «Бросить» — кинути (кинута гримить, монстр іде туди)
+          const thr = this.input.lastDevice === 'gamepad' ? 'LT' : this.input.lastDevice === 'touch' ? '' : 'ЛКМ';
+          this.hud.setPrompt(thr ? `${HINTS.put} · ${thr} — ${HINTS.throw}` : HINTS.put, key, icon);
+          if (this.input.consume('throw')) { carry.release(e, true); }
+          else if (this.input.consume('interact')) carry.release(e);
+        } else {
+          this.input.consume('throw');
+          const it = this.interact.update(c, f.x, f.y, f.z);
+          const prop = it ? null : carry.look(e, this.player.collider);
+          this.hud.setPrompt(it ? it.prompt : prop ? HINTS.take : null, key, icon);
+          if (it && this.input.consume('interact')) { it.use(); this.tried.add('use'); }
+          else if (prop && this.input.consume('interact')) { carry.grab(prop, e); this.tried.add('use'); }
+        }
+        this.input.touch?.setCarry(!!carry.held);
       }
       if (this.player.running) this.tried.add('run');
       if (this.player.crouched) this.tried.add('crouch');

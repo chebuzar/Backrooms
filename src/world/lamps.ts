@@ -41,8 +41,12 @@ export class Lamps {
     this.frame = new THREE.InstancedMesh(fx.body, frameMat, n);
     const m = new THREE.Matrix4();
     const r = rng(0x1a3e);
+    const rot = new THREE.Matrix4().makeRotationY(Math.PI / 2);
     panels.forEach((p, i) => {
+      // світильник уздовж Z (коридори з півночі на південь) — той самий, повернутий на 90°
+      const turned = Math.abs(p.w - pw) > 0.01 && Math.abs(p.w - pd) < 0.01;
       m.makeTranslation(p.x, ceilingY, p.z);
+      if (turned) m.multiply(rot);
       this.mesh.setMatrixAt(i, m);
       this.frame.setMatrixAt(i, m);
       this.level[i] = this.base[i] = p.state === 'off' ? 0 : 1;
