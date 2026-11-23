@@ -14,10 +14,12 @@ export interface HandInput {
   shake: number;
   dt: number;
   t: number;
+  /** Скільки вільного місця перед ліхтарем (м): біля стіни рука підтягує ліхтар до себе, а не встромляє його в стіну. */
+  room?: number;
 }
 
-/** Де в руці ліхтарик відносно очей (м): правіше й нижче, трохи вперед. */
-const HOLD = new THREE.Vector3(0.2, -0.2, -0.32);
+/** Де в руці ліхтар відносно очей (м): тримають за ручку, правіше й нижче погляду, на зігнутій руці. */
+const HOLD = new THREE.Vector3(0.22, -0.26, -0.52);
 
 export class Hand {
   /** Орієнтація руки (запізнюється за поглядом). */
@@ -27,12 +29,14 @@ export class Hand {
   /** Куди світить (одиничний вектор). */
   readonly dir = new THREE.Vector3(0, 0, -1);
   private init = false;
+  /** Наскільки рука зараз підтягнута до себе (м), плавно. */
+  private pull = 0;
   private readonly off = new THREE.Vector3();
   private readonly sway = new THREE.Quaternion();
   private readonly e = new THREE.Euler(0, 0, 0, 'YXZ');
 
   /** Скинути інерцію (телепорт, кат-сцена): рука одразу там, куди дивишся. */
-  snap(): void { this.init = false; }
+  snap(): void { this.init = false; this.pull = 0; }
 
   update(i: HandInput): void {
     if (!this.init) { this.quat.copy(i.camQuat); this.init = true; }
@@ -49,7 +53,11 @@ export class Hand {
     );
     this.sway.setFromEuler(this.e);
     this.quat.multiply(this.sway);
-    this.off.set(HOLD.x - Math.sin(i.phase) * 0.012 * amp, HOLD.y + Math.cos(i.phase * 2) * 0.008 * amp, HOLD.z).applyQuaternion(this.quat);
+    // стіна ближче за витягнуту руку → згинаємо лікоть: ліхтар ближче до тіла й трохи нижче
+    // (room міряється від того місця, де ліхтар зараз, — тобто вже з підтягнутою рукою; віднімаємо, щоб не «гойдалось»)
+    const want = Math.min(0.26, Math.max(0, 0.62 - ((i.room ?? 10) - this.pull)));
+    this.pull += (want - this.pull) * (1 - Math.exp(-Math.max(0, i.dt) * 10));
+    this.off.set(HOLD.x - Math.sin(i.phase) * 0.012 * amp, HOLD.y + Math.cos(i.phase * 2) * 0.008 * amp - this.pull * 0.25, HOLD.z + this.pull).applyQuaternion(this.quat);
     this.pos.copy(i.camPos).add(this.off);
     this.dir.set(0, -0.012, -1).normalize().applyQuaternion(this.quat);
     // наступного кадру повертаємося до «чистої» орієнтації руки (погойдування не накопичується)

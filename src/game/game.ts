@@ -28,6 +28,7 @@ import { Knockables } from '../physics/knock';
 import { Player } from './player';
 import { CameraRig } from './camera-rig';
 import { Hand } from './hand';
+import { HandLamp } from './handlamp';
 import { Input } from '../input/input';
 import { AudioEngine } from '../audio/audio';
 import { SoundBank } from '../audio/bank';
@@ -83,6 +84,8 @@ export class Game {
   readonly rig: CameraRig;
   /** Рука з ліхтариком (інерція, погойдування). */
   readonly hand = new Hand();
+  /** Ліхтар у руці (модель, світло скла, промінь у повітрі). */
+  readonly handLamp = new HandLamp();
   readonly audio = new AudioEngine();
   readonly store = new Store();
   readonly ui: UI;
@@ -341,6 +344,8 @@ export class Game {
       if (kind !== 'soft' || k > 0.5) this.hunt.noise(x, y, z, Math.min(1, 0.25 + k * 0.75));
     };
     this.assets = new Assets(this.gfx.renderer);
+    // ліхтар у руці — до першого рівня, щоб його шейдери прогрілись разом із рівнем
+    await this.handLamp.load(this.assets).catch((e) => console.warn('[hand-lamp]', e));
     // 92 % — рівень, далі прогрів і тест швидкодії (рядок підготовки не має «застрягати» на 100 %)
     const lvl = await this.loadLevel(0, (p) => onProgress(p * 0.92));
     const s = lvl.layout.spawn;
@@ -388,6 +393,7 @@ export class Game {
       const list: { handle: number }[] = [];
       this.physics.world.forEachCollider((c) => { if (c !== keep) list.push(c); });
       for (const c of list) this.physics.world.removeCollider(c as never, false);
+      this.handLamp.root.removeFromParent(); // спільний для всіх рівнів — не утилізувати разом зі сценою
       disposeScene(old.scene);
       this.assets.releaseLevel();
       this.level = null;
@@ -447,6 +453,7 @@ export class Game {
     this.dressed = lvl.id > 0 ? await dressLevel(this.assets, this.physics, lvl, taken) : await furnishNii(this.assets, this.physics, lvl, taken);
     this.phoneAnswered = false; this.writingSeen = false;
     this.setScene(lvl.scene);
+    lvl.scene.add(this.handLamp.root);
     lvl.flashlight.shadow.mapSize.setScalar(this.profile.shadow);
     if (this.player) this.setupInteractions(lvl);
     this.levelAudio();
@@ -1259,7 +1266,7 @@ export class Game {
     if (this.mode === 'menu') this.menuCamera(dt);
     // рука з ліхтариком — після всіх змін камери (шафка, кат-сцени): світить з руки, з легкою інерцією
     if (this.hide || this.cameraOverride || this.mode !== 'play') this.hand.snap();
-    this.hand.update({ camPos: this.camera.position, camQuat: this.camera.quaternion, phase: this.player.bobPhase, amp: this.hide ? 0 : this.player.bobAmp, shake: Math.min(1, this.rig.shake + this.hunt.danger * 0.35), dt, t: this.time });
+    this.hand.update({ camPos: this.camera.position, camQuat: this.camera.quaternion, phase: this.player.bobPhase, amp: this.hide ? 0 : this.player.bobAmp, shake: Math.min(1, this.rig.shake + this.hunt.danger * 0.35), dt, t: this.time, room: this.flashHit });
     if (lvl) {
       lvl.update(this.time, dt, this.camera);
       this.figure?.update(dt, this.camera, this.mode === 'play');
@@ -1317,7 +1324,16 @@ export class Game {
       this.snd.updateHum(dt, lvl, c.position.x, c.position.z, 1 - this.psyche.silence);
       // адаптація ока: скільки світла довкола (живі лампи + власний ліхтарик) → бажана «діафрагма»;
       // у темряві очі звикають за ~6 с (тіні проступають, але чорне лишається чорним), на світлі — за ~0.7 с
-      const E = lvl.lamps.lightAt(c.position.x, c.position.z) + (this.flashlightOn ? 0.3 * this.flashK : 0);
+      const Elamps = lvl.lamps.lightAt(c.position.x, c.position.z);
+      const E = Elamps + (this.flashlightOn ? 0.3 * this.flashK : 0);
+      // ліхтар у руці: видно, поки граєш (не з відеокамерою біля ока, не в шафці, не в кат-сцені)
+      // світіння нитки — без «автодіафрагми» біля стін (лампа не тьмяніє, коли світиш у стіну)
+      const glow = fo ? 0 : Math.min(1, fl.intensity / (26 * Math.max(0.1, this.flashK)));
+      this.handLamp.update(this.hand, {
+        // корпус у темряві освітлює світло, відбите від плями (ближча стіна — світліший корпус)
+        light: glow, low, reach: this.flashHit, E: 0.35 + Math.max(Elamps, glow * (2.6 + 3 / (1 + this.flashHit * this.flashHit * 0.25))), dt,
+        visible: this.mode === 'play' && !this.cameraOverride && !this.hide && this.cam.k < 0.35 && !this.ending
+      });
       const want = Math.min(1.75, Math.max(0.85, Math.sqrt(0.75 / (E + 0.26))));
       this.adapt += (want - this.adapt) * Math.min(1, dt * (want > this.adapt ? 0.4 : 2.2));
       look.exposure.value = this.baseExposure * this.adapt;
