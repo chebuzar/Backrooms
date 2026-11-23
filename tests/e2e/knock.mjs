@@ -1,6 +1,6 @@
 // Фізика речей у грі: стілець на шляху — збиваєш на бігу, він падає з гуркотом (монстр чує); плечем — двері.
 //   node tests/e2e/knock.mjs [webkit|chromium]  → .shots/knock-*.png; код 1 — якщо ні
-import { startServer, openPage, gotoGame, wait } from './lib.mjs';
+import { startServer, openPage, gotoGame } from './lib.mjs';
 
 const which = process.argv[2] && !process.argv[2].startsWith('--') ? process.argv[2] : 'webkit';
 const srv = await startServer(process.argv.includes('--prod'));
