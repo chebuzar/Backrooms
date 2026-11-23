@@ -8,6 +8,8 @@ import { Notebook } from '../ui/notebook';
 import { MapMemory } from './mapmem';
 import { buildUnseen } from '../world/unseen';
 import { makeBody } from '../world/bodies';
+import { makeBloodPool } from '../world/blood';
+import { DeathScene } from './death';
 import { furnishNii } from '../world/nii-furniture';
 import { rng } from '../core/rng';
 import { dressLevel } from '../world/dressing';
@@ -193,6 +195,11 @@ export class Game {
     radio: (x, z) => this.tapes.play(RADIO, x, z)
   });
   private figureModel: THREE.Object3D | null = null;
+  /** Атлас плям (форма калюж крові) і калюжа для сцени смерті — заздалегідь у сцені, прихована. */
+  private bloodAtlas: THREE.Texture | null = null;
+  private deathPool: THREE.Mesh | null = null;
+  /** Сцена смерті, що зараз іде (для автотестів через __zk). */
+  death: DeathScene | null = null;
   /** Горизонтальна відстань до стіни/дверей на висоті очей (для психологічного шару). */
   private readonly ray = (x: number, z: number, dx: number, dz: number, max: number): number => {
     const l = Math.hypot(dx, dz) || 1;
@@ -399,8 +406,10 @@ export class Game {
       this.figureModel = gl.scene;
       unseen = buildUnseen(lvl.layout, gl.scene, lvl.id * 977 + 13);
       lvl.scene.add(unseen);
-      // тіла з минулих спроб на цьому рівні
-      for (const b of this.store.progress.bodies) if (b.level === id) lvl.scene.add(makeBody(gl.scene, b.x, b.z, b.yaw));
+      // тіла з минулих спроб на цьому рівні (у калюжах крові)
+      this.bloodAtlas = await this.assets.texture('assets/tex/level0/decals.ktx2').catch(() => null);
+      for (const b of this.store.progress.bodies) if (b.level === id) lvl.scene.add(makeBody(gl.scene, b.x, b.z, b.yaw, this.bloodAtlas));
+      if (this.bloodAtlas) { this.deathPool = makeBloodPool(this.bloodAtlas, 0, 0, 1); this.deathPool.visible = false; lvl.scene.add(this.deathPool); }
     } catch { /* без моделі гра йде далі без прихованого й тіл */ }
     this.psyche.attach(lvl, this.figureModel, unseen);
     this.soundscape.attach(lvl);
@@ -892,37 +901,29 @@ export class Game {
     this.setObjective(this.tasks.objective() ?? levelObjective(target));
   }
 
-  /** Мисливець схопив: різкий поворот до нього, удар, темрява → запис відновлюється з початку рівня. */
+  /** Мисливець схопив: скример упритул → збиває з ніг → коротка жорстока сцена над тілом (death.ts) → темрява. */
   private async caught(): Promise<void> {
     if (this.ending || !this.level) return;
     this.ending = true;
     this.input.enabled = false;
     const s = this.hunt.stalker, p = this.player.pos;
-    if (s) { this.player.yaw = Math.atan2(-(s.pos.x - p.x), -(s.pos.z - p.z)); this.player.pitch = 0.05; }
-    const b = this.sfx.pick('hit_');
-    if (b) this.audio.play2D(b, 1, 0.7);
-    look.fear.value = 1;
-    // різкий поворот до нього → на пів секунди його обличчя впритул (освітлене ліхтариком) → темрява
-    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))); // камера вже дивиться на нього
-    s?.grabFace(this.camera);
     this.flashlightOn = true;
-    // ліхтарик вислизає з руки й на пів секунди світить на обличчя знизу (те саме світло — без нових джерел і перекомпіляції)
-    const fw = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion);
-    const from = this.camera.position.clone().addScaledVector(fw, 0.1).add(new THREE.Vector3(0.05, -0.38, 0));
-    const at = this.camera.position.clone().addScaledVector(fw, 0.42);
-    this.flashOverride = { from, at, intensity: 1.4 };
-    this.rig.shake = 0.35;
-    // обличчя — щонайменше 0.52 с і 10 намальованих кадрів (навіть якщо пристрій саме пригальмував), потім темрява за 0.26 с
-    let t0 = performance.now(), frames = 0, fading = false;
-    await new Promise<void>((done) => {
-      const step = () => {
-        const t = performance.now() - t0;
-        if (!fading) { frames++; look.fade.value = 0; if (t >= 520 && frames >= 10) { fading = true; t0 = performance.now(); } }
-        else look.fade.value = Math.min(1, t / 260);
-        if (!fading || t < 260) requestAnimationFrame(step); else done();
-      };
-      step();
-    });
+    if (s) {
+      this.player.yaw = Math.atan2(-(s.pos.x - p.x), -(s.pos.z - p.z)); this.player.pitch = 0.05;
+      const scene = new DeathScene({
+        camera: this.camera, stalker: s, audio: this.audio, sfx: this.sfx, pool: this.deathPool,
+        setFlash: (o) => { this.flashOverride = o; },
+        shake: (v) => { this.rig.shake = Math.max(this.rig.shake, v); }
+      });
+      this.death = scene;
+      let done!: () => void;
+      const finished = new Promise<void>((r) => { done = r; });
+      this.cameraOverride = (_c, dt) => { if (scene.update(dt)) { this.cameraOverride = null; done(); } };
+      await finished;
+      scene.end();
+      this.death = null;
+    }
+    look.fade.value = 1;
     this.flashOverride = null;
     this.rig.shake = 0;
     this.store.progress.deaths++;
@@ -930,7 +931,7 @@ export class Game {
     if (this.level) {
       const body = { level: this.level.id, x: p.x, z: p.z, yaw: this.player.yaw };
       this.store.progress.bodies = [...this.store.progress.bodies, body].slice(-12);
-      if (this.figureModel) this.level.scene.add(makeBody(this.figureModel, body.x, body.z, body.yaw));
+      if (this.figureModel) this.level.scene.add(makeBody(this.figureModel, body.x, body.z, body.yaw, this.bloodAtlas));
     }
     this.psyche.afterDeath();
     this.bat.afterDeath();
@@ -1183,7 +1184,7 @@ export class Game {
     this.hud.setCamera(this.cam.k, this.cam.charge);
     this.hud.setTape(this.cam.tape);
     this.cam.applyLayers(this.camera);
-    let [lx, ly] = this.input.takeLook();
+    let [lx, ly] = this.input.takeLook(dt);
     // у зумі погляд повертається повільніше — точніше роздивитися далеке
     const lk = 1 / (1 + this.cam.zoomK); lx *= lk; ly *= lk;
     this.time += dt;
@@ -1261,7 +1262,7 @@ export class Game {
       }
       const nearK = Math.min(1, Math.max(0.1, (this.flashNear / 1.4) ** 2));
       this.flashK += (nearK - this.flashK) * Math.min(1, dt * 8);
-      fl.intensity += ((this.flashlightOn ? 26 * (0.35 + 0.65 * low) * dip * this.flashK : 0) - fl.intensity) * Math.min(1, dt * 18);
+      fl.intensity += ((this.flashlightOn ? 26 * (0.35 + 0.65 * low) * dip * this.flashK * this.hunt.flashMul : 0) - fl.intensity) * Math.min(1, dt * (this.hunt.flashMul ? 18 : 60));
       const spill = fl.children[0] as THREE.SpotLight | undefined;
       if (spill) spill.intensity = fl.intensity * 0.12;
       // відбите від плями світло: трохи перед точкою влучання, слабшає з відстанню (пляма більша, але тьмяніша)

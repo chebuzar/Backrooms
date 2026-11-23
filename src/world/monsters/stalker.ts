@@ -22,7 +22,7 @@ const GAITS: Partial<Record<StalkerKind, GaitClips & { rate: number }>> = {
   drowned: { idle: 'Idle_Loop', walk: 'Walk_Loop', rate: 0.8 }
 };
 
-import { TRAITS, type StalkerKind } from '../../ai/traits';
+import { TRAITS, watcherSpeed, type LungeState, type StalkerKind } from '../../ai/traits';
 export { TRAITS, type StalkerKind };
 
 type Pose = Record<string, [number, number, number]>;
@@ -78,6 +78,11 @@ export class Stalker {
   sub = 0;
   private subGoal = 0;
   private blockedT = 0;
+  /** «Наблюдатель»: ривки і темрява, яку він несе з собою. */
+  private readonly lungeSt: LungeState = { unseen: 0, lunge: 2 };
+  private darkAt: V3 | null = null;
+  private darkT = 0;
+  private darkHold = 0;
   private dryT = 0;
   private litT = 0;
   private giggleCd = 0;
@@ -154,6 +159,33 @@ export class Stalker {
     this.pos.x = this.root.position.x; this.pos.z = this.root.position.z;
   }
 
+  /**
+   * Сцена смерті: монстр над тілом Оператора — зігнувся, руки до підлоги, голова опущена до горла.
+   * strike 0..1 — ривок головою вниз (удар/укус); x, z — де стоять його ноги; yaw — обличчям до тіла.
+   */
+  feed(x: number, z: number, yaw: number, strike: number): void {
+    const s = Math.max(0, Math.min(1, strike));
+    const side = this.kind === 'smiler' ? this.tilt : 1;
+    this.applyPose({
+      spine_01: [0.12 + s * 0.18, 0, 0], spine_02: [0.15 + s * 0.22, 0, 0.05 * side], spine_03: [0.1 + s * 0.15, 0, 0],
+      neck_01: [0.35 + s * 0.35, 0, 0.12 * side], head: [0.25 + s * 0.25, 0, 0.25 * side],
+      upperarm_l: [-0.25 - s * 0.35, 0, -0.75], upperarm_r: [-0.25 - s * 0.35, 0, 0.75], lowerarm_l: [-0.2, 0, -0.1], lowerarm_r: [-0.2, 0, 0.1]
+    });
+    this.sub = this.subGoal = 0;
+    this.root.visible = true;
+    this.yaw = yaw;
+    // нахиляється над тілом усім корпусом (від ступнів), на ривку — падає обличчям униз, до горла
+    this.root.rotation.set(0.12 + s * 0.3, yaw, 0, 'YXZ');
+    this.root.position.set(x, -s * 0.3, z);
+    this.pos.x = x; this.pos.z = z;
+  }
+
+  /** Де зараз голова (світ). */
+  headWorld(out: THREE.Vector3): THREE.Vector3 {
+    const h = this.bones.get('head')?.b;
+    return h ? h.getWorldPosition(out) : out.set(this.pos.x, 1.6, this.pos.z);
+  }
+
   /** Повернути на «домашню» точку (після того, як гравця схопили). */
   reset(): void {
     Object.assign(this.pos, this.home);
@@ -163,9 +195,12 @@ export class Stalker {
     this.brain.noticed = false;
     this.grabbed = false;
     this.root.position.y = 0; // після «схопив» (голову підіймали до камери)
+    this.root.rotation.set(0, this.yaw, 0, 'YXZ'); // після сцени смерті (нахилявся над тілом)
     if (this.brain.traits.submerges) this.sub = this.subGoal = 1;
     this.catchCd = 4;
     this.seenAt = null;
+    if (this.darkAt) { this.lamps.dimAround(this.darkAt.x, this.darkAt.z, 3.2, 1); this.darkAt = null; }
+    this.lungeSt.unseen = 0; this.lungeSt.lunge = 2;
     this.lamps.dimAround(this.pos.x, this.pos.z, 6, 1);
     this.place();
   }
@@ -220,6 +255,12 @@ export class Stalker {
       this.litT = p.litByFlashlight ? this.litT + dt : 0;
       if (this.litT > 0.4 && this.giggleCd <= 0) { this.giggleCd = 5; this.onCue?.('giggle', this.pos.x, this.pos.z); }
     }
+    // «Наблюдатель»: рухається ривками, щойно на нього перестали дивитися
+    if (this.kind === 'watcher') {
+      const moving = !!intent.target && intent.speed > 0;
+      const v = watcherSpeed(this.lungeSt, p.looksAtMe, dt, intent.speed, moving);
+      if (moving) intent.speed = v;
+    }
     let moved = 0;
     const wet = !!this.water?.wetAt(this.pos.x, this.pos.z);
     if (wet && t.waterSpeed) intent.speed *= t.waterSpeed;
@@ -256,7 +297,7 @@ export class Stalker {
     this.speedNow = dt > 0 ? moved / dt : 0;
     this.place();
     this.openDoorsNear();
-    if (this.kind === 'watcher') { this.watcherLook(p); this.watcherSteps(dt); }
+    if (this.kind === 'watcher') { this.watcherLook(p); this.watcherSteps(dt); this.watcherDark(dt); }
     else if (this.kind === 'smiler') this.smilerGait(dt, p);
     else if (this.kind === 'drowned') this.drownedGait(dt, wet);
     else this.blindGait(dt);
@@ -281,7 +322,7 @@ export class Stalker {
     }
     if (seen && !this.wasSeen && this.seenAt) {
       const by = Math.hypot(this.seenAt.x - this.pos.x, this.seenAt.z - this.pos.z);
-      if (by > 2.5) this.ev.onCloser?.(this, by);
+      if (by > 1.5) this.ev.onCloser?.(this, by);
     }
     // голова повернута до гравця — навіть коли тіло стоїть боком
     const h = this.bones.get('head');
@@ -290,6 +331,27 @@ export class Stalker {
       h.b.rotation.y = h.rest.y + Math.max(-1.1, Math.min(1.1, Math.atan2(Math.sin(want), Math.cos(want))));
     }
     this.wasSeen = seen;
+  }
+
+  /**
+   * «Наблюдатель» несе темряву: де він пройшов, лампи гаснуть (і загоряються знову за кілька секунд після того, як
+   * він завмер). Обернувся — а коридор позаду вже темний, і в темряві його видно лише ліхтариком.
+   */
+  private watcherDark(dt: number): void {
+    this.darkT -= dt;
+    this.darkHold = Math.max(0, this.darkHold - dt);
+    if (this.speedNow > 0.5) {
+      this.darkHold = 3.5;
+      if (this.darkT <= 0) {
+        this.darkT = 0.15;
+        if (this.darkAt && Math.hypot(this.darkAt.x - this.pos.x, this.darkAt.z - this.pos.z) > 2.5) this.lamps.dimAround(this.darkAt.x, this.darkAt.z, 3.2, 1);
+        this.lamps.dimAround(this.pos.x, this.pos.z, 3.2, 0);
+        this.darkAt = { ...this.pos };
+      }
+    } else if (this.darkHold <= 0 && this.darkAt) {
+      this.lamps.dimAround(this.darkAt.x, this.darkAt.z, 3.2, 1);
+      this.darkAt = null;
+    }
   }
 
   /** «Наблюдатель» рухається (лише коли на нього не дивляться): важкі шаркаючі кроки — гравець чує, що він іде. */
@@ -402,7 +464,7 @@ export class Stalker {
     const k = (hunting ? 1 : 0.35) * Math.max(0, 1 - d / 26);
     this.flickT -= dt;
     if (this.flickT > 0) return;
-    if (this.flickOn) { this.lamps.dimAround(this.pos.x, this.pos.z, 4.5, 1); this.flickOn = false; this.flickT = 0.2 + Math.random() * (2.5 - 2 * k); return; }
+    if (this.flickOn) { if (!this.darkAt) this.lamps.dimAround(this.pos.x, this.pos.z, 4.5, 1); this.flickOn = false; this.flickT = 0.2 + Math.random() * (2.5 - 2 * k); return; }
     if (Math.random() < k) { this.lamps.dimAround(this.pos.x, this.pos.z, 4.5, Math.random() * 0.35); this.flickOn = true; this.flickT = 0.05 + Math.random() * 0.18; }
     else this.flickT = 0.3;
   }
