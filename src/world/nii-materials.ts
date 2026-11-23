@@ -87,7 +87,8 @@ export function makeNiiMaterials(t: Level0Textures, L: Layout) {
 
   // ---- стіни ----
   const wallUV = uv(0).div(WALL_M), paintUV = uv(0).div(PAINT_M), tileUV = uv(0).div(TILE_M);
-  const wallSet = Fn(() => {
+  // звичайні функції, а не Fn: повертають кілька вузлів (колір, шорсткість, нормаль) — Fn TSL так не вміє
+  const wallSet = () => {
     const c = codeAt(0.3), h = positionWorld.y;
     const P = el(panelT, c), T = el(topT, c), M = el(miscT, c);
     const kind = T.w, ph = P.w;
@@ -122,11 +123,11 @@ export function makeNiiMaterials(t: Level0Textures, L: Layout) {
     rough = mix(rough, float(0.9), peeled);
     const nrm = mix(mix(texture(t.paint_n, paintUV).rgb, texture(t.tile_n, tileUV).rgb, isTile), texture(t.wall_n, wallUV).rgb, is(kind, Wall.Paper));
     return { col, rough, nrm };
-  });
+  };
 
   // ---- підлога: паркет «ялинкою», лінолеум, метлахська плитка ----
   const pUV = positionWorld.xz.div(PARQ_M), lUV = positionWorld.xz.div(LINO_M), fUV = positionWorld.xz.div(WCF_M);
-  const floorSet = Fn(() => {
+  const floorSet = () => {
     const c = codeAt(0), M = el(miscT, c), kind = M.x;
     const pq = texture(t.parquet_c, pUV).rgb;
     const parq = mix(vec3(luminance(pq)), pq, 0.62).mul(vec3(0.66, 0.58, 0.52));
@@ -142,7 +143,7 @@ export function makeNiiMaterials(t: Level0Textures, L: Layout) {
       texture(t.wcf_r, fUV).r, isT), float(0.2), damp);
     const nrm = mix(mix(texture(t.parquet_n, pUV).rgb, texture(t.lino_n, lUV).rgb, isL), texture(t.wcf_n, fUV).rgb, isT);
     return { col, rough, nrm };
-  });
+  };
 
   // ---- стеля: побілене перекриття (справжня фактура фарби), жовті кільця від протікань, темніше в сирих приміщеннях ----
   const cUV = positionWorld.xz.div(PAINT_M);
