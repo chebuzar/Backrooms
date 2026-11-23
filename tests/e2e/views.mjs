@@ -21,7 +21,7 @@ const logs = [];
 page.on('console', (m) => { if (['error', 'warning'].includes(m.type())) logs.push(m.text()); });
 page.on('pageerror', (e) => logs.push('pageerror: ' + e.message));
 await page.goto(`http://localhost:5191/?debug&nodbg${extra ? '&' + extra : ''}`);
-await page.waitForFunction(() => window.__zk?.ready, null, { timeout: 180000 });
+await page.waitForFunction(() => window.__zk?.ready && window.__zk.game.player && window.__zk.game.dressed?.length > 0, null, { timeout: 240000 });
 for (let k = 0; k < 6; k++) {
   await page.evaluate(() => window.__zk.play());
   await page.waitForTimeout(1500);
