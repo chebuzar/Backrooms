@@ -9,6 +9,7 @@ import { attribute, instancedBufferAttribute } from 'three/tsl';
 import type { Assets } from '../assets/loader';
 import type { Physics } from '../physics/physics';
 import { G } from '../physics/physics';
+import { KNOCKABLE, instanceView } from '../physics/knock';
 import { rng } from '../core/rng';
 import type { Level } from './level0';
 import { probeAt, probeLit } from './materials';
@@ -56,7 +57,7 @@ export function wallRows(lvl: Level, r: () => number, rows: number, n: number, w
 
 /** Речі обстановки, зібрані за моделлю: наприкінці — по одному InstancedMesh на кожну сітку моделі
  *  (десятки ліжечок, стільців і шафок — кілька викликів малювання замість сотень; освітленість — атрибут екземпляра). */
-const batch = new Map<string, { scene: THREE.Object3D; items: { m: THREE.Matrix4; E: number }[] }>();
+const batch = new Map<string, { scene: THREE.Object3D; items: { m: THREE.Matrix4; E: number; parts?: { im: THREE.InstancedMesh; i: number; local: THREE.Matrix4 }[] }[] }>();
 const localBox = new Map<string, THREE.Box3>();
 
 export async function put(assets: Assets, physics: Physics, lvl: Level, file: string, s: Spot, yawOff = 0, y = 0, collide = true, scale = 1): Promise<THREE.Box3> {
@@ -65,10 +66,12 @@ export async function put(assets: Assets, physics: Physics, lvl: Level, file: st
   if (!lb) { scene.updateMatrixWorld(true); lb = new THREE.Box3().setFromObject(scene); localBox.set(file, lb); }
   const m = new THREE.Matrix4().compose(new THREE.Vector3(s.x, y, s.z), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), s.yaw + yawOff), new THREE.Vector3(scale, scale, scale));
   const b = batch.get(file) ?? { scene, items: [] };
-  b.items.push({ m, E: probeAt(lvl.layout.lights, s.x, s.z) });
+  // відро, каністра, стілець — динамічне тіло (можна перекинути), а не нерухома коробка
+  const knock = collide && !!KNOCKABLE[file] && !!physics.knock;
+  b.items.push({ m, E: probeAt(lvl.layout.lights, s.x, s.z), ...(knock ? { parts: [] } : {}) });
   batch.set(file, b);
   const bb = lb.clone().applyMatrix4(m);
-  if (collide) {
+  if (collide && !knock) {
     const c = bb.getCenter(new THREE.Vector3()), sz = bb.getSize(new THREE.Vector3());
     physics.addBox(c.x, c.y, c.z, Math.max(0.05, sz.x / 2 - 0.03), sz.y / 2, Math.max(0.05, sz.z / 2 - 0.03), 0, G.PROP);
   }
@@ -76,8 +79,8 @@ export async function put(assets: Assets, physics: Physics, lvl: Level, file: st
 }
 
 /** Зібрати накопичені речі в InstancedMesh-і (по одному на кожну сітку кожної моделі). */
-function flushProps(lvl: Level): void {
-  for (const { scene, items } of batch.values()) {
+function flushProps(lvl: Level, physics: Physics): void {
+  for (const [file, { scene, items }] of batch) {
     scene.updateMatrixWorld(true);
     const inv = new THREE.Matrix4().copy(scene.matrixWorld).invert();
     scene.traverse((o) => {
@@ -93,12 +96,14 @@ function flushProps(lvl: Level): void {
       const mats = (Array.isArray(src.material) ? src.material : [src.material]).map((mt) => probeLit(mt, Es));
       const im = new THREE.InstancedMesh(g, mats.length === 1 ? mats[0] as THREE.Material : mats, items.length);
       const local = new THREE.Matrix4().multiplyMatrices(inv, src.matrixWorld);
-      items.forEach((it, i) => im.setMatrixAt(i, new THREE.Matrix4().multiplyMatrices(it.m, local)));
+      items.forEach((it, i) => { im.setMatrixAt(i, new THREE.Matrix4().multiplyMatrices(it.m, local)); it.parts?.push({ im, i, local }); });
       im.instanceMatrix.needsUpdate = true;
       im.computeBoundingSphere();
       im.castShadow = true; im.receiveShadow = true;
       lvl.scene.add(im);
     });
+    const k = KNOCKABLE[file], lb = localBox.get(file);
+    if (k && lb && physics.knock) for (const it of items) if (it.parts) physics.knock.add(instanceView(it.parts), it.m, lb, k.mass, k.kind, it.parts.map((p) => p.im));
   }
   batch.clear();
 }
@@ -154,7 +159,7 @@ export async function dressLevel(assets: Assets, physics: Physics, lvl: Level, t
   } else if (lvl.id === 3 || lvl.id === 4) {
     await dressLate(assets, physics, lvl, r, avoid, shown);
   }
-  flushProps(lvl);
+  flushProps(lvl, physics);
   physics.step();
   return shown;
 }

@@ -47,6 +47,7 @@
 - `models/bookshelf.glb` — «Wooden Bookshelf Worn» — Ulan Cabanilla, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/wooden_bookshelf_worn
 - `models/school-desk.glb` — «School Desk 01» — Ethan Place, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/SchoolDesk_01
 - `models/books.glb` — «Book Encyclopedia Set 01» — John Malcolm, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/book_encyclopedia_set_01
+- `models/flashlight.glb` — «Portable Searchlight» — Elijah Cragg, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/portable_searchlight
 
 ## Текстури Poly Haven
 
@@ -94,3 +95,16 @@
 - `tex/worn_tile_floor` — «Worn Tile Floor» — Dimitrios Savva, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/worn_tile_floor
 - `tex/white_rough_plaster` — «White Rough Plaster» — Rob Tuytel, **CC0 1.0**, Poly Haven: https://polyhaven.com/a/white_rough_plaster
 - `anim/ual.glb` — «Universal Animation Library» (Idle_Loop, Walk_Loop, Walk_Formal_Loop, Crouch_Fwd_Loop, Crouch_Idle_Loop, Jog_Fwd_Loop; лише скелет і кліпи) — Quaternius, **CC0 1.0**: https://quaternius.itch.io/universal-animation-library
+- `sfx/scare_*` — шари: «Monster snarl attack» (Darsycho) + крики `scream_01/02`, `roar_02` з «80 CC0 creature SFX» (rubberduck) + `squishsplat_impact.mp3` (OpenGameArt, CC0), **CC0 1.0**, OpenGameArt: https://opengameart.org/content/80-cc0-creature-sfx
+- `sfx/gore_*` — «8 Wet Squish, Slurp Impacts» — Independent.nu Ljudbank, **CC0 1.0**, OpenGameArt: https://opengameart.org/content/8-wet-squish-slurp-impacts
+- `sfx/crunch_*` — «2 Wooden Squish, Splatter Sequences» — Independent.nu Ljudbank, **CC0 1.0**, OpenGameArt: https://opengameart.org/content/2-wooden-squish-splatter-sequences
+- `sfx/rip_*` — «Ripping into meat» — Eldritch Grim, **CC0 1.0**, OpenGameArt: https://opengameart.org/content/ripping-into-meat
+- `sfx/feed_*` — `eat_01–04` з «80 CC0 creature SFX» — rubberduck, **CC0 1.0**, OpenGameArt: https://opengameart.org/content/80-cc0-creature-sfx
+- `sfx/snarl_*` — «Monster snarls» — Darsycho, **CC0 1.0**, OpenGameArt: https://opengameart.org/content/monster-snarls
+- `sfx/growl_*` — «16 monster growls» — StarNinjas, **CC0 1.0**, OpenGameArt: https://opengameart.org/content/16-monster-growls
+- `sfx/breath_0` — «Ghost breath» — qubodup, **CC0 1.0**, OpenGameArt: https://opengameart.org/content/ghost-breath
+- `sfx/heart_0` — «Heartbeat single sound» — qubodup, **CC0 1.0**, OpenGameArt: https://opengameart.org/content/heartbeat-single-sound
+- `sfx/victim_*` — «Grunts: male death and pain» — thebardofblasphemy, **CC0 1.0**, OpenGameArt: https://opengameart.org/content/grunts-male-death-and-pain
+- `sfx/yelp_*` — «15 vocal male strain/hurt/pain/jump sounds» — qubodup, **CC0 1.0**, OpenGameArt: https://opengameart.org/content/15-vocal-male-strainhurtpainjump-sounds
+- `sfx/knock_wood_*`, `sfx/knock_metal_*` — «Wood and Metal Sound Effects Volume 2» — Ogrebane, **CC0 1.0**, OpenGameArt: https://opengameart.org/content/wood-and-metal-sound-effects-volume-2 (+ `bfh1_wood_hit_*`, `bfh1_metal_hit_*` з набору нижче)
+- `sfx/topple_*` — «75 CC0 breaking / falling / hit sfx» — rubberduck, **CC0 1.0**, OpenGameArt: https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx

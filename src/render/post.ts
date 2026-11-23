@@ -162,7 +162,7 @@ export class PostPipeline {
       col.assign(mix(col, col.mul(vec3(0.93, 1.0, 1.02)), look.cam));
       // віньєтка — від страху, нервів і об'єктива камери (постійної немає)
       const vk = look.vignette.add(look.fear.mul(0.55)).add(look.dread.mul(0.3)).add(look.cam.mul(0.25));
-      const v = smoothstep(0.95, 0.25, length(ca).mul(float(1).add(vk)));
+      const v = float(1).sub(smoothstep(0.25, 0.95, length(ca).mul(float(1).add(vk))));
       col.mulAssign(mix(float(1), v, clamp(vk.mul(1.4), 0, 0.9)));
       // пошкодження: червоний край
       col.assign(mix(col, col.mul(vec3(1.25, 0.35, 0.3)).add(vec3(0.05, 0, 0)), look.hurt.mul(clamp(length(ca).mul(1.6), 0.2, 1))));

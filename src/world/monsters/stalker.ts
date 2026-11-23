@@ -10,10 +10,11 @@ import type { NavLike, V3 } from '../../ai/nav';
 import type { Physics } from '../../physics/physics';
 import type { Lamps } from '../lamps';
 import type { Doors } from '../doors';
-import { probeLit } from '../materials';
+import { probeLit, type BakedMaterial } from '../materials';
+import { stainWithBlood, goreRef, goreAttributes } from './gore';
 import type { Water } from '../water';
 import { smilerPose, drownedPose, blindOverlay, smilerOverlay, drownedOverlay } from './gaits';
-import { Locomotion, type GaitClips } from './locomotion';
+import { Locomotion, ualClip, type GaitClips } from './locomotion';
 
 /** Цикли руху кожного (Quaternius UAL): «Слепой» крадеться навпочіпки, «Улыбака» ходить підкреслено рівно. */
 const GAITS: Partial<Record<StalkerKind, GaitClips & { rate: number }>> = {
@@ -22,10 +23,11 @@ const GAITS: Partial<Record<StalkerKind, GaitClips & { rate: number }>> = {
   drowned: { idle: 'Idle_Loop', walk: 'Walk_Loop', rate: 0.8 }
 };
 
-import { TRAITS, type StalkerKind } from '../../ai/traits';
+import { TRAITS, watcherSpeed, type LungeState, type StalkerKind } from '../../ai/traits';
 export { TRAITS, type StalkerKind };
 
 type Pose = Record<string, [number, number, number]>;
+const tmpFeedQ = new THREE.Quaternion(), tmpFeedE = new THREE.Euler(), tmpFeedV = new THREE.Vector3();
 
 /** Пози «Наблюдателя»: щоразу, як на нього глянеш, — інша (руки, нахил голови). Зсуви від пози спокою, рад. */
 const ARMS_DOWN: Pose = { upperarm_l: [0, 0, -0.78], upperarm_r: [0, 0, 0.78] };
@@ -55,6 +57,12 @@ export class Stalker {
   private path: V3[] = [];
   private repath = 0;
   private readonly bones = new Map<string, { b: THREE.Bone; rest: THREE.Euler }>();
+  /** Справжній присід (UAL Crouch_Idle) для сцени смерті: монстр сидить навпочіпки над тілом. */
+  /** Сітки, які можна закривавити: шкіра й одяг (для gore.ts). */
+  private readonly skins: { m: THREE.Mesh; mat: BakedMaterial; cloth: boolean }[] = [];
+  private crouch: { mixer: THREE.AnimationMixer; action: THREE.AnimationAction } | null = null;
+  /** Поза кісток до сцени смерті (повертаємо в reset, бо міксер ходи пише лише змінені кістки). */
+  private feedSnap: { b: THREE.Bone; q: THREE.Quaternion; p: THREE.Vector3 }[] | null = null;
   private gait = 0;
   /** Справжня хода (якщо бібліотека рухів завантажилась); інакше — процедурні пози. */
   private loco: Locomotion | null = null;
@@ -78,6 +86,11 @@ export class Stalker {
   sub = 0;
   private subGoal = 0;
   private blockedT = 0;
+  /** «Наблюдатель»: ривки і темрява, яку він несе з собою. */
+  private readonly lungeSt: LungeState = { unseen: 0, lunge: 2 };
+  private darkAt: V3 | null = null;
+  private darkT = 0;
+  private darkHold = 0;
   private dryT = 0;
   private litT = 0;
   private giggleCd = 0;
@@ -109,6 +122,7 @@ export class Stalker {
         else if (n.includes('teeth')) { mat.color = c(0.55, 0.5, 0.38); }
         else if (n.includes('low-poly') || n.includes('eye')) { mat.color = kind === 'drowned' ? c(0.45, 0.47, 0.44) : c(0.01, 0.01, 0.01); mat.roughness = 0.15; } // в утопленика — білясті, каламутні
         m.material = mat;
+        if (n.includes('body') || n.includes('suit')) this.skins.push({ m, mat, cloth: !n.includes('body') });
         m.castShadow = true;
         m.frustumCulled = false;
       }
@@ -117,6 +131,12 @@ export class Stalker {
     });
     const g = GAITS[kind];
     if (anims && g) this.loco = new Locomotion(model, anims, g, kind);
+    const cr = anims ? ualClip(model, anims, 'Crouch_Idle_Loop', kind) : null;
+    if (cr) {
+      const mixer = new THREE.AnimationMixer(model), action = mixer.clipAction(cr.clip);
+      action.play(); action.setEffectiveWeight(0);
+      this.crouch = { mixer, action };
+    }
     const senses = { los: (a: V3, b: V3) => physics.lineOfSight(a.x, a.y, a.z, b.x, b.y, b.z) };
     this.brain = new Brain(TRAITS[kind], nav, senses, this.pos);
     this.applyPose(kind === 'watcher' ? WATCHER_POSES[0] as Pose : {});
@@ -154,7 +174,61 @@ export class Stalker {
     this.pos.x = this.root.position.x; this.pos.z = this.root.position.z;
   }
 
+  /**
+   * Сцена смерті: монстр над тілом Оператора — зігнувся, руки до підлоги, голова опущена до горла.
+   * strike 0..1 — ривок головою вниз (удар/укус); x, z — де стоять його ноги; yaw — обличчям до тіла.
+   */
+  feed(x: number, z: number, yaw: number, strike: number, pull = 0, t = 0, blend = 1): void {
+    const s = Math.max(0, Math.min(1, strike)), r = Math.max(-1, Math.min(1, pull));
+    const side = this.kind === 'smiler' ? this.tilt : 1;
+    if (!this.feedSnap) this.feedSnap = [...this.bones.values()].map(({ b }) => ({ b, q: b.quaternion.clone(), p: b.position.clone() }));
+    // над тілом: навпочіпки (справжній присід), корпус згорблений уперед, руки внизу — тримають і рвуть;
+    // ривок: голова падає вниз (s), потім смикається назад і вбік, відриваючи (pull)
+    const over: Pose = {
+      spine_01: [0.32 + s * 0.12 - r * 0.06, 0, 0], spine_02: [0.3 + s * 0.12, 0, 0.06 * side], spine_03: [0.2 + s * 0.08, 0, 0],
+      neck_01: [0.25 + s * 0.4 - r * 0.45, r * 0.25 * side, 0.1 * side], head: [0.2 + s * 0.35 - r * 0.3, r * 0.35 * side, 0.22 * side + r * 0.2],
+      upperarm_l: [-0.55 - s * 0.15 + r * 0.35, 0, -0.35], upperarm_r: [-0.55 - s * 0.15 + r * 0.25, 0, 0.35],
+      lowerarm_l: [-0.5 - r * 0.4, 0, -0.1], lowerarm_r: [-0.45 - r * 0.3, 0, 0.1]
+    };
+    if (this.crouch) {
+      for (const { b, q, p } of this.feedSnap) { b.quaternion.copy(q); b.position.copy(p); }
+      this.crouch.action.setEffectiveWeight(1);
+      this.crouch.mixer.setTime(t);
+      for (const [name, [ex, ey, ez]] of Object.entries(over)) {
+        const e = this.bones.get(name);
+        if (e) e.b.quaternion.multiply(tmpFeedQ.setFromEuler(tmpFeedE.set(ex, ey, ez)));
+      }
+      // перехід з пози «схопив» у присід (кидається на тебе) — плавно, без стрибка пози
+      if (blend < 1) for (const { b, q, p } of this.feedSnap) { tmpFeedQ.copy(b.quaternion); b.quaternion.copy(q).slerp(tmpFeedQ, blend); b.position.lerpVectors(p, tmpFeedV.copy(b.position), blend); }
+    } else {
+      this.applyPose({ ...over, thigh_l: [1.4, 0, 0], thigh_r: [1.4, 0, 0], calf_l: [-2.2, 0, 0], calf_r: [-2.2, 0, 0] });
+    }
+    this.sub = this.subGoal = 0;
+    this.root.visible = true;
+    this.yaw = yaw;
+    this.root.rotation.set(0, yaw, 0, 'YXZ');
+    this.root.position.set(x, this.crouch ? 0 : -0.5, z);
+    this.pos.x = x; this.pos.z = z;
+  }
+
+  /** Де зараз голова (світ). */
+  headWorld(out: THREE.Vector3): THREE.Vector3 {
+    const h = this.bones.get('head')?.b;
+    return h ? h.getWorldPosition(out) : out.set(this.pos.x, 1.6, this.pos.z);
+  }
+
   /** Повернути на «домашню» точку (після того, як гравця схопили). */
+  /** Кров на обличчі, шиї й руках (18+). Викликати до прогріву рівня: змінює шейдер. */
+  stain(atlas: THREE.Texture): void {
+    const body = this.skins.find((k) => !k.cloth);
+    if (!body) return;
+    const ref = goreRef(body.m); // одяг ділить систему координат тіла
+    for (const k of this.skins) {
+      if (!k.m.geometry.getAttribute('goreK')) goreAttributes(k.m.geometry, ref, this.kind); // геометрія спільна для клонів
+      stainWithBlood(k.mat, atlas, k.cloth);
+    }
+  }
+
   reset(): void {
     Object.assign(this.pos, this.home);
     this.path = [];
@@ -163,9 +237,17 @@ export class Stalker {
     this.brain.noticed = false;
     this.grabbed = false;
     this.root.position.y = 0; // після «схопив» (голову підіймали до камери)
+    this.root.rotation.set(0, this.yaw, 0, 'YXZ'); // після сцени смерті (нахилявся над тілом)
+    if (this.feedSnap) {
+      for (const { b, q, p } of this.feedSnap) { b.quaternion.copy(q); b.position.copy(p); }
+      this.feedSnap = null;
+      this.crouch?.action.setEffectiveWeight(0);
+    }
     if (this.brain.traits.submerges) this.sub = this.subGoal = 1;
     this.catchCd = 4;
     this.seenAt = null;
+    if (this.darkAt) { this.lamps.dimAround(this.darkAt.x, this.darkAt.z, 3.2, 1); this.darkAt = null; }
+    this.lungeSt.unseen = 0; this.lungeSt.lunge = 2;
     this.lamps.dimAround(this.pos.x, this.pos.z, 6, 1);
     this.place();
   }
@@ -220,6 +302,12 @@ export class Stalker {
       this.litT = p.litByFlashlight ? this.litT + dt : 0;
       if (this.litT > 0.4 && this.giggleCd <= 0) { this.giggleCd = 5; this.onCue?.('giggle', this.pos.x, this.pos.z); }
     }
+    // «Наблюдатель»: рухається ривками, щойно на нього перестали дивитися
+    if (this.kind === 'watcher') {
+      const moving = !!intent.target && intent.speed > 0;
+      const v = watcherSpeed(this.lungeSt, p.looksAtMe, dt, intent.speed, moving);
+      if (moving) intent.speed = v;
+    }
     let moved = 0;
     const wet = !!this.water?.wetAt(this.pos.x, this.pos.z);
     if (wet && t.waterSpeed) intent.speed *= t.waterSpeed;
@@ -256,7 +344,7 @@ export class Stalker {
     this.speedNow = dt > 0 ? moved / dt : 0;
     this.place();
     this.openDoorsNear();
-    if (this.kind === 'watcher') { this.watcherLook(p); this.watcherSteps(dt); }
+    if (this.kind === 'watcher') { this.watcherLook(p); this.watcherSteps(dt); this.watcherDark(dt); }
     else if (this.kind === 'smiler') this.smilerGait(dt, p);
     else if (this.kind === 'drowned') this.drownedGait(dt, wet);
     else this.blindGait(dt);
@@ -281,7 +369,7 @@ export class Stalker {
     }
     if (seen && !this.wasSeen && this.seenAt) {
       const by = Math.hypot(this.seenAt.x - this.pos.x, this.seenAt.z - this.pos.z);
-      if (by > 2.5) this.ev.onCloser?.(this, by);
+      if (by > 1.5) this.ev.onCloser?.(this, by);
     }
     // голова повернута до гравця — навіть коли тіло стоїть боком
     const h = this.bones.get('head');
@@ -290,6 +378,27 @@ export class Stalker {
       h.b.rotation.y = h.rest.y + Math.max(-1.1, Math.min(1.1, Math.atan2(Math.sin(want), Math.cos(want))));
     }
     this.wasSeen = seen;
+  }
+
+  /**
+   * «Наблюдатель» несе темряву: де він пройшов, лампи гаснуть (і загоряються знову за кілька секунд після того, як
+   * він завмер). Обернувся — а коридор позаду вже темний, і в темряві його видно лише ліхтариком.
+   */
+  private watcherDark(dt: number): void {
+    this.darkT -= dt;
+    this.darkHold = Math.max(0, this.darkHold - dt);
+    if (this.speedNow > 0.5) {
+      this.darkHold = 3.5;
+      if (this.darkT <= 0) {
+        this.darkT = 0.15;
+        if (this.darkAt && Math.hypot(this.darkAt.x - this.pos.x, this.darkAt.z - this.pos.z) > 2.5) this.lamps.dimAround(this.darkAt.x, this.darkAt.z, 3.2, 1);
+        this.lamps.dimAround(this.pos.x, this.pos.z, 3.2, 0);
+        this.darkAt = { ...this.pos };
+      }
+    } else if (this.darkHold <= 0 && this.darkAt) {
+      this.lamps.dimAround(this.darkAt.x, this.darkAt.z, 3.2, 1);
+      this.darkAt = null;
+    }
   }
 
   /** «Наблюдатель» рухається (лише коли на нього не дивляться): важкі шаркаючі кроки — гравець чує, що він іде. */
@@ -402,7 +511,7 @@ export class Stalker {
     const k = (hunting ? 1 : 0.35) * Math.max(0, 1 - d / 26);
     this.flickT -= dt;
     if (this.flickT > 0) return;
-    if (this.flickOn) { this.lamps.dimAround(this.pos.x, this.pos.z, 4.5, 1); this.flickOn = false; this.flickT = 0.2 + Math.random() * (2.5 - 2 * k); return; }
+    if (this.flickOn) { if (!this.darkAt) this.lamps.dimAround(this.pos.x, this.pos.z, 4.5, 1); this.flickOn = false; this.flickT = 0.2 + Math.random() * (2.5 - 2 * k); return; }
     if (Math.random() < k) { this.lamps.dimAround(this.pos.x, this.pos.z, 4.5, Math.random() * 0.35); this.flickOn = true; this.flickT = 0.05 + Math.random() * 0.18; }
     else this.flickT = 0.3;
   }

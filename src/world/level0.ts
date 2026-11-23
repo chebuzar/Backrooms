@@ -1,9 +1,10 @@
 // Рівень 0 «Бесконечный НИИ»: геометрія й запечене світло з Blender (шматки 12×12 м), матеріали TSL,
 // лампи, колізії Rapier зі спільного планування, атмосфера (серпанок, ліхтарик, гул ламп).
 import * as THREE from 'three/webgpu';
-import { Fn, length, exp, smoothstep, sin, mix, vec3 } from 'three/tsl';
+import { Fn, length, exp, smoothstep, sin, mix, vec3, float } from 'three/tsl';
 import type { Assets } from '../assets/loader';
 import type { Physics } from '../physics/physics';
+import { KNOCKABLE } from '../physics/knock';
 import { generateLayout, type Layout } from './layout';
 import { loadLevel0Textures, makeLevel0Materials, probeLit, probeAt } from './materials';
 import { Lamps } from './lamps';
@@ -117,11 +118,11 @@ export function addFlashlight(scene: THREE.Scene, ambient = 0x2a2412): THREE.Spo
     const r = length(lc.xy.sub(0.5)).mul(2);
     const hot = exp(r.div(0.2).pow(2).negate()).mul(0.62);
     const ring = exp(r.sub(0.36).div(0.075).pow(2).negate()).mul(0.2);
-    const halo = smoothstep(1.0, 0.25, r).mul(0.3);
-    const ripple = sin(r.mul(71)).mul(0.035).mul(smoothstep(0.75, 0.1, r)).add(1);
+    const halo = float(1).sub(smoothstep(0.25, 1.0, r)).mul(0.3);
+    const ripple = sin(r.mul(71)).mul(0.035).mul(float(1).sub(smoothstep(0.1, 0.75, r))).add(1);
     const k = hot.add(ring).add(halo).mul(ripple);
     // до краю світло тепліше (скло й відбивач «з'їдають» синє)
-    return mix(vec3(1.0, 0.86, 0.66), vec3(1.0, 1.0, 1.0), smoothstep(0.7, 0.1, r)).mul(k).mul(1.45);
+    return mix(vec3(1.0, 0.86, 0.66), vec3(1.0, 1.0, 1.0), float(1).sub(smoothstep(0.1, 0.7, r))).mul(k).mul(1.45);
   });
   flashlight.shadow.mapSize.set(1024, 1024);
   flashlight.shadow.bias = -0.0004;
@@ -236,7 +237,12 @@ async function placeProps(assets: Assets, physics: Physics, l: Layout, scene: TH
     o.updateMatrixWorld(true);
     const box = new THREE.Box3().setFromObject(o);
     if (d.file === 'desk') deskTop = box.max.y;
-    if (d.collide) {
+    const k = KNOCKABLE[d.file];
+    if (d.collide && k && physics.knock) {
+      // стілець, ящик, відро — можна зачепити й перекинути
+      const local = new THREE.Box3().setFromObject(g.scene);
+      physics.knock.add((w) => { w.decompose(o.position, o.quaternion, o.scale); }, o.matrixWorld.clone(), local, k.mass, k.kind);
+    } else if (d.collide) {
       const c = box.getCenter(new THREE.Vector3()), s = box.getSize(new THREE.Vector3());
       physics.addBox(c.x, c.y, c.z, Math.max(0.05, s.x / 2 - 0.02), s.y / 2, Math.max(0.05, s.z / 2 - 0.02), 0, 1 << 3);
     }

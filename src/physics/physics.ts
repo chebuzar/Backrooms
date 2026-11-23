@@ -1,5 +1,6 @@
 // Фізичний світ Rapier: статичні колізії рівня, промені (зір монстрів, взаємодія), крок симуляції.
 import RAPIER from '@dimforge/rapier3d-compat';
+import type { Knockables } from './knock';
 
 export type Rapier = typeof RAPIER;
 
@@ -24,6 +25,8 @@ export function loadRapier(): Promise<Rapier> {
 export class Physics {
   readonly world: RAPIER.World;
   private readonly ray: RAPIER.Ray;
+  /** Речі, які можна перекинути (у грі; у тестових сценах — немає). */
+  knock: Knockables | null = null;
 
   constructor(readonly R: Rapier) {
     this.world = new R.World({ x: 0, y: -9.81, z: 0 });

@@ -40,7 +40,7 @@ export class Doors {
   /** Полотно стало в раму (глухий стук). */
   onShut: ((d: Door) => void) | null = null;
   /** Двері вибили (удар, полотно відлітає до стіни). */
-  onBash: ((d: Door) => void) | null = null;
+  onBash: ((d: Door, by: 'monster' | 'player') => void) | null = null;
   /** Двері, що зараз відлітають після удару (швидкий рух). */
   private readonly fast = new Set<Door>();
 
@@ -101,12 +101,12 @@ export class Doors {
     });
   }
 
-  /** Вибити зачинені двері: різкий удар, полотно влітає в стіну (без рипу — грюкіт). */
-  bash(d: Door): void {
+  /** Вибити зачинені двері: різкий удар, полотно влітає в стіну (без рипу — грюкіт). Гравець — плечем на бігу. */
+  bash(d: Door, by: 'monster' | 'player' = 'monster'): void {
     if (d.target > 0.1) return;
-    d.target = 1.6;
+    d.target = by === 'player' ? 1.45 : 1.6;
     this.fast.add(d);
-    this.onBash?.(d);
+    this.onBash?.(d, by);
   }
 
   /** Зачинити різко (протяг/«хтось»): полотно грюкає об раму. */

@@ -27,6 +27,11 @@ export class AudioEngine {
   }
 
   private build(): void {
+    // iOS/iPadOS Safari: без цього Web Audio вважається «фоновим» звуком — кнопки гучності керують дзвінками
+    // (на екрані — повзунок зі слухавкою), а перемикач «Без звуку» глушить гру. «playback» — звичайний звук гри,
+    // як у відео й музики (Audio Session API, Safari 16.4+). Мікрофон гра не відкриває.
+    const as = (navigator as Navigator & { audioSession?: { type: string } }).audioSession;
+    if (as) try { as.type = 'playback'; } catch { /* старий Safari — лишається як було */ }
     const ctx = new AudioContext({ latencyHint: 'interactive' });
     this.ctx = ctx;
     const comp = ctx.createDynamicsCompressor();

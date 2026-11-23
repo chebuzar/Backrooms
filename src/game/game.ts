@@ -8,6 +8,8 @@ import { Notebook } from '../ui/notebook';
 import { MapMemory } from './mapmem';
 import { buildUnseen } from '../world/unseen';
 import { makeBody } from '../world/bodies';
+import { makeBloodPool, BloodSpray } from '../world/blood';
+import { DeathScene } from './death';
 import { furnishNii } from '../world/nii-furniture';
 import { rng } from '../core/rng';
 import { dressLevel } from '../world/dressing';
@@ -22,8 +24,11 @@ import { FrameProbe } from '../render/perf';
 import { warmup } from '../render/warmup';
 import type { DeviceInfo } from '../core/device';
 import { Physics, G } from '../physics/physics';
+import { Knockables } from '../physics/knock';
 import { Player } from './player';
 import { CameraRig } from './camera-rig';
+import { Hand } from './hand';
+import { HandLamp } from './handlamp';
 import { Input } from '../input/input';
 import { AudioEngine } from '../audio/audio';
 import { SoundBank } from '../audio/bank';
@@ -77,6 +82,10 @@ export class Game {
   calib: Calibration | null = null;
   readonly input: Input;
   readonly rig: CameraRig;
+  /** Рука з ліхтариком (інерція, погойдування). */
+  readonly hand = new Hand();
+  /** Ліхтар у руці (модель, світло скла, промінь у повітрі). */
+  readonly handLamp = new HandLamp();
   readonly audio = new AudioEngine();
   readonly store = new Store();
   readonly ui: UI;
@@ -190,6 +199,12 @@ export class Game {
     radio: (x, z) => this.tapes.play(RADIO, x, z)
   });
   private figureModel: THREE.Object3D | null = null;
+  /** Атлас плям (форма калюж крові) і калюжа для сцени смерті — заздалегідь у сцені, прихована. */
+  private bloodAtlas: THREE.Texture | null = null;
+  private deathPool: THREE.Mesh | null = null;
+  private deathSpray: BloodSpray | null = null;
+  /** Сцена смерті, що зараз іде (для автотестів через __zk). */
+  death: DeathScene | null = null;
   /** Горизонтальна відстань до стіни/дверей на висоті очей (для психологічного шару). */
   private readonly ray = (x: number, z: number, dx: number, dz: number, max: number): number => {
     const l = Math.hypot(dx, dz) || 1;
@@ -321,7 +336,16 @@ export class Game {
 
   async init(onProgress: (p: number) => void = () => {}): Promise<void> {
     this.physics = await Physics.create();
+    this.physics.knock = new Knockables(this.physics);
+    this.physics.knock.onImpact = (x, y, z, k, kind, topple) => {
+      // стілець перекинувся, відро покотилось: справжній звук удару — і монстр чує
+      const b = this.sfx.pick(topple && kind === 'wood' ? 'topple_' : kind === 'metal' ? 'knock_metal_' : 'knock_wood_');
+      if (b) this.audio.play3D(b, x, y, z, { gain: (kind === 'soft' ? 0.25 : 0.4) + k * 0.6, rate: (kind === 'soft' ? 1.25 : 0.92) + Math.random() * 0.14, ref: 2.5, wet: 0.45 });
+      if (kind !== 'soft' || k > 0.5) this.hunt.noise(x, y, z, Math.min(1, 0.25 + k * 0.75));
+    };
     this.assets = new Assets(this.gfx.renderer);
+    // ліхтар у руці — до першого рівня, щоб його шейдери прогрілись разом із рівнем
+    await this.handLamp.load(this.assets).catch((e) => console.warn('[hand-lamp]', e));
     // 92 % — рівень, далі прогрів і тест швидкодії (рядок підготовки не має «застрягати» на 100 %)
     const lvl = await this.loadLevel(0, (p) => onProgress(p * 0.92));
     const s = lvl.layout.spawn;
@@ -364,10 +388,12 @@ export class Game {
   private async loadLevel(id: number, onProgress: (p: number) => void = () => {}): Promise<Level> {
     const old = this.level;
     if (old) {
+      this.physics.knock?.clear();
       const keep = this.player?.collider;
       const list: { handle: number }[] = [];
       this.physics.world.forEachCollider((c) => { if (c !== keep) list.push(c); });
       for (const c of list) this.physics.world.removeCollider(c as never, false);
+      this.handLamp.root.removeFromParent(); // спільний для всіх рівнів — не утилізувати разом зі сценою
       disposeScene(old.scene);
       this.assets.releaseLevel();
       this.level = null;
@@ -396,8 +422,11 @@ export class Game {
       this.figureModel = gl.scene;
       unseen = buildUnseen(lvl.layout, gl.scene, lvl.id * 977 + 13);
       lvl.scene.add(unseen);
-      // тіла з минулих спроб на цьому рівні
-      for (const b of this.store.progress.bodies) if (b.level === id) lvl.scene.add(makeBody(gl.scene, b.x, b.z, b.yaw));
+      // тіла з минулих спроб на цьому рівні (у калюжах крові)
+      this.bloodAtlas = await this.assets.texture('assets/tex/level0/decals.ktx2').catch(() => null);
+      for (const b of this.store.progress.bodies) if (b.level === id) lvl.scene.add(makeBody(gl.scene, b.x, b.z, b.yaw, this.bloodAtlas));
+      if (this.bloodAtlas) { this.deathPool = makeBloodPool(this.bloodAtlas, 0, 0, 1); this.deathPool.visible = false; lvl.scene.add(this.deathPool); }
+      this.deathSpray = new BloodSpray(); this.deathSpray.mesh.visible = false; lvl.scene.add(this.deathSpray.mesh);
     } catch { /* без моделі гра йде далі без прихованого й тіл */ }
     this.psyche.attach(lvl, this.figureModel, unseen);
     this.soundscape.attach(lvl);
@@ -424,6 +453,7 @@ export class Game {
     this.dressed = lvl.id > 0 ? await dressLevel(this.assets, this.physics, lvl, taken) : await furnishNii(this.assets, this.physics, lvl, taken);
     this.phoneAnswered = false; this.writingSeen = false;
     this.setScene(lvl.scene);
+    lvl.scene.add(this.handLamp.root);
     lvl.flashlight.shadow.mapSize.setScalar(this.profile.shadow);
     if (this.player) this.setupInteractions(lvl);
     this.levelAudio();
@@ -804,13 +834,33 @@ export class Game {
     };
     lvl.doors.onMove = (d, opening) => { doorSound('creak', d, 0.7); if (opening) doorSound('dooropen', d, 0.6); this.hunt.noise(d.pivot.position.x, 1, d.pivot.position.z, 0.6); };
     lvl.doors.onShut = (d) => doorSound('doorclose', d, 0.9);
-    lvl.doors.onBash = (d) => {
+    lvl.doors.onBash = (d, by) => {
+      if (by === 'player') {
+        // плечем на бігу: глухий удар у полотно, грюкіт об стіну; чути далеко — монстр теж почує
+        doorSound('knock_wood_', d, 0.9);
+        doorSound('doorclose', d, 0.85);
+        this.hunt.noise(d.pivot.position.x, 1, d.pivot.position.z, 0.85);
+        this.rig.shake = Math.max(this.rig.shake, 0.35);
+        return;
+      }
       // вибиті двері: удар і грюкіт полотна об стіну; поруч — здригання камери
       doorSound('hit_', d, 1);
       doorSound('doorclose', d, 1);
       const p = d.pivot.position, near = Math.hypot(p.x - this.player.pos.x, p.z - this.player.pos.z);
       if (near < 9) { this.rig.shake = Math.max(this.rig.shake, 0.6 * (1 - near / 9)); look.fear.value = Math.min(1, look.fear.value + 0.3); }
     };
+  }
+
+  /** На бігу в зачинені двері — плечем: вони розчахуються (гучно). Без бігу двері відчиняються рукою, як завжди. */
+  private shoulderDoors(lvl: Level): void {
+    const p = this.player, v = Math.hypot(p.vx, p.vz);
+    if (!p.running || v < 2.6) return;
+    const ux = p.vx / v, uz = p.vz / v;
+    for (const d of lvl.doors.list) {
+      if (d.target > 0.1) continue;
+      const dx = d.cx - p.pos.x, dz = d.cz - p.pos.z, dist = Math.hypot(dx, dz);
+      if (dist < 0.85 && (dx * ux + dz * uz) / Math.max(1e-3, dist) > 0.55) lvl.doors.bash(d, 'player');
+    }
   }
 
   /** Документ, записка чи плівка (як аркуш із розшифровкою) за id. */
@@ -889,37 +939,30 @@ export class Game {
     this.setObjective(this.tasks.objective() ?? levelObjective(target));
   }
 
-  /** Мисливець схопив: різкий поворот до нього, удар, темрява → запис відновлюється з початку рівня. */
+  /** Мисливець схопив: скример упритул → збиває з ніг → коротка жорстока сцена над тілом (death.ts) → темрява. */
   private async caught(): Promise<void> {
     if (this.ending || !this.level) return;
     this.ending = true;
     this.input.enabled = false;
     const s = this.hunt.stalker, p = this.player.pos;
-    if (s) { this.player.yaw = Math.atan2(-(s.pos.x - p.x), -(s.pos.z - p.z)); this.player.pitch = 0.05; }
-    const b = this.sfx.pick('hit_');
-    if (b) this.audio.play2D(b, 1, 0.7);
-    look.fear.value = 1;
-    // різкий поворот до нього → на пів секунди його обличчя впритул (освітлене ліхтариком) → темрява
-    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))); // камера вже дивиться на нього
-    s?.grabFace(this.camera);
     this.flashlightOn = true;
-    // ліхтарик вислизає з руки й на пів секунди світить на обличчя знизу (те саме світло — без нових джерел і перекомпіляції)
-    const fw = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion);
-    const from = this.camera.position.clone().addScaledVector(fw, 0.1).add(new THREE.Vector3(0.05, -0.38, 0));
-    const at = this.camera.position.clone().addScaledVector(fw, 0.42);
-    this.flashOverride = { from, at, intensity: 1.4 };
-    this.rig.shake = 0.35;
-    // обличчя — щонайменше 0.52 с і 10 намальованих кадрів (навіть якщо пристрій саме пригальмував), потім темрява за 0.26 с
-    let t0 = performance.now(), frames = 0, fading = false;
-    await new Promise<void>((done) => {
-      const step = () => {
-        const t = performance.now() - t0;
-        if (!fading) { frames++; look.fade.value = 0; if (t >= 520 && frames >= 10) { fading = true; t0 = performance.now(); } }
-        else look.fade.value = Math.min(1, t / 260);
-        if (!fading || t < 260) requestAnimationFrame(step); else done();
-      };
-      step();
-    });
+    if (s) {
+      this.player.yaw = Math.atan2(-(s.pos.x - p.x), -(s.pos.z - p.z)); this.player.pitch = 0.05;
+      this.hunt.muteHeart();
+      const scene = new DeathScene({
+        camera: this.camera, stalker: s, audio: this.audio, sfx: this.sfx, pool: this.deathPool, spray: this.deathSpray,
+        setFlash: (o) => { this.flashOverride = o; },
+        shake: (v) => { this.rig.shake = Math.max(this.rig.shake, v); }
+      });
+      this.death = scene;
+      let done!: () => void;
+      const finished = new Promise<void>((r) => { done = r; });
+      this.cameraOverride = (_c, dt) => { if (scene.update(dt)) { this.cameraOverride = null; done(); } };
+      await finished;
+      scene.end();
+      this.death = null;
+    }
+    look.fade.value = 1;
     this.flashOverride = null;
     this.rig.shake = 0;
     this.store.progress.deaths++;
@@ -927,7 +970,7 @@ export class Game {
     if (this.level) {
       const body = { level: this.level.id, x: p.x, z: p.z, yaw: this.player.yaw };
       this.store.progress.bodies = [...this.store.progress.bodies, body].slice(-12);
-      if (this.figureModel) this.level.scene.add(makeBody(this.figureModel, body.x, body.z, body.yaw));
+      if (this.figureModel) this.level.scene.add(makeBody(this.figureModel, body.x, body.z, body.yaw, this.bloodAtlas));
     }
     this.psyche.afterDeath();
     this.bat.afterDeath();
@@ -1180,7 +1223,7 @@ export class Game {
     this.hud.setCamera(this.cam.k, this.cam.charge);
     this.hud.setTape(this.cam.tape);
     this.cam.applyLayers(this.camera);
-    let [lx, ly] = this.input.takeLook();
+    let [lx, ly] = this.input.takeLook(dt);
     // у зумі погляд повертається повільніше — точніше роздивитися далеке
     const lk = 1 / (1 + this.cam.zoomK); lx *= lk; ly *= lk;
     this.time += dt;
@@ -1195,7 +1238,10 @@ export class Game {
       if (!this.hide) this.player.look(lx, ly);
       this.acc += dt;
       const m = this.hide ? { x: 0, y: 0, run: false, crouch: false } : { x: this.input.move.x, y: this.input.move.y, run: this.input.run, crouch: this.input.crouch };
-      while (this.acc >= STEP) { this.player.update(STEP, m); this.physics.step(); this.acc -= STEP; }
+      let steps = 0;
+      while (this.acc >= STEP) { this.player.update(STEP, m); this.physics.step(); this.acc -= STEP; steps++; }
+      if (steps) this.physics.knock?.sync(steps * STEP);
+      if (steps && this.level) this.shoulderDoors(this.level);
     }
     if (this.input.consume('flashlight') && this.mode === 'play') {
       this.flashlightOn = !this.flashlightOn;
@@ -1218,6 +1264,9 @@ export class Game {
     }
     this.cameraOverride?.(this.camera, dt);
     if (this.mode === 'menu') this.menuCamera(dt);
+    // рука з ліхтариком — після всіх змін камери (шафка, кат-сцени): світить з руки, з легкою інерцією
+    if (this.hide || this.cameraOverride || this.mode !== 'play') this.hand.snap();
+    this.hand.update({ camPos: this.camera.position, camQuat: this.camera.quaternion, phase: this.player.bobPhase, amp: this.hide ? 0 : this.player.bobAmp, shake: Math.min(1, this.rig.shake + this.hunt.danger * 0.35), dt, t: this.time, room: this.flashHit });
     if (lvl) {
       lvl.update(this.time, dt, this.camera);
       this.figure?.update(dt, this.camera, this.mode === 'play');
@@ -1249,24 +1298,24 @@ export class Game {
       // від 1.4 м і далі — як і було
       if ((this.flashT -= dt) <= 0) {
         this.flashT = 0.05;
-        const d = this.fwd.set(0, 0, -1).applyQuaternion(c.quaternion);
-        this.flashHit = this.physics.raycast(c.position.x, c.position.y, c.position.z, d.x, d.y, d.z, 12, G.STATIC | G.DOOR | G.PROP) ?? 12;
+        const d = this.hand.dir;
+        this.flashHit = this.physics.raycast(this.hand.pos.x, this.hand.pos.y, this.hand.pos.z, d.x, d.y, d.z, 12, G.STATIC | G.DOOR | G.PROP) ?? 12;
         this.flashNear = Math.min(10, this.flashHit);
       }
       const nearK = Math.min(1, Math.max(0.1, (this.flashNear / 1.4) ** 2));
       this.flashK += (nearK - this.flashK) * Math.min(1, dt * 8);
-      fl.intensity += ((this.flashlightOn ? 26 * (0.35 + 0.65 * low) * dip * this.flashK : 0) - fl.intensity) * Math.min(1, dt * 18);
+      fl.intensity += ((this.flashlightOn ? 26 * (0.35 + 0.65 * low) * dip * this.flashK * this.hunt.flashMul : 0) - fl.intensity) * Math.min(1, dt * (this.hunt.flashMul ? 18 : 60));
       const spill = fl.children[0] as THREE.SpotLight | undefined;
       if (spill) spill.intensity = fl.intensity * 0.12;
       // відбите від плями світло: трохи перед точкою влучання, слабшає з відстанню (пляма більша, але тьмяніша)
       const bounce = fl.userData.bounce as THREE.PointLight | undefined;
       if (bounce) {
-        const d = this.fwd.set(0, 0, -1).applyQuaternion(c.quaternion), h = Math.max(0.3, this.flashHit - 0.45);
-        bounce.position.copy(c.position).addScaledVector(d, h);
+        const h = Math.max(0.3, this.flashHit - 0.45);
+        bounce.position.copy(this.hand.pos).addScaledVector(this.hand.dir, h);
         bounce.intensity = this.flashHit >= 12 ? 0 : fl.intensity * 0.075 / (1 + this.flashHit * 0.12);
       }
-      fl.position.set(0.18, -0.16, 0.05).applyQuaternion(c.quaternion).add(c.position);
-      fl.target.position.set(0, -0.08, -6).applyQuaternion(c.quaternion).add(c.position);
+      fl.position.copy(this.hand.pos);
+      fl.target.position.copy(this.hand.pos).addScaledVector(this.hand.dir, 6);
       const fo = this.flashOverride;
       if (fo) { fl.position.copy(fo.from); fl.target.position.copy(fo.at); fl.intensity = fo.intensity; }
       // вимкнений ліхтарик нічого не освітлює — і його тінь не видно: не малюємо карту тіні (цілий прохід сцени),
@@ -1275,7 +1324,16 @@ export class Game {
       this.snd.updateHum(dt, lvl, c.position.x, c.position.z, 1 - this.psyche.silence);
       // адаптація ока: скільки світла довкола (живі лампи + власний ліхтарик) → бажана «діафрагма»;
       // у темряві очі звикають за ~6 с (тіні проступають, але чорне лишається чорним), на світлі — за ~0.7 с
-      const E = lvl.lamps.lightAt(c.position.x, c.position.z) + (this.flashlightOn ? 0.3 * this.flashK : 0);
+      const Elamps = lvl.lamps.lightAt(c.position.x, c.position.z);
+      const E = Elamps + (this.flashlightOn ? 0.3 * this.flashK : 0);
+      // ліхтар у руці: видно, поки граєш (не з відеокамерою біля ока, не в шафці, не в кат-сцені)
+      // світіння нитки — без «автодіафрагми» біля стін (лампа не тьмяніє, коли світиш у стіну)
+      const glow = fo ? 0 : Math.min(1, fl.intensity / (26 * Math.max(0.1, this.flashK)));
+      this.handLamp.update(this.hand, {
+        // корпус у темряві освітлює світло, відбите від плями (ближча стіна — світліший корпус)
+        light: glow, low, reach: this.flashHit, E: 0.35 + Math.max(Elamps, glow * (2.6 + 3 / (1 + this.flashHit * this.flashHit * 0.25))), dt,
+        visible: this.mode === 'play' && !this.cameraOverride && !this.hide && this.cam.k < 0.35 && !this.ending
+      });
       const want = Math.min(1.75, Math.max(0.85, Math.sqrt(0.75 / (E + 0.26))));
       this.adapt += (want - this.adapt) * Math.min(1, dt * (want > this.adapt ? 0.4 : 2.2));
       look.exposure.value = this.baseExposure * this.adapt;

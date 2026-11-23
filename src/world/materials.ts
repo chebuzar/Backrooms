@@ -121,7 +121,7 @@ export function makeLevel0Materials(t: Level0Textures, layout: Layout) {
     const wet = smoothstep(0.5, 0.82, maskAt(gp, 0.11, 0.0).oneMinus());
     c = mix(c, c.mul(vec3(0.6, 0.55, 0.42)), wet.mul(0.42));
     // затерто біля підлоги, кіптява під стелею (роки тютюну й люмінесцентного світла)
-    c = c.mul(float(1).sub(smoothstep(0.35, 0.0, h).mul(0.2)));
+    c = c.mul(float(1).sub(float(1).sub(smoothstep(0.0, 0.35, h)).mul(0.2)));
     c = mix(c, c.mul(vec3(0.86, 0.82, 0.7)), smoothstep(2.0, 2.7, h).mul(0.35));
     return c;
   });
@@ -158,7 +158,7 @@ export function makeLevel0Materials(t: Level0Textures, layout: Layout) {
     c = mix(vec3(dot(c, vec3(0.299, 0.587, 0.114))), c, 0.25).mul(vec3(0.95, 0.97, 0.95));
     // підтьоки від протікань на плитах — справжні кільця з текстури цвілі
     const leak = texture(t.mold, ceilUV.mul(0.25).add(0.31)).r.oneMinus();
-    const ring = smoothstep(0.6, 0.7, leak).mul(smoothstep(0.82, 0.7, leak));
+    const ring = smoothstep(0.6, 0.7, leak).mul(float(1).sub(smoothstep(0.7, 0.82, leak)));
     c = mix(c, c.mul(vec3(0.66, 0.58, 0.44)), clamp(ring.mul(0.6).add(smoothstep(0.68, 0.9, leak).mul(0.22)), 0, 1));
     return c;
   });
@@ -213,7 +213,7 @@ export function makeLevel0Materials(t: Level0Textures, layout: Layout) {
  * Предмет без власної карти світла (меблі, речі): освітленість — «зонд» у його точці (від найближчих ламп),
  * згори трохи світліше, знизу темніше, як у кімнаті зі стельовим світлом.
  */
-export function probeLit(src: THREE.Material, E: number | THREE.Node<'float'>): BakedMaterial {
+export function probeLit(src: THREE.Material, E: number | THREE.Node<'float'>, live = true): BakedMaterial {
   const s = src as THREE.MeshStandardMaterial;
   const m = new BakedMaterial();
   for (const k of ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap', 'alphaMap', 'emissiveMap'] as const) {
@@ -228,7 +228,9 @@ export function probeLit(src: THREE.Material, E: number | THREE.Node<'float'>): 
   m.transparent = s.transparent; m.alphaTest = s.alphaTest; m.side = s.side;
   // E — число (один предмет) або вузол (атрибут екземпляра: кожні двері зі своєю освітленістю в одному виклику малювання)
   const e = typeof E === 'number' ? float(E) : E;
-  m.lmNode = vec3(e.mul(0.75)).mul(normalWorld.y.mul(0.4).add(0.6)).mul(bakeLevel).mul(liveDim());
+  // live = false — освітленість уже жива (річ рухається з гравцем і E рахується щокадру), не множимо ще раз
+  const lit = vec3(e.mul(0.75)).mul(normalWorld.y.mul(0.4).add(0.6)).mul(bakeLevel);
+  m.lmNode = live ? lit.mul(liveDim()) : lit;
   return m;
 }
 
