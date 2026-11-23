@@ -89,6 +89,8 @@ export class Game {
   readonly hand = new Hand();
   /** Ліхтар у руці (модель, світло скла, промінь у повітрі). */
   readonly handLamp = new HandLamp();
+  private handProbe = 0.5;
+  private handProbeT = 0;
   readonly audio = new AudioEngine();
   readonly store = new Store();
   readonly ui: UI;
@@ -1363,9 +1365,13 @@ export class Game {
       // ліхтар у руці: видно, поки граєш (не з відеокамерою біля ока, не в шафці, не в кат-сцені)
       // світіння нитки — без «автодіафрагми» біля стін (лампа не тьмяніє, коли світиш у стіну)
       const glow = fo ? 0 : Math.min(1, fl.intensity / (26 * Math.max(0.1, this.flashK)));
+      // освітленість ліхтаря в руці — той самий «зонд», що й у меблів поруч (підігнаний під запечене світло, стіни
+      // затуляють лампи), інакше корпус темніший за все довкола й читається чорним силуетом; раз на 0.15 с
+      this.handProbeT -= dt;
+      if (this.handProbeT <= 0) { this.handProbeT = 0.15; this.handProbe = probeAt(lvl.layout.lights, c.position.x, c.position.z) * lvl.lamps.master.value; }
       this.handLamp.update(this.hand, {
         // корпус у темряві освітлює світло, відбите від плями (ближча стіна — світліший корпус)
-        light: glow, low, reach: this.flashHit, E: 0.35 + Math.max(Elamps, glow * (2.6 + 3 / (1 + this.flashHit * this.flashHit * 0.25))), dt,
+        light: glow, low, reach: this.flashHit, E: 0.2 + Math.max(this.handProbe, glow * (2.6 + 3 / (1 + this.flashHit * this.flashHit * 0.25))), dt,
         visible: this.mode === 'play' && !this.cameraOverride && !this.hide && this.cam.k < 0.35 && !this.ending
       });
       const want = Math.min(1.75, Math.max(0.85, Math.sqrt(0.75 / (E + 0.26))));

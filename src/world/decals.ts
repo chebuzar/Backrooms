@@ -58,7 +58,7 @@ function placeDecals(l: Layout, decor: Decor[]): Quad[] {
     if (inWall(x, z, s * 0.45)) continue;
     const ceil = r() < 0.35;
     const ang = r() * Math.PI * 2, ca = Math.cos(ang) * s / 2, sa = Math.sin(ang) * s / 2;
-    out.push({ c: [x, ceil ? H - OFF : OFF, z], u: [ca, 0, sa], v: [-sa * (ceil ? -1 : 1), 0, ca * (ceil ? -1 : 1)], cell: 3, flip: r() < 0.5, k: ceil ? 0.42 : 0.3 });
+    out.push({ c: [x, ceil ? H - OFF : OFF, z], u: [ca, 0, sa], v: [-sa * (ceil ? -1 : 1), 0, ca * (ceil ? -1 : 1)], cell: 3, flip: r() < 0.5, k: ceil ? 0.28 : 0.3 });
   }
   return out;
 }

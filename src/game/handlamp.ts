@@ -48,6 +48,10 @@ export class HandLamp {
       if (!mesh.isMesh) return;
       const src = mesh.material as THREE.MeshStandardMaterial;
       const mat = probeLit(src, this.E as unknown as THREE.Node<'float'>, false);
+      // корпус пофарбований (емаль — не голий метал), а без карти оточення «метал» лише чорніє; фарба оливкова й темна,
+      // тож трохи світліша — інакше в руці в освітленій кімнаті лишався чорний силует замість ліхтаря
+      mat.metalness = 0;
+      mat.color.multiplyScalar(1.7);
       if (src.name.includes('glass')) {
         mat.emissive.setRGB(1.0, 0.72, 0.42);
         mat.emissiveIntensity = 0;

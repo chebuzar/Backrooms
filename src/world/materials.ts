@@ -80,7 +80,9 @@ export function probeLit(src: THREE.Material, E: number | THREE.Node<'float'>, l
   if (s.color) m.color.copy(s.color);
   if (s.emissive) m.emissive.copy(s.emissive);
   m.roughness = s.roughness ?? 0.8;
-  m.metalness = s.metalness ?? 0;
+  // Без карти оточення метал віддзеркалює лише чорноту — і хромовані ніжки стільців, і корпус ліхтаря стають чорними
+  // силуетами. Освітлення тут — лише розсіяне від «зонда», тож метал лишаємо напівматовим (стара фарбована чи тьмяна сталь).
+  m.metalness = Math.min(s.metalness ?? 0, 0.3);
   if (s.normalScale) m.normalScale.copy(s.normalScale);
   m.transparent = s.transparent; m.alphaTest = s.alphaTest; m.side = s.side;
   // E — число (один предмет) або вузол (атрибут екземпляра: кожні двері зі своєю освітленістю в одному виклику малювання)
