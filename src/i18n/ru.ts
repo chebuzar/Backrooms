@@ -50,7 +50,7 @@ export const T = {
     ] as [string, string][],
     back: 'Назад'
   },
-  tutorial: { light: 'фонарик', run: 'бег', crouch: 'присесть', use: 'действие', camera: 'поднять камеру', book: 'блокнот' },
+  tutorial: { light: 'фонарик', run: 'бег', crouch: 'присесть', use: 'действие · взять вещь', camera: 'поднять камеру', book: 'блокнот' },
   hud: { rec: 'REC', zoom: '×2', lockHint: 'Щёлкните, чтобы осмотреться', camBrand: 'ЭЛЕКТРОНИКА ВКМ-87', camDead: 'РАЗРЯД', batteries: 'Сменил батарейки в фонаре', watchBrand: 'ЭЛЕКТРОНИКА 5' },
   settings: {
     title: 'Настройки',

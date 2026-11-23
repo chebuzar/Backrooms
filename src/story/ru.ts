@@ -284,6 +284,8 @@ export const HINTS = {
   hide: 'Спрятаться',
   answer: 'Снять трубку',
   look: 'Рассмотреть',
-  unhide: 'Выйти'
+  unhide: 'Выйти',
+  put: 'Положить',
+  throw: 'бросить'
 };
 

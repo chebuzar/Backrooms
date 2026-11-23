@@ -6,7 +6,9 @@ import { Knockables } from '../../src/physics/knock';
 import { Player, type MoveIntent } from '../../src/game/player';
 
 let physics: Physics;
-const chairBox = new THREE.Box3(new THREE.Vector3(-0.22, 0, -0.22), new THREE.Vector3(0.22, 0.9, 0.22));
+/** Модель «стільця»: коробка 0.44×0.9×0.44 м, низ — у нулі (як у моделей Poly Haven). */
+const chairModel = new THREE.Group();
+chairModel.add(new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.9, 0.44).translate(0, 0.45, 0)));
 
 beforeAll(async () => {
   physics = await Physics.create();
@@ -18,7 +20,7 @@ beforeAll(async () => {
 
 function chair(x: number, z: number) {
   const m = new THREE.Matrix4().makeTranslation(x, 0, z), got = new THREE.Matrix4().copy(m);
-  physics.knock!.add((w) => got.copy(w), m, chairBox, 6, 'wood');
+  physics.knock!.add('chair', (w) => got.copy(w), m, chairModel);
   return got;
 }
 const sim = (p: Player, sec: number, mv: MoveIntent, k = physics.knock!) => {

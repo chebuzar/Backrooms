@@ -12,14 +12,14 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { Assets } from '../assets/loader';
 import type { Physics } from '../physics/physics';
 import { G } from '../physics/physics';
-import { KNOCKABLE, instanceView } from '../physics/knock';
+import { KNOCKABLE, instanceView, instanceLight, type InstancePart } from '../physics/knock';
 import { rng } from '../core/rng';
 import type { Level } from './level0';
 import { probeAt, probeLit } from './materials';
 import { wallRows, type Spot } from './dressing';
 import { zoneOf } from './decor';
 
-interface Place { m: THREE.Matrix4; E: number; zone: number; knock?: THREE.InstancedMesh[]; parts?: { im: THREE.InstancedMesh; i: number }[] }
+interface Place { m: THREE.Matrix4; E: number; zone: number; parts?: InstancePart[] }
 
 /** Набір розстановок: модель → місця; build() робить інстанси й тіла зіткнень. */
 class Batch {
@@ -71,7 +71,7 @@ class Batch {
         const eNode = instancedBufferAttribute(E) as unknown as THREE.Node<'float'>;
         for (const { geometry, material } of parts) {
           const im = new THREE.InstancedMesh(geometry, probeLit(material, eNode), ps.length);
-          ps.forEach((p, i) => { im.setMatrixAt(i, p.m); p.parts?.push({ im, i }); });
+          ps.forEach((p, i) => { im.setMatrixAt(i, p.m); p.parts?.push({ im, i, light: E }); });
           im.castShadow = shadow; im.receiveShadow = true;
           im.computeBoundingSphere();
           group.add(im);
@@ -83,11 +83,13 @@ class Batch {
       const k = KNOCKABLE[file];
       if (!k) continue;
       if (!physics.knock) { for (const p of places) if (p.parts) this.solid.push({ file, m: p.m }); continue; }
-      const box = await this.box(assets, file);
-      for (const p of places) if (p.parts) physics.knock.add(instanceView(p.parts), p.m, box, k.mass, k.kind, p.parts.map((x) => x.im));
+      const model = (await assets.model(`assets/models/${file}.glb`)).scene;
+      for (const p of places) if (p.parts) physics.knock.add(file, instanceView(p.parts), p.m, model, p.parts.map((x) => x.im), instanceLight(p.parts));
     }
-    // тіла зіткнень: коробка за габаритами (після повороту — осьова обгортка)
+    // тіла зіткнень: коробка за габаритами (після повороту — осьова обгортка); книжкова шафа — полиці, з яких можна
+    // зняти книги (суцільна коробка виштовхнула б їх)
     for (const s of this.solid) {
+      if (s.file === 'bookshelf') { shelfColliders(physics, await this.box(assets, s.file), s.m); continue; }
       const bb = (await this.box(assets, s.file)).clone().applyMatrix4(s.m);
       const c = bb.getCenter(new THREE.Vector3()), sz = bb.getSize(new THREE.Vector3());
       physics.addBox(c.x, c.y, c.z, Math.max(0.05, sz.x / 2 - 0.03), sz.y / 2, Math.max(0.05, sz.z / 2 - 0.03), 0, G.PROP);
@@ -97,6 +99,20 @@ class Batch {
 }
 
 const SMALL = new Set(['notepads', 'desk-lamp', 'books']);
+
+/** Книжкова шафа (перед — +Z моделі): задня стінка, боковини, полиці SHELVES і кришка — окремі нерухомі коробки. */
+function shelfColliders(physics: Physics, b: THREE.Box3, m: THREE.Matrix4): void {
+  const yaw = new THREE.Euler().setFromRotationMatrix(m).y, p = new THREE.Vector3();
+  const box = (x0: number, x1: number, y0: number, y1: number, z0: number, z1: number) => {
+    p.set((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2).applyMatrix4(m);
+    physics.addBox(p.x, p.y, p.z, (x1 - x0) / 2, (y1 - y0) / 2, (z1 - z0) / 2, yaw, G.PROP);
+  };
+  const { min: a, max: c } = b, t = 0.02;
+  box(a.x, c.x, a.y, c.y, a.z, a.z + t); // задня стінка
+  box(a.x, a.x + t, a.y, c.y, a.z, c.z); box(c.x - t, c.x, a.y, c.y, a.z, c.z); // боковини
+  box(a.x, c.x, c.y - t, c.y, a.z, c.z); // кришка
+  for (const y of SHELVES) box(a.x + t, c.x - t, Math.max(a.y, y - 0.025), y, a.z, c.z);
+}
 
 /**
  * Частини моделі, зведені за матеріалом: у Poly Haven стіл — 9 окремих сіток з одним матеріалом, а кожна сітка
@@ -155,7 +171,7 @@ function fillShelf(b: Batch, r: () => number, s: Spot): void {
     const sets = k < 0.88 ? [(r() - 0.5) * 0.6] : [-0.33 + (r() - 0.5) * 0.06, 0.31 + (r() - 0.5) * 0.06];
     for (const c of sets) {
       const p = at(s, c - 0.257, 0.02 + (r() - 0.5) * 0.04);
-      b.add('books', p.x, p.z, s.yaw + (r() - 0.5) * 0.05, { y: y + 0.004, collide: false });
+      b.add('books', p.x, p.z, s.yaw + (r() - 0.5) * 0.05, { y: y + 0.004 });
     }
   }
 }
@@ -178,8 +194,8 @@ export async function furnishNii(assets: Assets, physics: Physics, lvl: Level, t
       const c = at(s, (r() - 0.5) * 0.6, 0.75 + r() * 0.35);
       b.add('chair', c.x, c.z, s.yaw + Math.PI + (r() - 0.5) * 0.9);
       const k = r();
-      if (k < 0.45) { const p = at(s, -0.65, -0.12); b.add('desk-lamp', p.x, p.z, s.yaw + Math.PI * 0.85 + (r() - 0.5) * 0.4, { y: deskTop, collide: false }); }
-      if (k > 0.3) { const p = at(s, 0.35 + r() * 0.2, 0.05); b.add('notepads', p.x, p.z, s.yaw + (r() - 0.5) * 0.5, { y: deskTop + 0.002, scale: 0.42, collide: false }); }
+      if (k < 0.45) { const p = at(s, -0.65, -0.12); b.add('desk-lamp', p.x, p.z, s.yaw + Math.PI * 0.85 + (r() - 0.5) * 0.4, { y: deskTop + 0.002 }); }
+      if (k > 0.3) { const p = at(s, 0.35 + r() * 0.2, 0.05); b.add('notepads', p.x, p.z, s.yaw + (r() - 0.5) * 0.5, { y: deskTop + 0.004, scale: 0.42 }); }
     }
   }
   // кабінети й архіви: шафи вздовж стін (по 1–3 поруч)

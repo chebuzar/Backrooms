@@ -9,7 +9,7 @@ import { attribute, instancedBufferAttribute } from 'three/tsl';
 import type { Assets } from '../assets/loader';
 import type { Physics } from '../physics/physics';
 import { G } from '../physics/physics';
-import { KNOCKABLE, instanceView } from '../physics/knock';
+import { KNOCKABLE, instanceView, instanceLight, type InstancePart } from '../physics/knock';
 import { rng } from '../core/rng';
 import type { Level } from './level0';
 import { probeAt, probeLit } from './materials';
@@ -57,7 +57,7 @@ export function wallRows(lvl: Level, r: () => number, rows: number, n: number, w
 
 /** Речі обстановки, зібрані за моделлю: наприкінці — по одному InstancedMesh на кожну сітку моделі
  *  (десятки ліжечок, стільців і шафок — кілька викликів малювання замість сотень; освітленість — атрибут екземпляра). */
-const batch = new Map<string, { scene: THREE.Object3D; items: { m: THREE.Matrix4; E: number; parts?: { im: THREE.InstancedMesh; i: number; local: THREE.Matrix4 }[] }[] }>();
+const batch = new Map<string, { scene: THREE.Object3D; items: { m: THREE.Matrix4; E: number; parts?: InstancePart[] }[] }>();
 const localBox = new Map<string, THREE.Box3>();
 
 export async function put(assets: Assets, physics: Physics, lvl: Level, file: string, s: Spot, yawOff = 0, y = 0, collide = true, scale = 1): Promise<THREE.Box3> {
@@ -92,18 +92,18 @@ function flushProps(lvl: Level, physics: Physics): void {
       if (src.geometry.index) g.setIndex(src.geometry.index);
       for (const gr of src.geometry.groups) g.addGroup(gr.start, gr.count, gr.materialIndex);
       g.boundingSphere = null;
-      const Es = instancedBufferAttribute(new THREE.InstancedBufferAttribute(new Float32Array(items.map((i) => i.E)), 1)) as unknown as THREE.Node<'float'>;
+      const light = new THREE.InstancedBufferAttribute(new Float32Array(items.map((i) => i.E)), 1);
+      const Es = instancedBufferAttribute(light) as unknown as THREE.Node<'float'>;
       const mats = (Array.isArray(src.material) ? src.material : [src.material]).map((mt) => probeLit(mt, Es));
       const im = new THREE.InstancedMesh(g, mats.length === 1 ? mats[0] as THREE.Material : mats, items.length);
       const local = new THREE.Matrix4().multiplyMatrices(inv, src.matrixWorld);
-      items.forEach((it, i) => { im.setMatrixAt(i, new THREE.Matrix4().multiplyMatrices(it.m, local)); it.parts?.push({ im, i, local }); });
+      items.forEach((it, i) => { im.setMatrixAt(i, new THREE.Matrix4().multiplyMatrices(it.m, local)); it.parts?.push({ im, i, local, light }); });
       im.instanceMatrix.needsUpdate = true;
       im.computeBoundingSphere();
       im.castShadow = true; im.receiveShadow = true;
       lvl.scene.add(im);
     });
-    const k = KNOCKABLE[file], lb = localBox.get(file);
-    if (k && lb && physics.knock) for (const it of items) if (it.parts) physics.knock.add(instanceView(it.parts), it.m, lb, k.mass, k.kind, it.parts.map((p) => p.im));
+    if (KNOCKABLE[file] && physics.knock) for (const it of items) if (it.parts) physics.knock.add(file, instanceView(it.parts), it.m, scene, it.parts.map((p) => p.im), instanceLight(it.parts));
   }
   batch.clear();
 }
@@ -123,7 +123,7 @@ export async function dressLevel(assets: Assets, physics: Physics, lvl: Level, t
       shown.push({ ...(row[0] as Spot), kind: 'lab' });
       for (const [i, s] of row.entries()) {
         const bb = await put(assets, physics, lvl, 'mdesk', s, Math.PI);
-        if (i === 0 || r() < 0.5) await put(assets, physics, lvl, 'microscope', { x: s.x, z: s.z, yaw: s.yaw + 0.3 }, Math.PI, bb.max.y, false);
+        if (i === 0 || r() < 0.5) await put(assets, physics, lvl, 'microscope', { x: s.x, z: s.z, yaw: s.yaw + 0.3 }, Math.PI, bb.max.y + 0.002);
       }
       const s0 = row[row.length - 1] as Spot;
       if (r() < 0.7) await put(assets, physics, lvl, 'jerrycan', { x: s0.x + Math.cos(s0.yaw) * 1.0, z: s0.z - Math.sin(s0.yaw) * 1.0, yaw: s0.yaw + 0.4 });

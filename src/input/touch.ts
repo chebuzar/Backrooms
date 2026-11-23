@@ -24,11 +24,13 @@ export const ICONS = {
   dosi: '<path fill="currentColor" stroke="none" d="M12 10.3a1.7 1.7 0 1 1 0 3.4 1.7 1.7 0 0 1 0-3.4Zm-1.6-1.1L7.6 4.4A8.6 8.6 0 0 0 3.4 12h5.5a3.1 3.1 0 0 1 1.5-2.8Zm3.2 0A3.1 3.1 0 0 1 15.1 12h5.5a8.6 8.6 0 0 0-4.2-7.6Zm1.5 4.2L12 18.2l-3.1-4.8-2.8 4.8a8.6 8.6 0 0 0 11.8 0Z"/>',
   // для екрана «Управление»: стік (ліва половина) і огляд (права)
   stick: '<circle cx="12" cy="12" r="8.5"/><path d="M12 12l3.2-3.2"/><circle cx="15.8" cy="8.2" r="2.4" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"/>',
-  look: '<path d="M3.5 12h17M6.5 9l-3 3 3 3M17.5 9l3 3-3 3M12 6.5v11"/>'
+  look: '<path d="M3.5 12h17M6.5 9l-3 3 3 3M17.5 9l3 3-3 3M12 6.5v11"/>',
+  // бросить: дуга польоту з точкою-предметом
+  throw: '<path d="M4 19.5C7 9 13 5.5 20 6.5"/><path d="M16.5 3.5 20 6.5l-3.2 3.3"/><circle cx="5.5" cy="17" r="1.6" fill="currentColor" stroke="none"/>'
 };
 
 /** Підписи під значками кнопок (машинопис, як таблички на пульті). */
-const CAPS = { use: 'ДЕЙСТВ.', light: 'СВЕТ', run: 'БЕГ', crouch: 'ПРИСЕСТЬ', camera: 'КАМЕРА', dosimeter: 'ДП-5', zoom: '×2' } as const;
+const CAPS = { use: 'ДЕЙСТВ.', light: 'СВЕТ', run: 'БЕГ', crouch: 'ПРИСЕСТЬ', camera: 'КАМЕРА', dosimeter: 'ДП-5', zoom: '×2', throw: 'БРОСИТЬ' } as const;
 
 /** Елементи інтерфейсу, яким дотик має дістатися як звичайне натискання/прокрутка. */
 const UI_SELECTOR = '.reader, .screen, .prologue, .loadline, button, a, input, select, label';
@@ -67,6 +69,7 @@ export class TouchControls {
         <button class="tb tb-crouch" data-a="crouch" aria-label="Присесть">${svg(ICONS.crouch)}${cap('crouch')}</button>
         <button class="tb tb-cam" data-a="camera" aria-label="Камера">${svg(ICONS.camera)}${cap('camera')}</button>
         <button class="tb tb-zoom" data-a="zoom" aria-label="Приближение">${cap('zoom')}</button>
+        <button class="tb tb-throw" data-a="throw" aria-label="Бросить">${svg(ICONS.throw)}${cap('throw')}</button>
       </div>
       <div class="ttop">
         <button class="tb tb-watch" data-a="watch" aria-label="Часы">${svg(ICONS.watch)}</button>
@@ -87,6 +90,7 @@ export class TouchControls {
     tap(btn('.tb-cam'), () => this.input.press('camera'));
     tap(btn('.tb-dosi'), () => this.input.press('dosimeter'));
     tap(btn('.tb-zoom'), () => this.input.press('zoom'));
+    tap(btn('.tb-throw'), () => this.input.press('throw'));
     tap(btn('.tb-watch'), () => this.input.press('watch'));
     tap(btn('.tb-book'), () => this.input.press('journal'));
     tap(btn('.tb-pause'), () => this.input.press('pause'));
@@ -103,6 +107,9 @@ export class TouchControls {
 
   /** Камера піднята: з'являється кнопка «×2». */
   setCamera(on: boolean): void { this.root.classList.toggle('cam', on); this.setLatched('cam', on); }
+
+  /** Річ у руці: з'являється кнопка «Бросить». */
+  setCarry(on: boolean): void { this.root.classList.toggle('carry', on); }
 
   /** Показати/сховати кнопки (у меню вони не потрібні). */
   show(on: boolean): void { this.root.classList.toggle('shown', on); }

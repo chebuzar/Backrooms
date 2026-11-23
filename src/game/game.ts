@@ -17,7 +17,7 @@ import { Psyche } from './psyche';
 import { Soundscape } from './soundscape';
 import { Tasks } from './tasks';
 import { RADIO } from '../story/tasks';
-import { lampDeficits } from '../world/materials';
+import { lampDeficits, probeAt } from '../world/materials';
 import { PROFILES, PresetGovernor, QualityGovernor, autoQuality, type QualityName, type QualityProfile } from '../render/quality';
 import { deviceCap, deviceKey, effectivePreset, loadCalibration, runCalibration, saveCalibration, ORDER, type Calibration, type DeviceSignals } from '../render/autotune';
 import { FrameProbe } from '../render/perf';
@@ -25,6 +25,7 @@ import { warmup } from '../render/warmup';
 import type { DeviceInfo } from '../core/device';
 import { Physics, G } from '../physics/physics';
 import { Knockables } from '../physics/knock';
+import { PropPlay } from './props';
 import { Player } from './player';
 import { CameraRig } from './camera-rig';
 import { Hand } from './hand';
@@ -178,6 +179,8 @@ export class Game {
   hud!: HUD;
   readonly ambience = new Ambience(this.audio);
   interact!: Interactions;
+  /** Речі: рука, удари, скло. */
+  props!: PropPlay;
   private stage: 'desk' | 'seam' | 'done' = 'desk';
   private ending = false;
   readonly psyche = new Psyche();
@@ -337,12 +340,8 @@ export class Game {
   async init(onProgress: (p: number) => void = () => {}): Promise<void> {
     this.physics = await Physics.create();
     this.physics.knock = new Knockables(this.physics);
-    this.physics.knock.onImpact = (x, y, z, k, kind, topple) => {
-      // стілець перекинувся, відро покотилось: справжній звук удару — і монстр чує
-      const b = this.sfx.pick(topple && kind === 'wood' ? 'topple_' : kind === 'metal' ? 'knock_metal_' : 'knock_wood_');
-      if (b) this.audio.play3D(b, x, y, z, { gain: (kind === 'soft' ? 0.25 : 0.4) + k * 0.6, rate: (kind === 'soft' ? 1.25 : 0.92) + Math.random() * 0.14, ref: 2.5, wet: 0.45 });
-      if (kind !== 'soft' || k > 0.5) this.hunt.noise(x, y, z, Math.min(1, 0.25 + k * 0.75));
-    };
+    // речі: удари, скло, рука (взяти, покласти, кинути) — props.ts
+    this.props = new PropPlay({ physics: this.physics, knock: this.physics.knock, audio: this.audio, sfx: this.sfx, noise: (x, y, z, l) => this.hunt.noise(x, y, z, l) });
     this.assets = new Assets(this.gfx.renderer);
     // ліхтар у руці — до першого рівня, щоб його шейдери прогрілись разом із рівнем
     await this.handLamp.load(this.assets).catch((e) => console.warn('[hand-lamp]', e));
@@ -388,6 +387,7 @@ export class Game {
   private async loadLevel(id: number, onProgress: (p: number) => void = () => {}): Promise<Level> {
     const old = this.level;
     if (old) {
+      this.props.detach();
       this.physics.knock?.clear();
       const keep = this.player?.collider;
       const list: { handle: number }[] = [];
@@ -434,6 +434,7 @@ export class Game {
     // НИИ, ще без печаток: за пів хвилини рупор кличе Оператора № 7 на вахту — так гравець дізнається, куди йти й що його чекають
     if (lvl.id === 0 && !this.store.progress.items.some((i) => i.startsWith('0:stamp_'))) this.soundscape.schedule(0, 30);
     this.level = lvl;
+    this.props.attach(lvl.scene, lvl.lamps, lvl.layout.lights, lvl.layout.height, (x, z) => probeAt(lvl.layout.lights, x, z));
     this.bat.forLevel(lvl.id);
     setFilm(lvl.id);
     this.saveMap();
@@ -1235,12 +1236,14 @@ export class Game {
       if (this.input.consume('interact')) this.exitLocker();
     }
     if (this.mode === 'play') {
+      // права кнопка миші з річчю в руці — крутимо річ, погляд стоїть
+      if (this.props.carry.held && this.input.rmb) { this.props.carry.rotate(lx * 1.6, ly * 1.6); lx = 0; ly = 0; }
       if (!this.hide) this.player.look(lx, ly);
       this.acc += dt;
       const m = this.hide ? { x: 0, y: 0, run: false, crouch: false } : { x: this.input.move.x, y: this.input.move.y, run: this.input.run, crouch: this.input.crouch };
       let steps = 0;
-      while (this.acc >= STEP) { this.player.update(STEP, m); this.physics.step(); this.acc -= STEP; steps++; }
-      if (steps) this.physics.knock?.sync(steps * STEP);
+      while (this.acc >= STEP) { this.player.update(STEP, m); this.props.step(STEP, this.player); this.physics.step(); this.acc -= STEP; steps++; }
+      if (steps) { this.physics.knock?.sync(steps * STEP); this.props.sync(steps * STEP); }
       if (steps && this.level) this.shoulderDoors(this.level);
     }
     if (this.input.consume('flashlight') && this.mode === 'play') {
@@ -1344,9 +1347,22 @@ export class Game {
       const key = this.input.lastDevice === 'gamepad' ? 'A' : 'E', icon = this.input.lastDevice === 'touch' ? svg(ICONS.use) : undefined;
       if (this.hide) this.hud.setPrompt(HINTS.unhide, key, icon); // у шафці — лише «Выйти» (обробляється вище)
       else {
-        const it = this.interact.update(c, f.x, f.y, f.z);
-        this.hud.setPrompt(it ? it.prompt : null, key, icon);
-        if (it && this.input.consume('interact')) { it.use(); this.tried.add('use'); }
+        const carry = this.props.carry, e = this.props.eye(this.player);
+        if (carry.held) {
+          // у руці річ: E — покласти, ЛКМ / «Бросить» — кинути (кинута гримить, монстр іде туди)
+          const thr = this.input.lastDevice === 'gamepad' ? 'LT' : this.input.lastDevice === 'touch' ? '' : 'ЛКМ';
+          this.hud.setPrompt(thr ? `${HINTS.put} · ${thr} — ${HINTS.throw}` : HINTS.put, key, icon);
+          if (this.input.consume('throw')) { carry.release(e, true); }
+          else if (this.input.consume('interact')) carry.release(e);
+        } else {
+          this.input.consume('throw');
+          const it = this.interact.update(c, f.x, f.y, f.z);
+          const prop = it ? null : carry.look(e, this.player.collider);
+          this.hud.setPrompt(it ? it.prompt : prop ? HINTS.take : null, key, icon);
+          if (it && this.input.consume('interact')) { it.use(); this.tried.add('use'); }
+          else if (prop && this.input.consume('interact')) { carry.grab(prop, e); this.tried.add('use'); }
+        }
+        this.input.touch?.setCarry(!!carry.held);
       }
       if (this.player.running) this.tried.add('run');
       if (this.player.crouched) this.tried.add('crouch');

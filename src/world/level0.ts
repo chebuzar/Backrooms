@@ -203,7 +203,7 @@ export function seamPlacement(l: Layout, ex: number, ez: number, avoid: Decor[] 
   return best;
 }
 
-interface PropDef { file: string; x: number; z: number; yaw: number; y?: number; collide?: boolean }
+interface PropDef { file: string; x: number; z: number; yaw: number; y?: number; collide?: boolean; fixed?: boolean }
 
 /** Сюжетні предмети: стіл експедиції біля старту, планшет із наказом, речі, записка. */
 async function placeProps(assets: Assets, physics: Physics, l: Layout, scene: THREE.Scene): Promise<Record<string, PropSpot>> {
@@ -215,7 +215,7 @@ async function placeProps(assets: Assets, physics: Physics, l: Layout, scene: TH
   // зсув у системі стола → світові координати
   const rel = (lx: number, lz: number) => ({ x: dx + lx * Math.cos(yaw) + lz * Math.sin(yaw), z: dz - lx * Math.sin(yaw) + lz * Math.cos(yaw) });
   const defs: PropDef[] = [
-    { file: 'desk', x: dx, z: dz, yaw, collide: true },
+    { file: 'desk', x: dx, z: dz, yaw, collide: true, fixed: true }, // на ньому наказ і «Инструкция» — стоїть, як стояв
     { file: 'chair', ...rel(0.15, 0.75), yaw: yaw + Math.PI + 0.35, collide: true },
     { file: 'box', ...rel(1.15, -0.15), yaw: yaw + 0.4, collide: true },
     { file: 'ammo', ...rel(-1.05, 0.2), yaw: yaw - 0.3, collide: true }
@@ -238,10 +238,9 @@ async function placeProps(assets: Assets, physics: Physics, l: Layout, scene: TH
     const box = new THREE.Box3().setFromObject(o);
     if (d.file === 'desk') deskTop = box.max.y;
     const k = KNOCKABLE[d.file];
-    if (d.collide && k && physics.knock) {
+    if (d.collide && k && !d.fixed && physics.knock) {
       // стілець, ящик, відро — можна зачепити й перекинути
-      const local = new THREE.Box3().setFromObject(g.scene);
-      physics.knock.add((w) => { w.decompose(o.position, o.quaternion, o.scale); }, o.matrixWorld.clone(), local, k.mass, k.kind);
+      physics.knock.add(d.file, (w) => { w.decompose(o.position, o.quaternion, o.scale); }, o.matrixWorld.clone(), g.scene);
     } else if (d.collide) {
       const c = box.getCenter(new THREE.Vector3()), s = box.getSize(new THREE.Vector3());
       physics.addBox(c.x, c.y, c.z, Math.max(0.05, s.x / 2 - 0.02), s.y / 2, Math.max(0.05, s.z / 2 - 0.02), 0, 1 << 3);

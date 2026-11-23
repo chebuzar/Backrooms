@@ -69,6 +69,14 @@ export class Physics {
     return hit ? hit.timeOfImpact : null;
   }
 
+  /** Промінь: перший коллайдер (з масками) і відстань до нього — для «що під поглядом». */
+  castCollider(ox: number, oy: number, oz: number, dx: number, dy: number, dz: number, maxDist: number, mask: number, exclude?: RAPIER.Collider): { collider: RAPIER.Collider; toi: number } | null {
+    this.ray.origin = { x: ox, y: oy, z: oz };
+    this.ray.dir = { x: dx, y: dy, z: dz };
+    const hit = this.world.castRay(this.ray, maxDist, true, undefined, groups(0xffff, mask), exclude);
+    return hit ? { collider: hit.collider, toi: hit.timeOfImpact } : null;
+  }
+
   /** Чи видно точку B з точки A (немає стін між ними). */
   lineOfSight(ax: number, ay: number, az: number, bx: number, by: number, bz: number): boolean {
     const dx = bx - ax, dy = by - ay, dz = bz - az;
