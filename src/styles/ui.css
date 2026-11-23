@@ -284,3 +284,25 @@ input[type='range'].pencil-range:focus-visible { outline: 2px dashed var(--penci
 .finale-credits .cr-stats { color: #6b6455; font-size: calc(var(--u) * .85); margin-bottom: 3em; }
 .finale-credits .cr-head { color: #d8d1bf; font-size: calc(var(--u) * 1.6); letter-spacing: .4em; margin-bottom: 1.2em; }
 .finale-credits .cr-close { margin-top: 2.6em; color: #d8d1bf; }
+
+/* Памятка «играть с экрана „Домой“» на екрані 18+: клаптик пожовклого паперу, машинопис + хімічний олівець */
+.age .memo {
+  margin-top: 2em; padding: .9em 1.1em 1em; max-width: 34em; transform: rotate(-.6deg);
+  background: var(--paper); color: var(--ink); box-shadow: 0 2px 0 var(--paper-edge), 0 10px 30px rgba(0, 0, 0, .6);
+  font: 400 calc(var(--u) * .86)/1.45 var(--type); opacity: 0; animation: memo-in .6s ease 1.4s forwards;
+}
+.age .memo-head { font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--stamp); margin-bottom: .4em; }
+.age .memo p { margin-bottom: .45em; }
+.age .memo .how { font-family: var(--hand); font-size: 1.12em; color: var(--pencil); }
+.age .memo .note { color: var(--ink-soft); font-size: .92em; }
+.age .memo .share { width: .8em; height: 1em; vertical-align: -.12em; margin: 0 .1em; }
+.age .memo [data-install] { margin-top: .3em; --ink: var(--pencil); }
+@keyframes memo-in { to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .age .memo { animation: none; opacity: 1; } }
+/* низькі екрани (телефон у ландшафті): памятка вужча, щоб влізло все */
+/* низькі екрани (телефон у ландшафті): памятка — праворуч від попередження, а не під ним */
+@media (max-height: 520px) and (orientation: landscape) {
+  .age-inner:has(.memo) { display: grid; grid-template-columns: minmax(0, 1fr) min(40%, 18em); column-gap: 1.8em; width: min(900px, 90vw); align-items: start; }
+  .age-inner:has(.memo) > * { grid-column: 1; }
+  .age .memo { grid-column: 2; grid-row: 1 / span 6; align-self: center; margin-top: 0; padding: .7em .9em; }
+}

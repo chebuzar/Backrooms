@@ -7,6 +7,22 @@ import { ICONS, svg } from '../input/touch';
 type Handler = () => void;
 
 import { esc } from './esc';
+import { isStandalone, platform, canInstall, onInstallChange, install } from '../core/webapp';
+
+/** Значок «Поделиться» iOS (квадрат зі стрілкою вгору) — щоб гравець упізнав кнопку в Safari. */
+const SHARE = '<svg class="share" viewBox="0 0 16 20" aria-label="«Поделиться»"><path d="M8 1v11M4.5 4.5 8 1l3.5 3.5M5 8H2v11h12V8h-3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+/** Памятка «играть с экрана „Домой“»: лише у вкладці браузера на планшеті чи телефоні (iOS/Android). */
+function memo(): string {
+  const p = platform();
+  if (isStandalone() || p === 'other') return '';
+  const w = T.webapp;
+  return `<aside class="memo" role="note"><div class="memo-head">${w.title}</div>
+    <p>${w.body}</p>
+    <p class="how">${p === 'ios' ? w.ios.replace('{share}', SHARE) : w.android}</p>
+    ${p === 'ios' ? `<p class="note">${w.note}</p>` : ''}
+    <button class="line-btn minor" data-install hidden>${w.install}</button></aside>`;
+}
 
 export class UI {
   private readonly root: HTMLElement;
@@ -76,10 +92,16 @@ export class UI {
         <p class="typed">${a.body}</p>
         <p class="typed hint">${a.hint}</p>
         <div class="act"><button class="line-btn sel" data-go autofocus style="color:#efe9d9">${confirmedBefore ? a.again : a.confirm}</button></div>
+        ${memo()}
       </div>`);
+      const btn = el.querySelector<HTMLButtonElement>('[data-install]');
+      const sync = () => { if (btn) btn.hidden = !canInstall(); };
+      sync();
+      const off = onInstallChange(sync);
+      btn?.addEventListener('click', () => { void install().then(sync); });
       const go = el.querySelector('[data-go]') as HTMLButtonElement;
       (go.style as CSSStyleDeclaration).setProperty('--ink', '#efe9d9');
-      go.addEventListener('click', () => { this.close('age'); done(); });
+      go.addEventListener('click', () => { off(); this.close('age'); done(); });
       setTimeout(() => this.focusFirst(), 50);
     });
   }
