@@ -14,6 +14,10 @@ const ORIGINS = [/^https:\/\/chebuzar\.github\.io$/, /^https:\/\/zakulisye\.ampl
 const cleanKey = (k) => String(k || '').trim().replace(/^Bearer\s+/i, '').replace(/^(["'])(.*)\1$/, '$2').trim();
 const ADMIN = cleanKey(process.env.ADMIN_KEY);
 const FEEDBACK_KEY = cleanKey(process.env.FEEDBACK_KEY); // лише читать и разбирать отзывы (ключ для Claude), без прав ADMIN_KEY
+// …или только sha256 этого ключа (hex): так сам ключ живёт лишь в сетевом секрете среды Claude, а на сервере — его хеш.
+// Хеш берётся из строки журнала «admin denied … sha256 …» после первого запроса с новым ключом (docs/FEEDBACK.md).
+const FEEDBACK_KEY_SHA256 = /^[0-9a-f]{64}$/i.test(String(process.env.FEEDBACK_KEY_SHA256 || '').trim()) ? process.env.FEEDBACK_KEY_SHA256.trim().toLowerCase() : '';
+const MIN_HASHED_KEY = 24; // короче — не ключ, а случайность; такие не принимаются по хешу и не пишутся в журнал целиком
 const db = !process.env.DATABASE_URL ? null : new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 5, ssl: process.env.DATABASE_URL && /sslmode=require|ssl=true/.test(process.env.DATABASE_URL) ? { rejectUnauthorized: false } : undefined });
 if (process.env.VAPID_PUBLIC && process.env.VAPID_PRIVATE) webpush.setVapidDetails('https://chebuzar.github.io/Backrooms/', process.env.VAPID_PUBLIC, process.env.VAPID_PRIVATE);
 
@@ -51,11 +55,12 @@ let deniedLogAt = 0;
 const isAdmin = (req) => {
   const raw = req.headers['x-admin-key'] || req.headers.authorization || '';
   const k = cleanKey(raw);
-  const ok = !!k && ((!!ADMIN && safeEq(k, ADMIN)) || (!!FEEDBACK_KEY && safeEq(k, FEEDBACK_KEY)));
+  const ok = !!k && ((!!ADMIN && safeEq(k, ADMIN)) || (!!FEEDBACK_KEY && safeEq(k, FEEDBACK_KEY)) ||
+    (!!FEEDBACK_KEY_SHA256 && k.length >= MIN_HASHED_KEY && safeEq(sha(k), FEEDBACK_KEY_SHA256)));
   if (!ok && Date.now() - deniedLogAt > 10000) {
     deniedLogAt = Date.now();
     const via = req.headers['x-admin-key'] ? 'x-admin-key' : req.headers.authorization ? 'authorization' : 'без ключа';
-    console.log(`admin denied: ${via} ${keyPrint(k)}${raw.length !== k.length ? ` (до очистки len ${raw.length})` : ''}; ожидается FEEDBACK_KEY ${keyPrint(FEEDBACK_KEY)}`);
+    console.log(`admin denied: ${via} ${keyPrint(k)}${raw.length !== k.length ? ` (до очистки len ${raw.length})` : ''}; ожидается FEEDBACK_KEY ${keyPrint(FEEDBACK_KEY)}${k.length >= MIN_HASHED_KEY ? ` · sha256 ${sha(k)}` : ''}`);
   }
   return ok;
 };
@@ -202,7 +207,7 @@ http.createServer(async (req, res) => {
   const o = req.headers.origin, origin = o && ORIGINS.some((re) => re.test(o)) ? o : null;
   try { await route(req, res, origin); } catch (e) { console.error(e); send(res, e.code === 413 ? 413 : e.code === 400 ? 400 : 500, { error: e.code === 413 ? 'too big' : 'server' }, origin); }
 }).listen(PORT, async () => {
-  console.log('listening', PORT, '· FEEDBACK_KEY', keyPrint(FEEDBACK_KEY));
+  console.log('listening', PORT, '· FEEDBACK_KEY', keyPrint(FEEDBACK_KEY), '· FEEDBACK_KEY_SHA256', FEEDBACK_KEY_SHA256 ? FEEDBACK_KEY_SHA256.slice(0, 4) + '…' : 'нет');
   for (let i = 0; i < 10; i++) { try { await migrate(); break; } catch (e) { console.warn('db not ready', e.message); await new Promise((r) => setTimeout(r, 3000)); } }
   if (db) { checkRelease(); setInterval(checkRelease, 10 * 60 * 1000); }
 });
