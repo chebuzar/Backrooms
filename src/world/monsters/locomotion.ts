@@ -125,6 +125,19 @@ const sourceRest = new WeakMap<THREE.Object3D, Map<THREE.Object3D, { q: THREE.Qu
 /** Уже перенесені кліпи: ключ — модель (файл) + кліп; кліп прив'язується за назвами кісток, тож годиться для кожної копії. */
 const cache = new Map<string, Retargeted>();
 
+/** Перенесений кліп UAL (з кешем за моделлю й назвою кліпу); null — у бібліотеці такого немає. */
+export function ualClip(model: THREE.Object3D, ual: { scene: THREE.Object3D; animations: THREE.AnimationClip[] }, name: string, key: string): Retargeted | null {
+  const k = `${key}|${name}`;
+  let r = cache.get(k);
+  if (!r) {
+    const c = ual.animations.find((a) => a.name === name);
+    if (!c) return null;
+    r = retargetUAL2(model, ual.scene, c);
+    cache.set(k, r);
+  }
+  return r;
+}
+
 /** Набір кліпів одного монстра: спокій, повільна хода, швидка (необов'язкова). */
 export interface GaitClips { idle: string; walk: string; run?: string }
 
@@ -156,14 +169,8 @@ export class Locomotion {
   constructor(readonly model: THREE.Object3D, ual: { scene: THREE.Object3D; animations: THREE.AnimationClip[] }, set: GaitClips, key: string) {
     for (const [name, b] of bonesOf(model)) this.bones.set(name, { b, rest: b.rotation.clone() });
     const get = (n: string) => {
-      const k = `${key}|${n}`;
-      let r = cache.get(k);
-      if (!r) {
-        const c = ual.animations.find((a) => a.name === n);
-        if (!c) throw new Error(`UAL clip missing: ${n}`);
-        r = retargetUAL2(model, ual.scene, c);
-        cache.set(k, r);
-      }
+      const r = ualClip(model, ual, n, key);
+      if (!r) throw new Error(`UAL clip missing: ${n}`);
       return r;
     };
     this.mixer = new THREE.AnimationMixer(model);

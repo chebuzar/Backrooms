@@ -22,22 +22,26 @@ for (const lv of levels) {
   });
   await page.waitForFunction(() => !!window.__zk.game.death, null, { timeout: 15000 });
   const seen = {};
-  for (const [tag, at] of [['scare', 0.25], ['fall', 0.8], ['feed', 1.7], ['feed2', 2.6], ['end', 3.3]]) {
+  for (const [tag, at] of [['scare', 0.25], ['fall', 0.8], ['feed', 1.75], ['feed2', 2.75], ['end', 3.9]]) {
     await page.waitForFunction((a) => !window.__zk.game.death || window.__zk.game.death.t >= a, at, { timeout: 60000 });
+    // «feed2» — саме в мить ривка (кров летить)
+    if (tag === 'feed2') await page.waitForFunction(() => { const d = window.__zk.game.death; return !d || (d.t - d.strikeT > 0.3 && d.t - d.strikeT < 0.5); }, null, { timeout: 60000 });
     const st = await page.evaluate(() => {
       const g = window.__zk.game, s = g.hunt.stalker, c = g.camera, d = g.death;
       let head = null;
       s.root.traverse((o) => { if (o.isBone && o.name === 'head') head = o; });
       const hp = head ? head.getWorldPosition(c.position.clone()) : null;
       const ndc = hp ? hp.clone().project(c) : null;
-      return { t: d ? +d.t.toFixed(2) : null, camY: +c.position.y.toFixed(2), head: hp ? +hp.distanceTo(c.position).toFixed(2) : null, ndc: ndc ? [+ndc.x.toFixed(2), +ndc.y.toFixed(2)] : null };
+      const sp = g.deathSpray, live = sp ? [...sp.live].filter((v) => v > 0).length : -1;
+      const flying = sp ? [...sp.live].map((v, i) => { if (v !== 1) return null; const q = c.position.clone().set(sp.p[i * 3], sp.p[i * 3 + 1], sp.p[i * 3 + 2]).project(c); return [+q.x.toFixed(2), +q.y.toFixed(2), +sp.p[i * 3 + 1].toFixed(2)]; }).filter(Boolean).slice(0, 8) : [];
+      return { spray: { vis: sp?.mesh.visible, live, flying, cam: [+c.position.x.toFixed(2), +c.position.y.toFixed(2), +c.position.z.toFixed(2)], strikes: d?.strikes }, t: d ? +d.t.toFixed(2) : null, camY: +c.position.y.toFixed(2), head: hp ? +hp.distanceTo(c.position).toFixed(2) : null, ndc: ndc ? [+ndc.x.toFixed(2), +ndc.y.toFixed(2)] : null };
     });
     seen[tag] = st;
     await page.screenshot({ path: `.shots/death-${lv}-${tag}.png` });
   }
   console.log(lv, JSON.stringify(seen));
   check(`уровень ${lv}: скример — лицо вплотную`, seen.scare.head !== null && seen.scare.head < 0.9, seen.scare);
-  check(`уровень ${lv}: оператор на полу, монстр над ним`, seen.feed.camY < 0.4 && seen.feed.head !== null && seen.feed.head < 2.4 && seen.feed2.head < 2.4, seen);
+  check(`уровень ${lv}: оператор на полу, монстр над ним`, seen.feed.camY < 0.4 && seen.feed.head !== null && seen.feed.head < 1.6 && seen.feed2.head < 1.6, seen);
   await page.waitForFunction(() => window.__zk.game.input.enabled && !window.__zk.game.ending, null, { timeout: 60000 });
   const after = await page.evaluate(() => ({ y: window.__zk.game.camera.position.y, bodies: window.__zk.game.store.progress.bodies.length }));
   check(`уровень ${lv}: после — снова на ногах, тело осталось`, after.y > 1.2 && after.bodies > 0, after);

@@ -42,3 +42,85 @@ export function makeBloodPool(atlas: THREE.Texture, x: number, z: number, size: 
   m.name = 'blood';
   return m;
 }
+
+/**
+ * Бризки крові (сцена смерті): краплі летять балістично й лягають плямками на підлогу. Один InstancedMesh, один
+ * простий матеріал — додається в сцену прихованим разом із рівнем (прогрівається, без ривка в момент смерті).
+ */
+export class BloodSpray {
+  readonly mesh: THREE.InstancedMesh;
+  private readonly p: Float32Array;
+  private readonly v: Float32Array;
+  private readonly r: Float32Array;
+  private readonly live: Uint8Array;
+  private next = 0;
+  private readonly m = new THREE.Matrix4();
+  private readonly q = new THREE.Quaternion();
+  private readonly s = new THREE.Vector3();
+  private readonly pos = new THREE.Vector3();
+  private readonly dir = new THREE.Vector3();
+  private readonly y = new THREE.Vector3(0, 1, 0);
+
+  constructor(readonly count = 96) {
+    const mat = new THREE.MeshStandardNodeMaterial({ color: new THREE.Color().setRGB(0.17, 0.008, 0.006, THREE.SRGBColorSpace), roughness: 0.25, metalness: 0 });
+    this.mesh = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(1, 1), mat, count);
+    this.mesh.frustumCulled = false;
+    this.mesh.name = 'blood-spray';
+    this.p = new Float32Array(count * 3); this.v = new Float32Array(count * 3); this.r = new Float32Array(count);
+    this.live = new Uint8Array(count);
+    this.clear();
+  }
+
+  clear(): void {
+    this.m.makeScale(0, 0, 0);
+    for (let i = 0; i < this.count; i++) { this.mesh.setMatrixAt(i, this.m); this.live[i] = 0; }
+    this.mesh.instanceMatrix.needsUpdate = true;
+  }
+
+  /** Бризок з точки (x, y, z): n крапель, віялом угору й у бік `toward` (одиничний), швидкість ~speed м/с. */
+  burst(x: number, y: number, z: number, toward: THREE.Vector3, n: number, speed: number): void {
+    for (let k = 0; k < n; k++) {
+      const i = this.next; this.next = (this.next + 1) % this.count;
+      const a = Math.random() * Math.PI * 2, sp = speed * (0.35 + Math.random() * 0.75);
+      this.dir.set(Math.cos(a) * 0.3, 1.0 + Math.random() * 0.6, Math.sin(a) * 0.3).addScaledVector(toward, 0.25 + Math.random() * 0.4).normalize();
+      this.p.set([x + (Math.random() - 0.5) * 0.06, y, z + (Math.random() - 0.5) * 0.06], i * 3);
+      this.v.set([this.dir.x * sp, this.dir.y * sp, this.dir.z * sp], i * 3);
+      this.r[i] = 0.0025 + Math.random() * Math.random() * 0.006;
+      this.live[i] = 1;
+    }
+  }
+
+  /** Крок польоту; eye — де очі: крапля, що влучила в обличчя, зникає. Повертає, скільки влучило в очі. */
+  update(dt: number, eye?: THREE.Vector3): number {
+    let hit = 0;
+    for (let i = 0; i < this.count; i++) {
+      if (!this.live[i] || this.live[i] === 3) continue;
+      const o = i * 3, r = this.r[i] as number;
+      if (this.live[i] === 1) {
+        (this.v[o + 1] as number) -= 9.8 * dt;
+        for (let a = 0; a < 3; a++) this.p[o + a] = (this.p[o + a] as number) + (this.v[o + a] as number) * dt;
+        this.pos.set(this.p[o] as number, this.p[o + 1] as number, this.p[o + 2] as number);
+        if (this.pos.y <= 0.004) { this.pos.y = 0.004; this.p[o + 1] = 0.004; this.live[i] = 2; } // упала — плямка
+        else if (eye && this.pos.distanceToSquared(eye) < 0.12 * 0.12) {
+          hit++; this.live[i] = 3; this.mesh.setMatrixAt(i, this.m.makeScale(0, 0, 0)); continue;
+        } else {
+          // летить — витягнута вздовж руху
+          this.dir.set(this.v[o] as number, this.v[o + 1] as number, this.v[o + 2] as number);
+          const sp = this.dir.length();
+          this.q.setFromUnitVectors(this.y, this.dir.multiplyScalar(1 / Math.max(1e-4, sp)));
+          // витягнута на шлях за кадр (≈ як змазана в русі), а не кулька
+          this.s.set(r, r + Math.min(0.05, sp / 60 * 0.6), r);
+          this.mesh.setMatrixAt(i, this.m.compose(this.pos, this.q, this.s));
+          continue;
+        }
+      }
+      this.pos.set(this.p[o] as number, this.p[o + 1] as number, this.p[o + 2] as number);
+      this.q.identity();
+      this.s.set(r * 2.2, r * 0.15, r * 2.2);
+      this.mesh.setMatrixAt(i, this.m.compose(this.pos, this.q, this.s));
+      this.live[i] = 3; // більше не рахуємо
+    }
+    this.mesh.instanceMatrix.needsUpdate = true;
+    return hit;
+  }
+}

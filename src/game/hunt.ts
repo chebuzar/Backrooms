@@ -55,8 +55,9 @@ export class Hunt {
     if (!kind) return;
     // модель свого монстра; якщо файл не завантажився — тіло «Наблюдателя» (з власною поведінкою й кольором шкіри)
     const model = assets.model(`assets/models/${kind}.glb`).catch(() => assets.model('assets/models/watcher.glb'));
-    // бібліотека рухів (Quaternius UAL): без неї монстр рухається процедурними позами, як раніше
-    const ual = kind === 'watcher' ? Promise.resolve(null) : assets.model('assets/anim/ual.glb').catch(() => null);
+    // бібліотека рухів (Quaternius UAL): хода (крім «Наблюдателя» — він не ходить на очах) і присід над тілом у сцені смерті;
+    // без неї монстр рухається процедурними позами, як раніше
+    const ual = assets.model('assets/anim/ual.glb').catch(() => null);
     const [nav, gl, anims] = await Promise.all([Nav.fromLayout(lvl.layout), model, ual]);
     this.nav = nav;
     const L = lvl.layout;
@@ -113,6 +114,9 @@ export class Hunt {
     this.flashCut = 0; this.cutCd = 6;
     if (this.heartGain) this.heartGain.gain.value = 0;
   }
+
+  /** Заглушити синтезоване серце (у сцені смерті б'ється справжнє, записане). */
+  muteHeart(): void { if (this.heartGain) this.heartGain.gain.value = 0; }
 
   /** Мінімальне серцебиття від нервів Оператора (психологічний шар). */
   heartFloor = 0;

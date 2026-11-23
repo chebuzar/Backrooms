@@ -8,7 +8,7 @@ import { Notebook } from '../ui/notebook';
 import { MapMemory } from './mapmem';
 import { buildUnseen } from '../world/unseen';
 import { makeBody } from '../world/bodies';
-import { makeBloodPool } from '../world/blood';
+import { makeBloodPool, BloodSpray } from '../world/blood';
 import { DeathScene } from './death';
 import { furnishNii } from '../world/nii-furniture';
 import { rng } from '../core/rng';
@@ -198,6 +198,7 @@ export class Game {
   /** Атлас плям (форма калюж крові) і калюжа для сцени смерті — заздалегідь у сцені, прихована. */
   private bloodAtlas: THREE.Texture | null = null;
   private deathPool: THREE.Mesh | null = null;
+  private deathSpray: BloodSpray | null = null;
   /** Сцена смерті, що зараз іде (для автотестів через __zk). */
   death: DeathScene | null = null;
   /** Горизонтальна відстань до стіни/дверей на висоті очей (для психологічного шару). */
@@ -410,6 +411,7 @@ export class Game {
       this.bloodAtlas = await this.assets.texture('assets/tex/level0/decals.ktx2').catch(() => null);
       for (const b of this.store.progress.bodies) if (b.level === id) lvl.scene.add(makeBody(gl.scene, b.x, b.z, b.yaw, this.bloodAtlas));
       if (this.bloodAtlas) { this.deathPool = makeBloodPool(this.bloodAtlas, 0, 0, 1); this.deathPool.visible = false; lvl.scene.add(this.deathPool); }
+      this.deathSpray = new BloodSpray(); this.deathSpray.mesh.visible = false; lvl.scene.add(this.deathSpray.mesh);
     } catch { /* без моделі гра йде далі без прихованого й тіл */ }
     this.psyche.attach(lvl, this.figureModel, unseen);
     this.soundscape.attach(lvl);
@@ -910,8 +912,9 @@ export class Game {
     this.flashlightOn = true;
     if (s) {
       this.player.yaw = Math.atan2(-(s.pos.x - p.x), -(s.pos.z - p.z)); this.player.pitch = 0.05;
+      this.hunt.muteHeart();
       const scene = new DeathScene({
-        camera: this.camera, stalker: s, audio: this.audio, sfx: this.sfx, pool: this.deathPool,
+        camera: this.camera, stalker: s, audio: this.audio, sfx: this.sfx, pool: this.deathPool, spray: this.deathSpray,
         setFlash: (o) => { this.flashOverride = o; },
         shake: (v) => { this.rig.shake = Math.max(this.rig.shake, v); }
       });

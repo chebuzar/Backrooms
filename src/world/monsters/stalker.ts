@@ -13,7 +13,7 @@ import type { Doors } from '../doors';
 import { probeLit } from '../materials';
 import type { Water } from '../water';
 import { smilerPose, drownedPose, blindOverlay, smilerOverlay, drownedOverlay } from './gaits';
-import { Locomotion, type GaitClips } from './locomotion';
+import { Locomotion, ualClip, type GaitClips } from './locomotion';
 
 /** Цикли руху кожного (Quaternius UAL): «Слепой» крадеться навпочіпки, «Улыбака» ходить підкреслено рівно. */
 const GAITS: Partial<Record<StalkerKind, GaitClips & { rate: number }>> = {
@@ -26,6 +26,7 @@ import { TRAITS, watcherSpeed, type LungeState, type StalkerKind } from '../../a
 export { TRAITS, type StalkerKind };
 
 type Pose = Record<string, [number, number, number]>;
+const tmpFeedQ = new THREE.Quaternion(), tmpFeedE = new THREE.Euler(), tmpFeedV = new THREE.Vector3();
 
 /** Пози «Наблюдателя»: щоразу, як на нього глянеш, — інша (руки, нахил голови). Зсуви від пози спокою, рад. */
 const ARMS_DOWN: Pose = { upperarm_l: [0, 0, -0.78], upperarm_r: [0, 0, 0.78] };
@@ -55,6 +56,10 @@ export class Stalker {
   private path: V3[] = [];
   private repath = 0;
   private readonly bones = new Map<string, { b: THREE.Bone; rest: THREE.Euler }>();
+  /** Справжній присід (UAL Crouch_Idle) для сцени смерті: монстр сидить навпочіпки над тілом. */
+  private crouch: { mixer: THREE.AnimationMixer; action: THREE.AnimationAction } | null = null;
+  /** Поза кісток до сцени смерті (повертаємо в reset, бо міксер ходи пише лише змінені кістки). */
+  private feedSnap: { b: THREE.Bone; q: THREE.Quaternion; p: THREE.Vector3 }[] | null = null;
   private gait = 0;
   /** Справжня хода (якщо бібліотека рухів завантажилась); інакше — процедурні пози. */
   private loco: Locomotion | null = null;
@@ -122,6 +127,12 @@ export class Stalker {
     });
     const g = GAITS[kind];
     if (anims && g) this.loco = new Locomotion(model, anims, g, kind);
+    const cr = anims ? ualClip(model, anims, 'Crouch_Idle_Loop', kind) : null;
+    if (cr) {
+      const mixer = new THREE.AnimationMixer(model), action = mixer.clipAction(cr.clip);
+      action.play(); action.setEffectiveWeight(0);
+      this.crouch = { mixer, action };
+    }
     const senses = { los: (a: V3, b: V3) => physics.lineOfSight(a.x, a.y, a.z, b.x, b.y, b.z) };
     this.brain = new Brain(TRAITS[kind], nav, senses, this.pos);
     this.applyPose(kind === 'watcher' ? WATCHER_POSES[0] as Pose : {});
@@ -163,20 +174,36 @@ export class Stalker {
    * Сцена смерті: монстр над тілом Оператора — зігнувся, руки до підлоги, голова опущена до горла.
    * strike 0..1 — ривок головою вниз (удар/укус); x, z — де стоять його ноги; yaw — обличчям до тіла.
    */
-  feed(x: number, z: number, yaw: number, strike: number): void {
-    const s = Math.max(0, Math.min(1, strike));
+  feed(x: number, z: number, yaw: number, strike: number, pull = 0, t = 0, blend = 1): void {
+    const s = Math.max(0, Math.min(1, strike)), r = Math.max(-1, Math.min(1, pull));
     const side = this.kind === 'smiler' ? this.tilt : 1;
-    this.applyPose({
-      spine_01: [0.12 + s * 0.18, 0, 0], spine_02: [0.15 + s * 0.22, 0, 0.05 * side], spine_03: [0.1 + s * 0.15, 0, 0],
-      neck_01: [0.35 + s * 0.35, 0, 0.12 * side], head: [0.25 + s * 0.25, 0, 0.25 * side],
-      upperarm_l: [-0.25 - s * 0.35, 0, -0.75], upperarm_r: [-0.25 - s * 0.35, 0, 0.75], lowerarm_l: [-0.2, 0, -0.1], lowerarm_r: [-0.2, 0, 0.1]
-    });
+    if (!this.feedSnap) this.feedSnap = [...this.bones.values()].map(({ b }) => ({ b, q: b.quaternion.clone(), p: b.position.clone() }));
+    // над тілом: навпочіпки (справжній присід), корпус згорблений уперед, руки внизу — тримають і рвуть;
+    // ривок: голова падає вниз (s), потім смикається назад і вбік, відриваючи (pull)
+    const over: Pose = {
+      spine_01: [0.32 + s * 0.12 - r * 0.06, 0, 0], spine_02: [0.3 + s * 0.12, 0, 0.06 * side], spine_03: [0.2 + s * 0.08, 0, 0],
+      neck_01: [0.25 + s * 0.4 - r * 0.45, r * 0.25 * side, 0.1 * side], head: [0.2 + s * 0.35 - r * 0.3, r * 0.35 * side, 0.22 * side + r * 0.2],
+      upperarm_l: [-0.55 - s * 0.15 + r * 0.35, 0, -0.35], upperarm_r: [-0.55 - s * 0.15 + r * 0.25, 0, 0.35],
+      lowerarm_l: [-0.5 - r * 0.4, 0, -0.1], lowerarm_r: [-0.45 - r * 0.3, 0, 0.1]
+    };
+    if (this.crouch) {
+      for (const { b, q, p } of this.feedSnap) { b.quaternion.copy(q); b.position.copy(p); }
+      this.crouch.action.setEffectiveWeight(1);
+      this.crouch.mixer.setTime(t);
+      for (const [name, [ex, ey, ez]] of Object.entries(over)) {
+        const e = this.bones.get(name);
+        if (e) e.b.quaternion.multiply(tmpFeedQ.setFromEuler(tmpFeedE.set(ex, ey, ez)));
+      }
+      // перехід з пози «схопив» у присід (кидається на тебе) — плавно, без стрибка пози
+      if (blend < 1) for (const { b, q, p } of this.feedSnap) { tmpFeedQ.copy(b.quaternion); b.quaternion.copy(q).slerp(tmpFeedQ, blend); b.position.lerpVectors(p, tmpFeedV.copy(b.position), blend); }
+    } else {
+      this.applyPose({ ...over, thigh_l: [1.4, 0, 0], thigh_r: [1.4, 0, 0], calf_l: [-2.2, 0, 0], calf_r: [-2.2, 0, 0] });
+    }
     this.sub = this.subGoal = 0;
     this.root.visible = true;
     this.yaw = yaw;
-    // нахиляється над тілом усім корпусом (від ступнів), на ривку — падає обличчям униз, до горла
-    this.root.rotation.set(0.12 + s * 0.3, yaw, 0, 'YXZ');
-    this.root.position.set(x, -s * 0.3, z);
+    this.root.rotation.set(0, yaw, 0, 'YXZ');
+    this.root.position.set(x, this.crouch ? 0 : -0.5, z);
     this.pos.x = x; this.pos.z = z;
   }
 
@@ -196,6 +223,11 @@ export class Stalker {
     this.grabbed = false;
     this.root.position.y = 0; // після «схопив» (голову підіймали до камери)
     this.root.rotation.set(0, this.yaw, 0, 'YXZ'); // після сцени смерті (нахилявся над тілом)
+    if (this.feedSnap) {
+      for (const { b, q, p } of this.feedSnap) { b.quaternion.copy(q); b.position.copy(p); }
+      this.feedSnap = null;
+      this.crouch?.action.setEffectiveWeight(0);
+    }
     if (this.brain.traits.submerges) this.sub = this.subGoal = 1;
     this.catchCd = 4;
     this.seenAt = null;

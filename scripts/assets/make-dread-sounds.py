@@ -7,6 +7,8 @@
   2-wooden-squish-splatter-seqs    — хрускіт кісток (Independent.nu Ljudbank)
   ripping-into-meat                — роздирання м'яса
   monster-snarls, 16-monster-growls, ghost-breath — голоси монстрів
+  heartbeat-single-sound (qubodup), grunts-male-death-and-pain (thebardofblasphemy),
+  15-vocal-male-strainhurtpainjump-sounds (qubodup) — тіло й голос самого Оператора: серце, стогін, хрип
 Скример — не один запис, а шари (гарчання + крик зі зниженим тоном + удар), стиснуті й підсилені: різкий, щільний,
 без «мультяшності» окремого крику. Гучність вирівнюється (loudnorm), моно 48 кГц.
 """
@@ -14,6 +16,7 @@ import glob
 import json
 import os
 import subprocess
+import urllib.parse
 import urllib.request
 import zipfile
 
@@ -24,7 +27,8 @@ OUT = 'public/assets/sfx'
 B = 'https://opengameart.org/sites/default/files/'
 FILES = ['80-CC0-creature-SFX_0.zip', 'independent_nu_ljudbank-wet_squish_slurp_impacts.7z', 'independent_nu_ljudbank-extreme_splatter.7z',
          'rippingintomeat_0.mp3', 'monster-snarl-attack.ogg', 'monster-snarl-5.ogg', 'monster-snarls_0.ogg', 'monsters-snarls-3_0.ogg',
-         'monster_-_starninjas.zip', 'ghostbreath.flac', 'squishsplat_impact.mp3']
+         'monster_-_starninjas.zip', 'ghostbreath.flac', 'squishsplat_impact.mp3',
+         'heartbeat.mp3_.flac', 'death%20pain%20grunts.wav', 'slightscreams.7z']
 os.makedirs(SRC, exist_ok=True)
 os.makedirs(OUT, exist_ok=True)
 made = {}
@@ -32,7 +36,7 @@ made = {}
 
 def fetch():
     for f in FILES:
-        dst = f'{SRC}/{f}'
+        dst = f'{SRC}/{urllib.parse.unquote(f)}'
         if not os.path.exists(dst):
             req = urllib.request.Request(B + f, headers={'User-Agent': 'zakulisye-asset-fetch'})
             with urllib.request.urlopen(req) as r, open(dst, 'wb') as o:
@@ -144,6 +148,18 @@ breath = find('ghostbreath.flac')
 conv(breath, 'breath_0', -22)
 for i, n in enumerate([1, 5, 9, 13]):
     conv(find(f'monster_-_starninjas.zip.d/**/monster.{n}.ogg'), f'growl_{i}', -20, af_extra=('asetrate=40000,aresample=48000',))
+
+# Оператор: власний голос чути «зсередини» — глухіше, з тілом (НЧ), без дзвінких верхів
+INSIDE = ('lowpass=f=3200', 'bass=g=4:f=140')
+voice = find('death pain grunts.wav')
+# окремі стогони/хрипи — проміжки між тишею (довгі — «помирає», короткі — крик від удару)
+segs = [(0.5, 1.9), (3.96, 6.09), (10.0, 12.35), (14.46, 16.1), (20.34, 22.27), (23.88, 25.72), (35.96, 37.32), (42.2, 43.54), (47.38, 49.04)]
+for i, (a, b) in enumerate(segs):
+    conv(voice, f'victim_{i}', -19, a - 0.03, round(b - a + 0.12, 2), INSIDE)
+for i, n in enumerate([3, 5, 10, 14, 15]):
+    conv(find(f'slightscreams.7z.d/slightscream-{n:02d}.flac'), f'yelp_{i}', -18, af_extra=INSIDE)
+# серце: один удар «тук-тук» — темп задає гра (сповільнюється, поки Оператор помирає)
+conv(find('heartbeat.mp3_.flac'), 'heart_0', -16, 0.0, 1.5, ('lowpass=f=900',))
 
 idx_path = f'{OUT}/index.json'
 idx = set(json.load(open(idx_path))) if os.path.exists(idx_path) else set()
