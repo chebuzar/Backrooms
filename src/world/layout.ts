@@ -283,11 +283,14 @@ function planNii(r: Rng, cols: number, rows: number): Plan {
 
   // --- світло
   type St = LightPanel['state'];
-  /** Коридор: лампи через 3 клітинки; ділянки по 2–4 живих і 1–3 мертвих (довгі темні проміжки). */
+  /**
+   * Коридор: лампи через 3 клітинки; ділянки по 3–5 живих і 1–2 мертвих (у темніших коридорах інколи довші).
+   * Темний проміжок має бути паузою, яку видно наскрізь до наступного світла, а не стіною темряви.
+   */
   const corridor = (fixed: number, a: number, b: number, alongX: boolean, darkness: number) => {
     let run = 0, lit = r() < 0.7;
     for (let t = a + 1.5; t < b; t += 3) {
-      if (run <= 0) { lit = !lit; run = lit ? irange(r, 2, 4) : irange(r, 1, 3) + (r() < darkness ? 2 : 0); }
+      if (run <= 0) { lit = !lit; run = lit ? irange(r, 3, 5) : irange(r, 1, 2) + (r() < darkness ? 1 : 0); }
       run--;
       const st: St = lit ? (r() < 0.12 ? 'flicker' : 'on') : r() < 0.15 ? 'flicker' : 'off';
       lamps.push(alongX ? { x: t, y: fixed, rot: false, state: st } : { x: fixed, y: t, rot: true, state: st });

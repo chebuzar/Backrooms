@@ -27,6 +27,8 @@ for (let k = 0; k < 6; k++) {
   await page.waitForTimeout(1500);
   if (await page.evaluate(() => window.__zk.game.mode === 'play')) break;
 }
+// контрольні кадри — без підказок керування (сенсорні кнопки, «Щёлкните, чтобы осмотреться»)
+await page.addStyleTag({ content: '.hud .lockhint { display: none !important; }' });
 await page.evaluate(() => { document.querySelector('.touch')?.classList.remove('shown'); });
 const files = [];
 for (const [label, x, z, yaw, pitch, light] of VIEWS) {
