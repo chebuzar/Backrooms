@@ -10,7 +10,8 @@ import type { NavLike, V3 } from '../../ai/nav';
 import type { Physics } from '../../physics/physics';
 import type { Lamps } from '../lamps';
 import type { Doors } from '../doors';
-import { probeLit } from '../materials';
+import { probeLit, type BakedMaterial } from '../materials';
+import { stainWithBlood, goreRef, goreAttributes } from './gore';
 import type { Water } from '../water';
 import { smilerPose, drownedPose, blindOverlay, smilerOverlay, drownedOverlay } from './gaits';
 import { Locomotion, ualClip, type GaitClips } from './locomotion';
@@ -57,6 +58,8 @@ export class Stalker {
   private repath = 0;
   private readonly bones = new Map<string, { b: THREE.Bone; rest: THREE.Euler }>();
   /** Справжній присід (UAL Crouch_Idle) для сцени смерті: монстр сидить навпочіпки над тілом. */
+  /** Сітки, які можна закривавити: шкіра й одяг (для gore.ts). */
+  private readonly skins: { m: THREE.Mesh; mat: BakedMaterial; cloth: boolean }[] = [];
   private crouch: { mixer: THREE.AnimationMixer; action: THREE.AnimationAction } | null = null;
   /** Поза кісток до сцени смерті (повертаємо в reset, бо міксер ходи пише лише змінені кістки). */
   private feedSnap: { b: THREE.Bone; q: THREE.Quaternion; p: THREE.Vector3 }[] | null = null;
@@ -119,6 +122,7 @@ export class Stalker {
         else if (n.includes('teeth')) { mat.color = c(0.55, 0.5, 0.38); }
         else if (n.includes('low-poly') || n.includes('eye')) { mat.color = kind === 'drowned' ? c(0.45, 0.47, 0.44) : c(0.01, 0.01, 0.01); mat.roughness = 0.15; } // в утопленика — білясті, каламутні
         m.material = mat;
+        if (n.includes('body') || n.includes('suit')) this.skins.push({ m, mat, cloth: !n.includes('body') });
         m.castShadow = true;
         m.frustumCulled = false;
       }
@@ -214,6 +218,17 @@ export class Stalker {
   }
 
   /** Повернути на «домашню» точку (після того, як гравця схопили). */
+  /** Кров на обличчі, шиї й руках (18+). Викликати до прогріву рівня: змінює шейдер. */
+  stain(atlas: THREE.Texture): void {
+    const body = this.skins.find((k) => !k.cloth);
+    if (!body) return;
+    const ref = goreRef(body.m); // одяг ділить систему координат тіла
+    for (const k of this.skins) {
+      if (!k.m.geometry.getAttribute('goreK')) goreAttributes(k.m.geometry, ref, this.kind); // геометрія спільна для клонів
+      stainWithBlood(k.mat, atlas, k.cloth);
+    }
+  }
+
   reset(): void {
     Object.assign(this.pos, this.home);
     this.path = [];

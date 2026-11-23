@@ -64,7 +64,8 @@ export class Hunt {
     // бібліотека рухів (Quaternius UAL): хода (крім «Наблюдателя» — він не ходить на очах) і присід над тілом у сцені смерті;
     // без неї монстр рухається процедурними позами, як раніше
     const ual = assets.model('assets/anim/ual.glb').catch(() => null);
-    const [nav, gl, anims] = await Promise.all([Nav.fromLayout(lvl.layout), model, ual]);
+    const atlas = assets.texture('assets/tex/level0/decals.ktx2').catch(() => null); // підтьоки — для крові на монстрі
+    const [nav, gl, anims, blood] = await Promise.all([Nav.fromLayout(lvl.layout), model, ual, atlas]);
     this.nav = nav;
     const L = lvl.layout;
     // «дім» — клітинка на ~60 % найдовшого шляху від старту: далеко, але не в глухому куті
@@ -90,6 +91,7 @@ export class Hunt {
       onCloser: (_s, by) => this.ev.onCloser(by)
     }, lvl.water ?? null, anims ? { scene: anims.scene, animations: anims.animations } : null);
     if (pool) s.poolAt = { x: pool.x, z: pool.z };
+    if (blood) s.stain(blood);
     s.onStep = (x, z, loud, wet) => {
       const b = wet ? this.splash() : this.sfx.pick('step_');
       if (b) this.audio.play3D(b, x, 0.05, z, { gain: (0.25 + loud * 0.5) * (wet ? 1.3 : 1), rate: wet ? 0.8 + Math.random() * 0.1 : 0.62 + Math.random() * 0.08, ref: 2.5, wet: 0.45 });
